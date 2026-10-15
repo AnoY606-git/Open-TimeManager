@@ -10,6 +10,8 @@
 2. Нажмите «Начать». Можно добавить заметку, поставить учёт на паузу, продолжить или завершить.
 3. Переключение проекта закрывает прежний отрезок и начинает новый без двух одновременных таймеров.
 
+При большом числе активных проектов список загружается порциями; нажмите «Загрузить ещё проекты», чтобы показать следующую порцию.
+
 После перезагрузки или потери надёжной опоры времени запись переходит в «Нужна проверка». Оставьте только подтверждённое время или укажите проверенное время окончания.
 
 ### История, отчёты и системные кнопки
@@ -34,6 +36,8 @@
 1. Open Timer and select “No project”, or create a project.
 2. Tap Start. You can add a note, pause, resume, or stop the session.
 3. Switching projects closes the previous segment and starts a new one without allowing two concurrent timers.
+
+When many active projects exist, the selector loads them in bounded pages; tap Load more projects to show the next page.
 
 After a reboot or an untrustworthy monotonic-time reference, the entry changes to Needs review. Keep only confirmed time or provide an end time you can verify.
 

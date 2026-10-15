@@ -81,6 +81,7 @@ fun TimerScreen(
     onStop: () -> Unit,
     onCreateProject: (String, Int) -> Unit,
     onArchiveProject: (String) -> Unit,
+    onLoadMoreProjects: () -> Unit,
     onSaveNote: (String) -> Unit,
     onResolveReview: (Long?) -> Unit,
     notificationStatus: NotificationControlStatus,
@@ -235,6 +236,9 @@ fun TimerScreen(
                         )
                     }
                 }
+                if (snapshot.hasMoreProjects) {
+                    TextButton(onClick = onLoadMoreProjects) { Text(stringResource(R.string.load_more_projects)) }
+                }
             }
         }
         item {
@@ -330,7 +334,7 @@ private fun ProjectDialog(onDismiss: () -> Unit, onCreate: (String, Int) -> Unit
 
 @Composable
 fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
-    val snapshot = state.snapshot ?: return
+    if (state.snapshot == null) return
     val context = LocalContext.current
     val projection = state.todayProjection
     Column(modifier.fillMaxSize().padding(20.dp)) {
@@ -339,8 +343,8 @@ fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
         if (projection.rows.isEmpty()) Text(stringResource(R.string.no_history), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(projection.rows, key = { "${it.entryId.value}:${it.projectId.value}" }) { row ->
-                val entry = snapshot.entries.firstOrNull { it.id == row.entryId.value }
-                val project = snapshot.projects.firstOrNull { it.id == row.projectId.value }
+                val entry = state.todayEntries.firstOrNull { it.id == row.entryId.value }
+                val project = state.todayProjects.firstOrNull { it.id == row.projectId.value }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(project?.let(context::projectName) ?: row.projectId.value, fontWeight = FontWeight.Medium)

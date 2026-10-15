@@ -30,6 +30,19 @@ abstract class ReportDao {
           AND segments.startedAtUtcMillis < :to AND segments.endUtcMillis > :from
         ORDER BY segments.startedAtUtcMillis, segments.id""")
     abstract fun range(from: Long, to: Long): List<ReportSegmentRow>
+    @Query("""SELECT DISTINCT entries.* FROM entries
+        JOIN segments ON segments.entryId = entries.id
+        WHERE segments.durationMillis IS NOT NULL
+          AND segments.startedAtUtcMillis < :to AND segments.endUtcMillis > :from
+        ORDER BY entries.startedAtUtcMillis, entries.id""")
+    abstract fun rangeEntries(from: Long, to: Long): List<EntryEntity>
+    @Query("""SELECT DISTINCT projects.* FROM projects
+        JOIN entries ON entries.projectId = projects.id
+        JOIN segments ON segments.entryId = entries.id
+        WHERE segments.durationMillis IS NOT NULL
+          AND segments.startedAtUtcMillis < :to AND segments.endUtcMillis > :from
+        ORDER BY projects.createdAtUtcMillis, projects.id""")
+    abstract fun rangeProjects(from: Long, to: Long): List<ProjectEntity>
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
     @Query("DELETE FROM segments WHERE entryId = :id") abstract fun deleteSegments(id: String)
@@ -94,6 +107,18 @@ abstract class ReportDao {
         require(from < to)
         return range(from, to).map(ReportSegmentRow::toDomain)
     }
+
+    @Transaction
+    open fun reportSummary(from: Long, to: Long): ReportRangeSummary {
+        val segments = report(from, to)
+        return ReportRangeSummary(segments, rangeProjects(from, to))
+    }
+
+    @Transaction
+    open fun reportDetails(from: Long, to: Long): ReportRangeDetails {
+        val segments = report(from, to)
+        return ReportRangeDetails(segments, rangeEntries(from, to), rangeProjects(from, to))
+    }
 }
 
 data class ReportSegmentRow(
@@ -112,6 +137,22 @@ data class ReportSegmentRow(
     )
 }
 
+data class ReportRangeSummary(
+    val segments: List<Segment>,
+    val projects: List<ProjectEntity>,
+)
+
+data class ReportRangeDetails(
+    val segments: List<Segment>,
+    val entries: List<EntryEntity>,
+    val projects: List<ProjectEntity>,
+)
+
+data class ReportSummaryProjection(
+    val totals: ReportTotals,
+    val projects: List<ProjectEntity>,
+)
+
 class CompletedEntryRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
     suspend fun save(id: EntryId, projectId: ProjectId, note: String, startUtcMillis: Long, durationMillis: Long, expectedRevision: Long?): EditResult = withContext(dispatcher) {
         database.reportDao().save(id.value, projectId.value, note, startUtcMillis, durationMillis, expectedRevision)
@@ -122,18 +163,28 @@ class CompletedEntryRepository(private val database: AppDatabase, private val di
     suspend fun delete(id: EntryId, expectedRevision: Long): EditResult = withContext(dispatcher) { database.reportDao().delete(id.value, expectedRevision) }
     suspend fun report(fromUtcMillis: Long, toUtcMillis: Long): List<Segment> = withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }
     fun observeReportTotals(fromUtcMillis: Long, toUtcMillis: Long): Flow<ReportTotals> =
-        database.invalidationTracker.createFlow("entries", "segments").map {
+        observeReportSummary(fromUtcMillis, toUtcMillis).map { it.totals }
+
+    fun observeReportSummary(fromUtcMillis: Long, toUtcMillis: Long): Flow<ReportSummaryProjection> =
+        database.invalidationTracker.createFlow("projects", "entries", "segments").map {
             withContext(dispatcher) {
-                ReportAggregator.aggregateTotals(
-                    database.reportDao().report(fromUtcMillis, toUtcMillis),
-                    fromUtcMillis,
-                    toUtcMillis,
+                val summary = database.reportDao().reportSummary(fromUtcMillis, toUtcMillis)
+                ReportSummaryProjection(
+                    ReportAggregator.aggregateTotals(
+                        summary.segments,
+                        fromUtcMillis,
+                        toUtcMillis,
+                    ),
+                    summary.projects,
                 )
             }
         }
 
     fun observeReport(fromUtcMillis: Long, toUtcMillis: Long): Flow<List<Segment>> =
-        database.invalidationTracker.createFlow("entries", "segments").map {
-            withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }
+        observeReportDetails(fromUtcMillis, toUtcMillis).map { it.segments }
+
+    fun observeReportDetails(fromUtcMillis: Long, toUtcMillis: Long): Flow<ReportRangeDetails> =
+        database.invalidationTracker.createFlow("projects", "entries", "segments").map {
+            withContext(dispatcher) { database.reportDao().reportDetails(fromUtcMillis, toUtcMillis) }
         }
 }

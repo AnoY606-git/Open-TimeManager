@@ -49,7 +49,7 @@ fun ReportsScreen(
     onCancelCsvExport: (() -> Unit)? = null,
     onLaunchCsvDocument: (String) -> Unit = {},
 ) {
-    val snapshot = state.snapshot ?: return
+    if (state.snapshot == null) return
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val today = rememberCurrentDate(zone)
@@ -132,7 +132,7 @@ fun ReportsScreen(
         } else {
             item { Text(stringResource(R.string.project_breakdown), style = MaterialTheme.typography.titleLarge) }
             totals.projectTotals.entries.sortedByDescending { it.value }.forEach { (projectId, duration) ->
-                val project = snapshot.projects.firstOrNull { it.id == projectId.value }
+                val project = state.reportProjects.firstOrNull { it.id == projectId.value }
                 val fraction = if (totals.totalMillis == 0L) 0f else duration.toFloat() / totals.totalMillis
                 item(key = projectId.value) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

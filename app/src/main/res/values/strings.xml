@@ -29,6 +29,7 @@
     <string name="history_heading">Work history</string>
     <string name="search_history">Search projects and notes</string>
     <string name="load_more_history">Load more</string>
+    <string name="load_more_projects">Load more projects</string>
     <string name="add_manual_entry">Add entry</string>
     <string name="edit_entry">Edit entry</string>
     <string name="delete_entry">Delete entry</string>

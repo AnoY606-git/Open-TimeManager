@@ -30,6 +30,7 @@
     <string name="history_heading">История работы</string>
     <string name="search_history">Поиск по проектам и заметкам</string>
     <string name="load_more_history">Загрузить ещё</string>
+    <string name="load_more_projects">Загрузить ещё проекты</string>
     <string name="add_manual_entry">Добавить запись</string>
     <string name="edit_entry">Изменить запись</string>
     <string name="delete_entry">Удалить запись</string>

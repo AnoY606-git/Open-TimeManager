@@ -261,6 +261,12 @@ class AppViewModelTest {
         assertEquals(2_000, nextHistoryLimit(2_000))
     }
 
+    @Test fun projectLoadMoreRemainsExplicitlyBounded() {
+        assertEquals(200, nextProjectLimit(100))
+        assertEquals(20_000, nextProjectLimit(19_950))
+        assertEquals(20_000, nextProjectLimit(20_000))
+    }
+
     @Test fun appCompatLocalesAreTheSingleSourceOfTruthForTheSettingsSelection() {
         assertEquals(AppLanguage.SYSTEM, applicationLanguage(LocaleListCompat.getEmptyLocaleList()))
         assertEquals(AppLanguage.ENGLISH, applicationLanguage(LocaleListCompat.forLanguageTags("en-US")))

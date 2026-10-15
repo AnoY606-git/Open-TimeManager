@@ -15,11 +15,12 @@ class RoomTrackingRepository(private val database: AppDatabase, private val cloc
         .createFlow("projects", "entries", "segments", "tracking_slot")
         .map { withContext(dispatcher) { database.trackingDao().systemSnapshot(clock) } }
 
-    /** UI-история читает только явно ограниченное число последних entries. */
-    fun observeSnapshot(historyLimit: Int): Flow<AppSnapshot> {
+    /** UI читает только явно ограниченные страницы истории и проектов. */
+    fun observeSnapshot(historyLimit: Int, projectLimit: Int): Flow<AppSnapshot> {
         require(historyLimit in 1..20_000)
+        require(projectLimit in 1..20_000)
         return database.invalidationTracker.createFlow("projects", "entries", "segments", "tracking_slot").map {
-            withContext(dispatcher) { database.trackingDao().snapshot(clock, historyLimit) }
+            withContext(dispatcher) { database.trackingDao().snapshot(clock, historyLimit, projectLimit) }
         }
     }
 }

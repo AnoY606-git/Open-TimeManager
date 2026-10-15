@@ -73,6 +73,7 @@ data class AppControls(
     val historySearch: String = "",
     val reportPeriod: ReportPeriod = ReportPeriod.WEEK,
     val historyLimit: Int = INITIAL_HISTORY_LIMIT,
+    val projectLimit: Int = INITIAL_PROJECT_LIMIT,
     val message: UiMessage? = null,
     val dataTransferBusy: Boolean = false,
     val pendingRestoreUri: String? = null,
@@ -85,6 +86,9 @@ data class AppUiState(
     val controls: AppControls = AppControls(),
     val reportTotals: ReportTotals = ReportAggregator.aggregateTotals(emptyList(), 0, 0),
     val todayProjection: ConfirmedDayProjection = ConfirmedDayProjection(0, 0, 0, emptyList()),
+    val reportProjects: List<ProjectEntity> = emptyList(),
+    val todayEntries: List<EntryEntity> = emptyList(),
+    val todayProjects: List<ProjectEntity> = emptyList(),
 ) {
     val availableProjects get() = snapshot?.projects.orEmpty().filter { it.archivedAtUtcMillis == null }
     val selectedProjectId: String? get() {
@@ -133,13 +137,15 @@ class AppViewModel(
     private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
     private val snapshots = controls
-        .map { current -> current.historyLimit }
+        .map { current -> current.historyLimit to current.projectLimit }
         .distinctUntilChanged()
-        .flatMapLatest { limit -> container.trackingCoordinator.observeSnapshot(limit) }
+        .flatMapLatest { (historyLimit, projectLimit) ->
+            container.trackingCoordinator.observeSnapshot(historyLimit, projectLimit)
+        }
     private val localDays = localDayContexts()
         .distinctUntilChanged()
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
-    private val reportTotals = combine(
+    private val reportProjection = combine(
         controls.map { it.reportPeriod }.distinctUntilChanged(),
         localDays,
     ) { period, day ->
@@ -148,23 +154,36 @@ class AppViewModel(
         }
         .distinctUntilChanged()
         .flatMapLatest { bounds ->
-            container.completedEntries.observeReportTotals(bounds.fromUtcMillis, bounds.toUtcMillis)
+            container.completedEntries.observeReportSummary(bounds.fromUtcMillis, bounds.toUtcMillis)
         }
     private val todayProjection = localDays.flatMapLatest { day ->
         val from = day.date.atStartOfDay(day.zoneId).toInstant().toEpochMilli()
         val to = day.date.plusDays(1).atStartOfDay(day.zoneId).toInstant().toEpochMilli()
-        container.completedEntries.observeReport(from, to).map { segments ->
-            confirmedDayProjection(segments, day.date, day.zoneId)
+        container.completedEntries.observeReportDetails(from, to).map { details ->
+            TodayRangeProjection(
+                projection = confirmedDayProjection(details.segments, day.date, day.zoneId),
+                entries = details.entries,
+                projects = details.projects,
+            )
         }
     }
     val state: StateFlow<AppUiState> = combine(
         snapshots,
         container.settings.values,
         controls,
-        reportTotals,
+        reportProjection,
         todayProjection,
-    ) { snapshot, preferences, current, totals, today ->
-        AppUiState(snapshot, preferences, current, totals, today)
+    ) { snapshot, preferences, current, report, today ->
+        AppUiState(
+            snapshot = snapshot,
+            preferences = preferences,
+            controls = current,
+            reportTotals = report.totals,
+            todayProjection = today.projection,
+            reportProjects = report.projects,
+            todayEntries = today.entries,
+            todayProjects = today.projects,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
     fun navigate(destination: AppDestination) = updateControls { copy(destination = destination) }
@@ -176,6 +195,7 @@ class AppViewModel(
     }
     fun searchHistory(query: String) = updateControls { copy(historySearch = query) }
     fun loadMoreHistory() = updateControls { copy(historyLimit = nextHistoryLimit(historyLimit)) }
+    fun loadMoreProjects() = updateControls { copy(projectLimit = nextProjectLimit(projectLimit)) }
     fun selectReportPeriod(period: ReportPeriod) = updateControls { copy(reportPeriod = period) }
     fun clearMessage() = updateControls { copy(message = null) }
 
@@ -472,6 +492,12 @@ internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage 
 
 internal data class LocalDayContext(val date: LocalDate, val zoneId: ZoneId)
 
+internal data class TodayRangeProjection(
+    val projection: ConfirmedDayProjection,
+    val entries: List<EntryEntity>,
+    val projects: List<ProjectEntity>,
+)
+
 /** Emits immediately and at least once a minute so midnight and time-zone changes re-key range queries. */
 internal fun localDayContexts(
     now: () -> Instant = Instant::now,
@@ -502,3 +528,7 @@ internal const val INITIAL_HISTORY_LIMIT = 100
 internal const val MAX_HISTORY_LIMIT = 2_000
 internal fun nextHistoryLimit(current: Int): Int =
     (current + INITIAL_HISTORY_LIMIT).coerceAtMost(MAX_HISTORY_LIMIT)
+internal const val INITIAL_PROJECT_LIMIT = 100
+internal const val MAX_PROJECT_LIMIT = 20_000
+internal fun nextProjectLimit(current: Int): Int =
+    (current + INITIAL_PROJECT_LIMIT).coerceAtMost(MAX_PROJECT_LIMIT)

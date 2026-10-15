@@ -54,10 +54,12 @@ data class AppSnapshot(
     val hasMoreHistory: Boolean = false,
     /** Exact totals for the bounded history entries; completed segment rows are not retained. */
     val entryDurations: Map<String, Long> = emptyMap(),
+    val hasMoreProjects: Boolean = false,
 )
 
 class TrackingCoordinator(private val repository: RoomTrackingRepository) {
     suspend fun execute(command: TrackingCommand): TrackingResult = repository.execute(command)
     fun observeSystemSnapshot(): Flow<SystemSnapshot> = repository.observeSystemSnapshot()
-    fun observeSnapshot(historyLimit: Int = 100): Flow<AppSnapshot> = repository.observeSnapshot(historyLimit)
+    fun observeSnapshot(historyLimit: Int = 100, projectLimit: Int = 100): Flow<AppSnapshot> =
+        repository.observeSnapshot(historyLimit, projectLimit)
 }

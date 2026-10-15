@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.*
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
@@ -38,6 +39,30 @@ class HardeningDataContractTest {
     }
 
     @After fun tearDown() = database.close()
+
+    @Test fun uiProjectionPagesTwentyThousandActiveProjects() = runBlocking {
+        coordinator.observeSystemSnapshot().first()
+        database.openHelper.writableDatabase.beginTransaction()
+        try {
+            repeat(20_000) { index ->
+                database.openHelper.writableDatabase.execSQL(
+                    "INSERT INTO projects VALUES (?, ?, 0, ?, NULL)",
+                    arrayOf<Any?>("active-$index", "Active $index", index.toLong() + 1),
+                )
+            }
+            database.openHelper.writableDatabase.setTransactionSuccessful()
+        } finally {
+            database.openHelper.writableDatabase.endTransaction()
+        }
+
+        val firstPage = coordinator.observeSnapshot(historyLimit = 100, projectLimit = 100).first()
+        val secondPage = coordinator.observeSnapshot(historyLimit = 100, projectLimit = 200).first()
+
+        assertEquals(100, firstPage.projects.size)
+        assertTrue(firstPage.hasMoreProjects)
+        assertEquals(200, secondPage.projects.size)
+        assertTrue(secondPage.hasMoreProjects)
+    }
 
     @Test fun systemProjectionCardinalityDoesNotGrowWithTwentyThousandArchivedRows() = runBlocking {
         val initial = coordinator.observeSystemSnapshot().first()
@@ -218,5 +243,40 @@ class HardeningDataContractTest {
         val result = withContext(Dispatchers.IO) { database.reportDao().report(950, 1_150) }
 
         assertEquals(listOf("inside"), result.map { it.entryId.value })
+    }
+
+    @Test fun rangeProjectionCarriesMetadataOutsideTheHistoryPage() = runBlocking {
+        coordinator.observeSystemSnapshot().first()
+        val oldProject = ProjectEntity("old-project", "Long-lived project", 0xff123456.toInt(), 1)
+        withContext(Dispatchers.IO) {
+            database.projectDao().insert(oldProject)
+            database.reportDao().save("old-entry", oldProject.id, "Important note", 0, 1_000, null)
+            database.projectDao().archive(oldProject.id, 2_000)
+            repeat(101) { index ->
+                database.reportDao().save(
+                    "new-$index",
+                    ProjectRepository.DEFAULT_PROJECT_ID.value,
+                    "",
+                    10_000L + index * 2_000L,
+                    1_000,
+                    null,
+                )
+            }
+        }
+        val history = coordinator.observeSnapshot(historyLimit = 100, projectLimit = 100).first()
+        assertFalse(history.projects.any { it.id == oldProject.id })
+
+        val range = CompletedEntryRepository(database, Dispatchers.IO)
+            .observeReportDetails(0, 1_500)
+            .first()
+        val summary = CompletedEntryRepository(database, Dispatchers.IO)
+            .observeReportSummary(0, 1_500)
+            .first()
+
+        assertEquals(listOf(oldProject.copy(archivedAtUtcMillis = 2_000)), range.projects)
+        assertEquals("Important note", range.entries.single().note)
+        assertEquals("old-entry", range.segments.single().entryId.value)
+        assertEquals(range.projects, summary.projects)
+        assertEquals(1_000L, summary.totals.totalMillis)
     }
 }

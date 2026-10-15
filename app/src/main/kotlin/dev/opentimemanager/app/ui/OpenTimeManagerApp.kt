@@ -232,6 +232,7 @@ fun AdaptiveTimerSurface(
             onStop = { viewModel?.stop() },
             onCreateProject = { name, color -> viewModel?.createProject(name, color) },
             onArchiveProject = { viewModel?.archiveProject(it) },
+            onLoadMoreProjects = { viewModel?.loadMoreProjects() },
             onSaveNote = { viewModel?.saveActiveNote(it) },
             onResolveReview = { viewModel?.resolveReview(it) },
             notificationStatus = notificationStatus,
