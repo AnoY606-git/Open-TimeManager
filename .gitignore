@@ -1,0 +1,22 @@
+# Локальные инструкции и внутренние материалы разработки
+AGENTS.md
+docs/superpowers/
+.superpowers/
+
+# Локальная Android/Gradle toolchain
+.gradle/
+.toolchain/
+local.properties
+**/build/
+
+# IDE and signing material
+.idea/
+*.iml
+*.jks
+*.keystore
+keystore.properties
+
+# OS/editor noise
+.DS_Store
+*.swp
+*~
