@@ -14,7 +14,11 @@ class TrackingCommandReceiver : BroadcastReceiver() {
         val pending = goAsync()
         val app = context.applicationContext as OpenTimeManagerApplication
         app.applicationScope.launch {
-            try { dispatch(intent, app.container.trackingCoordinator, SystemSurfaceUpdater(context.applicationContext)) }
+            try {
+                containSystemSurfaceFailure {
+                    dispatch(intent, app.container.trackingCoordinator, SystemSurfaceUpdater(context.applicationContext))
+                }
+            }
             finally { pending.finish() }
         }
     }

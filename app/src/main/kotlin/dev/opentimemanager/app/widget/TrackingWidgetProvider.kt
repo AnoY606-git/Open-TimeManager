@@ -21,13 +21,17 @@ class TrackingWidgetProvider : AppWidgetProvider() {
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: android.os.Bundle) = readAndUpdate(context)
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == Intent.ACTION_LOCALE_CHANGED || intent.action == Intent.ACTION_CONFIGURATION_CHANGED) readAndUpdate(context)
+        if (intent.action == Intent.ACTION_LOCALE_CHANGED) readAndUpdate(context)
     }
     private fun readAndUpdate(context: Context) {
         val pending = goAsync()
         val app = context.applicationContext as OpenTimeManagerApplication
         app.applicationScope.launch {
-            try { update(context, app.container.trackingCoordinator.observeSnapshot().first()) }
+            try {
+                containSystemSurfaceFailure {
+                    update(context, app.container.trackingCoordinator.observeSnapshot().first())
+                }
+            }
             finally { pending.finish() }
         }
     }
