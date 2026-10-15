@@ -1,7 +1,5 @@
 package dev.opentimemanager.app.backup
 
-import dev.opentimemanager.core.backup.PortableSnapshot
-
 data class BackupCounts(
     val projects: Int,
     val entries: Int,
@@ -24,15 +22,15 @@ class BackupPreview internal constructor(
     val conflicts: List<BackupConflict>,
     val skippedEntriesWithoutConfirmedTime: Int,
     val activeStateWillBeStopped: Boolean,
-    snapshot: PortableSnapshot,
+    payload: RestorePayload,
 ) {
     @Volatile
-    private var payload: PortableSnapshot? = snapshot
+    private var payload: RestorePayload? = payload
 
     val hasPayload: Boolean
         get() = payload != null
 
-    internal fun takePayload(): PortableSnapshot = synchronized(this) {
+    internal fun takePayload(): RestorePayload = synchronized(this) {
         payload?.also { payload = null } ?: throw IllegalStateException("Backup preview was already consumed")
     }
 

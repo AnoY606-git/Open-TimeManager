@@ -272,4 +272,5 @@ private fun UiMessage.resource(): Int = when (this) {
     UiMessage.CSV_EXPORTED -> R.string.csv_export_success
     UiMessage.BACKUP_CREATED -> R.string.backup_created_success
     UiMessage.DATA_IO_ERROR -> R.string.data_io_error
+    UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED -> R.string.partial_file_cleanup_required
 }

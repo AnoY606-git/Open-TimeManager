@@ -2,11 +2,14 @@ package dev.opentimemanager.app.backup
 
 import android.app.Application
 import android.net.Uri
+import android.os.CancellationSignal
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.opentimemanager.app.data.AppDatabase
 import dev.opentimemanager.app.data.CompletedEntryRepository
+import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.data.ProjectRepository
+import dev.opentimemanager.app.data.SegmentEntity
 import dev.opentimemanager.app.dataexport.CsvExportCoordinator
 import dev.opentimemanager.app.dataexport.CsvExportResult
 import dev.opentimemanager.app.dataexport.DocumentStore
@@ -21,6 +24,7 @@ import dev.opentimemanager.core.model.EntrySource
 import dev.opentimemanager.core.model.ProjectId
 import dev.opentimemanager.core.model.Segment
 import dev.opentimemanager.core.model.SegmentId
+import dev.opentimemanager.core.report.ReportAggregator
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -28,14 +32,17 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.security.SecureRandom
 import java.time.ZoneId
+import java.math.BigDecimal
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -106,6 +113,52 @@ class BackupFileCoordinatorTest {
         assertTrue(csv.contains(",90.5,\"Client, phase 1\",MANUAL\r\n"))
         assertEquals("open-timemanager-1970-01-01_1970-01-01.csv", coordinator.fileName(UtcBounds(0, 100_000)))
         assertEquals("text/csv", CsvExportCoordinator.MIME_TYPE)
+    }
+
+    @Test
+    fun csvClipsEveryOverlapToTheSelectedHalfOpenReportRangeInStableOrder() = runBlocking {
+        insertCompleted("20000000-0000-4000-8000-000000000001", "30000000-0000-4000-8000-000000000002", 0, 1_500, "left")
+        insertCompleted("20000000-0000-4000-8000-000000000002", "30000000-0000-4000-8000-000000000003", 0, 3_000, "both")
+        insertCompleted("20000000-0000-4000-8000-000000000003", "30000000-0000-4000-8000-000000000001", 0, 1_000, "end-at-from")
+        insertCompleted("20000000-0000-4000-8000-000000000004", "30000000-0000-4000-8000-000000000004", 1_200, 100, "inside")
+        insertCompleted("20000000-0000-4000-8000-000000000005", "30000000-0000-4000-8000-000000000005", 1_500, 1_000, "right")
+        insertCompleted("20000000-0000-4000-8000-000000000006", "30000000-0000-4000-8000-000000000006", 2_000, 100, "start-at-to")
+        val range = UtcBounds(1_000, 2_000)
+        val coordinator = CsvExportCoordinator(database, documents, Dispatchers.IO, ZoneId.of("UTC"))
+
+        assertEquals(CsvExportResult.Success, coordinator.exportCsv(range, csvUri, newlyCreated = true))
+
+        val rows = documents.bytes.getValue(csvUri).toString(Charsets.UTF_8)
+            .lineSequence().drop(1).filter(String::isNotBlank).map { it.split(',') }.toList()
+        assertEquals(
+            listOf(
+                "30000000-0000-4000-8000-000000000002",
+                "30000000-0000-4000-8000-000000000003",
+                "30000000-0000-4000-8000-000000000004",
+                "30000000-0000-4000-8000-000000000005",
+            ),
+            rows.map { it[0] },
+        )
+        assertEquals(
+            listOf(
+                "1970-01-01T00:00:01Z" to "1970-01-01T00:00:01.500Z",
+                "1970-01-01T00:00:01Z" to "1970-01-01T00:00:02Z",
+                "1970-01-01T00:00:01.200Z" to "1970-01-01T00:00:01.300Z",
+                "1970-01-01T00:00:01.500Z" to "1970-01-01T00:00:02Z",
+            ),
+            rows.map { it[4] to it[5] },
+        )
+        val exportedDurationMillis = rows.sumOf {
+            BigDecimal(it[7]).movePointRight(3).longValueExact()
+        }
+        val reportDurationMillis = ReportAggregator.aggregate(
+            database.reportDao().report(range.fromUtcMillis, range.toUtcMillis),
+            range.fromUtcMillis,
+            range.toUtcMillis,
+            ZoneId.of("UTC"),
+        ).totalMillis
+        assertEquals(2_100L, exportedDurationMillis)
+        assertEquals(reportDurationMillis, exportedDurationMillis)
     }
 
     @Test
@@ -183,6 +236,42 @@ class BackupFileCoordinatorTest {
             BackupInspection.Failed(BackupReadFailure.LIMIT),
             segmentLimited.inspectBackup(backupUri, "secret".toCharArray()),
         )
+    }
+
+    @Test
+    fun createUsesTheSameContainerLimitAsReadAndClearsPassword() = runBlocking {
+        val password = "secret".toCharArray()
+
+        try {
+            coordinator(BackupLimits(maxBytes = 128)).prepareBackup(password)
+            throw AssertionError("Create limit expected")
+        } catch (_: dev.opentimemanager.core.backup.BackupError.LimitError) {
+            Unit
+        }
+
+        assertArrayEquals(CharArray(password.size), password)
+    }
+
+    @Test
+    fun databaseCountsAreRejectedBeforeSnapshotListsAreMaterialized() = runBlocking {
+        val password = "secret".toCharArray()
+        val limited = coordinator(
+            operationalLimits = BackupOperationalLimits(
+                maxProjects = 0,
+                maxEntries = 20_000,
+                maxSegments = 20_000,
+                maxUserTextBytes = 3 * 1024 * 1024,
+            ),
+        )
+
+        try {
+            limited.prepareBackup(password)
+            throw AssertionError("Project count limit expected")
+        } catch (_: dev.opentimemanager.core.backup.BackupError.LimitError) {
+            Unit
+        }
+
+        assertArrayEquals(CharArray(password.size), password)
     }
 
     @Test
@@ -281,6 +370,40 @@ class BackupFileCoordinatorTest {
     }
 
     @Test
+    fun cancellationInterruptsAnAlreadyStartedProviderOpenAndCleansThePartialBackup() = runBlocking {
+        val control = documents.blockOutputOpen(backupUri)
+        val backup = coordinator()
+        val prepared = backup.prepareBackup("secret".toCharArray())
+
+        val job = launch(Dispatchers.Default) { backup.writeBackup(prepared, backupUri, newlyCreated = true) }
+        assertTrue(control.started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        job.cancel()
+        withTimeout(5_000) { job.join() }
+
+        assertTrue(job.isCancelled)
+        assertTrue(control.cancelled.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(prepared.isCleared)
+        assertTrue(backupUri in documents.deleted)
+    }
+
+    @Test
+    fun cancellationClosesAnAlreadyStartedSlowWriteLoopAndCleansThePartialBackup() = runBlocking {
+        val control = documents.blockWrite(backupUri)
+        val backup = coordinator()
+        val prepared = backup.prepareBackup("secret".toCharArray())
+
+        val job = launch(Dispatchers.Default) { backup.writeBackup(prepared, backupUri, newlyCreated = true) }
+        assertTrue(control.started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        job.cancel()
+        withTimeout(5_000) { job.join() }
+
+        assertTrue(job.isCancelled)
+        assertTrue(control.closed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(prepared.isCleared)
+        assertTrue(backupUri in documents.deleted)
+    }
+
+    @Test
     fun promptCancellationBeforeQueuedWriteStillDeletesOrphanedSafDocuments() = runBlocking {
         val executor = Executors.newSingleThreadExecutor()
         val dispatcher = executor.asCoroutineDispatcher()
@@ -367,12 +490,16 @@ class BackupFileCoordinatorTest {
         }
     }
 
-    private fun coordinator(limits: BackupLimits = BackupLimits()) = BackupFileCoordinator(
+    private fun coordinator(
+        limits: BackupLimits = BackupFileCoordinator.APP_LIMITS,
+        operationalLimits: BackupOperationalLimits = BackupOperationalLimits(),
+    ) = BackupFileCoordinator(
         database = database,
         documents = documents,
         restoreRepository = RestoreRepository(database, Dispatchers.IO),
         dispatcher = Dispatchers.IO,
         limits = limits,
+        operationalLimits = operationalLimits,
         random = SecureRandom(),
     )
 
@@ -393,6 +520,40 @@ class BackupFileCoordinatorTest {
             },
         )
     }
+
+    private fun insertCompleted(
+        entryId: String,
+        segmentId: String,
+        startUtcMillis: Long,
+        durationMillis: Long,
+        note: String,
+    ) {
+        val project = ProjectRepository.DEFAULT_PROJECT_ID.value
+        database.trackingDao().insertEntry(
+            EntryEntity(
+                id = entryId,
+                projectId = project,
+                note = note,
+                startedAtUtcMillis = startUtcMillis,
+                endedAtUtcMillis = startUtcMillis + durationMillis,
+                source = EntrySource.MANUAL.name,
+                revision = 0,
+                completed = true,
+                zoneId = "UTC",
+            ),
+        )
+        database.trackingDao().saveSegment(
+            SegmentEntity(
+                id = segmentId,
+                entryId = entryId,
+                startedAtUtcMillis = startUtcMillis,
+                startedElapsedRealtimeMillis = null,
+                bootCount = null,
+                durationMillis = durationMillis,
+                endUtcMillis = startUtcMillis + durationMillis,
+            ),
+        )
+    }
 }
 
 private class MemoryDocumentStore : DocumentStore {
@@ -400,12 +561,29 @@ private class MemoryDocumentStore : DocumentStore {
     val deleted = linkedSetOf<Uri>()
     val failWrites = linkedSetOf<Uri>()
     val cancelWrites = linkedSetOf<Uri>()
+    private val blockedOutputOpens = linkedMapOf<Uri, BlockingOpen>()
+    private val blockedWrites = linkedMapOf<Uri, BlockingWrite>()
 
-    override fun openInput(uri: Uri): InputStream? = bytes[uri]?.let(::ByteArrayInputStream)
+    fun blockOutputOpen(uri: Uri): BlockingOpen = BlockingOpen().also { blockedOutputOpens[uri] = it }
+    fun blockWrite(uri: Uri): BlockingWrite = BlockingWrite().also { blockedWrites[uri] = it }
 
-    override fun openOutput(uri: Uri): OutputStream? {
+    override fun openInput(uri: Uri, cancellationSignal: CancellationSignal): InputStream? =
+        bytes[uri]?.let(::ByteArrayInputStream)
+
+    override fun openOutput(uri: Uri, cancellationSignal: CancellationSignal): OutputStream? {
+        blockedOutputOpens.remove(uri)?.let { control ->
+            cancellationSignal.setOnCancelListener {
+                control.cancelled.countDown()
+                control.release.countDown()
+            }
+            control.started.countDown()
+            control.release.await()
+            cancellationSignal.throwIfCanceled()
+        }
+        val blockingWrite = blockedWrites.remove(uri)
         val sink = object : ByteArrayOutputStream() {
             override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                blockingWrite?.awaitUnlessClosed()
                 if (uri in cancelWrites) throw CancellationException("provider write cancelled")
                 if (uri in failWrites) throw IOException("provider write failed")
                 super.write(bytes, offset, length)
@@ -418,6 +596,7 @@ private class MemoryDocumentStore : DocumentStore {
             }
 
             override fun close() {
+                blockingWrite?.close()
                 if (uri !in failWrites) bytes[uri] = toByteArray()
                 super.close()
             }
@@ -429,5 +608,33 @@ private class MemoryDocumentStore : DocumentStore {
         deleted += uri
         bytes.remove(uri)
         return true
+    }
+}
+
+private class BlockingOpen {
+    val started = CountDownLatch(1)
+    val cancelled = CountDownLatch(1)
+    val release = CountDownLatch(1)
+}
+
+private class BlockingWrite {
+    val started = CountDownLatch(1)
+    val closed = CountDownLatch(1)
+    private val release = CountDownLatch(1)
+    private val didStart = AtomicBoolean(false)
+    private val isClosed = AtomicBoolean(false)
+
+    fun awaitUnlessClosed() {
+        if (didStart.compareAndSet(false, true)) {
+            started.countDown()
+            release.await()
+        }
+        if (isClosed.get()) throw IOException("stream closed during test write")
+    }
+
+    fun close() {
+        isClosed.set(true)
+        closed.countDown()
+        release.countDown()
     }
 }

@@ -51,6 +51,7 @@ enum class UiMessage {
     CSV_EXPORTED,
     BACKUP_CREATED,
     DATA_IO_ERROR,
+    PARTIAL_FILE_CLEANUP_REQUIRED,
 }
 
 data class AppControls(
@@ -222,10 +223,10 @@ class AppViewModel(
         updateControls { copy(dataTransferBusy = true) }
         viewModelScope.launch {
             try {
-                when (transfers.finishCsv(uri)) {
+                when (val result = transfers.finishCsv(uri)) {
                     CsvExportResult.Success -> show(UiMessage.CSV_EXPORTED)
                     CsvExportResult.Cancelled -> Unit
-                    is CsvExportResult.Failed -> show(UiMessage.DATA_IO_ERROR)
+                    is CsvExportResult.Failed -> show(transferFailureMessage(result.partialDocumentDeleted))
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -263,10 +264,10 @@ class AppViewModel(
         updateControls { copy(dataTransferBusy = true) }
         viewModelScope.launch {
             try {
-                when (transfers.finishBackup(uri)) {
+                when (val result = transfers.finishBackup(uri)) {
                     BackupWriteResult.Success -> show(UiMessage.BACKUP_CREATED)
                     BackupWriteResult.Cancelled -> Unit
-                    is BackupWriteResult.Failed -> show(UiMessage.DATA_IO_ERROR)
+                    is BackupWriteResult.Failed -> show(transferFailureMessage(result.partialDocumentDeleted))
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -360,6 +361,9 @@ internal suspend fun cancellationAwareUiWrite(block: suspend () -> UiMessage?): 
 } catch (_: Exception) {
     UiMessage.ACTION_FAILED
 }
+
+internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage =
+    if (partialDocumentDeleted) UiMessage.DATA_IO_ERROR else UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED
 
 private fun EditResult.toMessage(): UiMessage = when (this) {
     EditResult.Applied -> UiMessage.SAVED

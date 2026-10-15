@@ -112,6 +112,15 @@ class BackupCodecTest {
         assertThrows(BackupError.LimitError::class.java) { BackupCodec.decrypt(ByteArray(50 * 1024 * 1024 + 1), password, BackupLimits()) }
     }
 
+    @Test fun `encryption obeys the caller container and segment limits`() {
+        assertThrows(BackupError.LimitError::class.java) {
+            BackupCodec.encrypt(snapshot(), password, random(), BackupLimits(maxBytes = 128))
+        }
+        assertThrows(BackupError.LimitError::class.java) {
+            BackupCodec.encrypt(snapshot(), password, random(), BackupLimits(maxSegments = 0))
+        }
+    }
+
     @Test fun `declared plaintext above 50 MiB is rejected before allocation`() {
         val oversized = golden.copyOf().also { ByteBuffer.wrap(it).putInt(38, 50 * 1024 * 1024 + 1) }
         assertThrows(BackupError.LimitError::class.java) { BackupCodec.decrypt(oversized, password, BackupLimits()) }

@@ -41,7 +41,16 @@ object BackupCodec {
 
     /** Генератор обязан выдавать криптографически независимые salt и nonce. */
     fun encrypt(snapshot: PortableSnapshot, password: CharArray, random: SecureRandom): ByteArray {
-        val limits = BackupLimits()
+        return encrypt(snapshot, password, random, BackupLimits())
+    }
+
+    /** Применяет более строгий лимит конкретного потребителя, не меняя формат. */
+    fun encrypt(
+        snapshot: PortableSnapshot,
+        password: CharArray,
+        random: SecureRandom,
+        limits: BackupLimits,
+    ): ByteArray {
         checkCounts(snapshot, limits)
         validate(snapshot)
         val plain = encode(snapshot, limits.maxBytes - HEADER_SIZE - TAG_SIZE)
@@ -50,7 +59,21 @@ object BackupCodec {
             val nonce = ByteArray(12).also(random::nextBytes)
             val header = ByteBuffer.allocate(HEADER_SIZE).put(magic).put(1).putInt(ITERATIONS)
                 .put(salt).put(nonce).putInt(plain.size).array()
-            return header + crypt(Cipher.ENCRYPT_MODE, plain, password, salt, nonce, header)
+            val encrypted = ByteArray(HEADER_SIZE + plain.size + TAG_SIZE)
+            header.copyInto(encrypted)
+            cryptInto(
+                mode = Cipher.ENCRYPT_MODE,
+                input = plain,
+                inputOffset = 0,
+                inputLength = plain.size,
+                output = encrypted,
+                outputOffset = HEADER_SIZE,
+                password = password,
+                salt = salt,
+                nonce = nonce,
+                header = header,
+            )
+            return encrypted
         } finally {
             plain.fill(0)
         }
@@ -69,10 +92,22 @@ object BackupCodec {
         if (plainSize > limits.maxBytes) throw BackupError.LimitError()
         if (plainSize < 0 || plainSize.toLong() + HEADER_SIZE + TAG_SIZE != bytes.size.toLong()) throw BackupError.IntegrityError()
         val header = bytes.copyOfRange(0, HEADER_SIZE)
-        val plain = try {
-            crypt(Cipher.DECRYPT_MODE, bytes.copyOfRange(HEADER_SIZE, bytes.size), password,
-                header.copyOfRange(10, 26), header.copyOfRange(26, 38), header)
+        val plain = ByteArray(plainSize)
+        try {
+            cryptInto(
+                mode = Cipher.DECRYPT_MODE,
+                input = bytes,
+                inputOffset = HEADER_SIZE,
+                inputLength = bytes.size - HEADER_SIZE,
+                output = plain,
+                outputOffset = 0,
+                password = password,
+                salt = header.copyOfRange(10, 26),
+                nonce = header.copyOfRange(26, 38),
+                header = header,
+            )
         } catch (_: AEADBadTagException) {
+            plain.fill(0)
             // Один публичный отказ без provider-specific cause или деталей пароля.
             throw BackupError.IntegrityError()
         }
@@ -83,7 +118,18 @@ object BackupCodec {
         }
     }
 
-    private fun crypt(mode: Int, data: ByteArray, password: CharArray, salt: ByteArray, nonce: ByteArray, header: ByteArray): ByteArray {
+    private fun cryptInto(
+        mode: Int,
+        input: ByteArray,
+        inputOffset: Int,
+        inputLength: Int,
+        output: ByteArray,
+        outputOffset: Int,
+        password: CharArray,
+        salt: ByteArray,
+        nonce: ByteArray,
+        header: ByteArray,
+    ) {
         val spec = PBEKeySpec(password, salt, ITERATIONS, 256)
         val key = try {
             SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
@@ -94,7 +140,8 @@ object BackupCodec {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
             cipher.updateAAD(header)
-            cipher.doFinal(data)
+            val written = cipher.doFinal(input, inputOffset, inputLength, output, outputOffset)
+            check(written == output.size - outputOffset) { "Unexpected AES-GCM output size" }
         } finally {
             key.fill(0)
         }

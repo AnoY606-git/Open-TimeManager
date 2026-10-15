@@ -23,6 +23,7 @@ import dev.opentimemanager.core.model.Segment
 import dev.opentimemanager.core.model.SegmentId
 import dev.opentimemanager.core.model.TrackingState
 import java.time.ZoneId
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -69,6 +70,23 @@ class RestoreRepositoryTest {
         assertEquals(BackupCounts(1, 1, 1), preview.counts)
         assertEquals(listOf(BackupConflict(BackupConflictKind.PROJECT, projectId.value)), preview.conflicts)
         assertEquals("Local", database.trackingDao().project(projectId.value)?.name)
+        preview.discard()
+    }
+
+    @Test
+    fun previewBatchesImportedUuidLookupsAcrossSqliteBindBoundaries() = runBlocking {
+        val projects = (1..501).map { index ->
+            PortableProject(ProjectId(uuid(0x51000000, index)), "Backup $index")
+        }
+        val conflicted = projects.last()
+        database.projectDao().insert(ProjectEntity(conflicted.id.value, "Local", 1, 1))
+
+        val preview = repository.preview(PortableSnapshot(projects = projects))
+
+        assertEquals(
+            listOf(BackupConflict(BackupConflictKind.PROJECT, conflicted.id.value)),
+            preview.conflicts,
+        )
         preview.discard()
     }
 
@@ -342,4 +360,11 @@ class RestoreRepositoryTest {
             "CREATE UNIQUE INDEX index_applied_commands_revision ON applied_commands(revision)",
         ).forEach(database::execSQL)
     }
+
+    private fun uuid(prefix: Int, suffix: Int): String = String.format(
+        Locale.ROOT,
+        "%08x-0000-4000-8000-%012x",
+        prefix,
+        suffix,
+    )
 }

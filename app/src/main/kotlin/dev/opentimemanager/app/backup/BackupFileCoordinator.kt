@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.room.withTransaction
 import dev.opentimemanager.app.data.AppDatabase
 import dev.opentimemanager.app.dataexport.DocumentStore
+import dev.opentimemanager.app.dataexport.cancellableIo
 import dev.opentimemanager.core.backup.BackupCodec
 import dev.opentimemanager.core.backup.BackupError
 import dev.opentimemanager.core.backup.BackupLimits
@@ -27,6 +28,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 
 class PreparedBackup internal constructor(
     val fileName: String,
@@ -74,7 +77,8 @@ class BackupFileCoordinator(
     private val documents: DocumentStore,
     private val restoreRepository: RestoreRepository,
     private val dispatcher: CoroutineDispatcher,
-    private val limits: BackupLimits = BackupLimits(),
+    private val limits: BackupLimits = APP_LIMITS,
+    private val operationalLimits: BackupOperationalLimits = BackupOperationalLimits(),
     private val random: SecureRandom = SecureRandom(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -83,7 +87,7 @@ class BackupFileCoordinator(
         try {
             return withContext(dispatcher) {
                 val snapshot = database.withTransaction { portableSnapshot() }
-                val encrypted = BackupCodec.encrypt(snapshot, password, random)
+                val encrypted = BackupCodec.encrypt(snapshot, password, random, limits)
                 PreparedBackup(
                     fileName = "open-timemanager-${BACKUP_DATE.format(clock.instant().atZone(ZoneOffset.UTC))}.otmbackup",
                     encrypted = encrypted,
@@ -110,11 +114,24 @@ class BackupFileCoordinator(
         }
         return try {
             withContext(dispatcher) {
-                val output = documents.openOutput(uri) ?: throw IOException("Document provider returned no output stream")
+                val output = cancellableIo(discardOnCancellation = { stream -> stream?.close() }) { signal ->
+                    documents.openOutput(uri, signal)
+                }
+                    ?: throw IOException("Document provider returned no output stream")
                 output.use { stream ->
-                    prepared.writeAndClear { bytes ->
-                        stream.write(bytes)
-                        stream.flush()
+                    val job = kotlin.coroutines.coroutineContext[Job]
+                    cancellableIo(closeOnCancel = { stream.close() }) {
+                        prepared.writeAndClear { bytes ->
+                            var offset = 0
+                            while (offset < bytes.size) {
+                                job?.ensureActive()
+                                val count = minOf(IO_CHUNK_SIZE, bytes.size - offset)
+                                stream.write(bytes, offset, count)
+                                offset += count
+                            }
+                            job?.ensureActive()
+                            stream.flush()
+                        }
                     }
                 }
                 BackupWriteResult.Success
@@ -132,14 +149,21 @@ class BackupFileCoordinator(
             return withContext(dispatcher) {
                 if (uri == null) return@withContext BackupInspection.Cancelled
                 val input = try {
-                    documents.openInput(uri)
+                    cancellableIo(discardOnCancellation = { stream -> stream?.close() }) { signal ->
+                        documents.openInput(uri, signal)
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     return@withContext BackupInspection.Failed(BackupReadFailure.IO)
                 } ?: return@withContext BackupInspection.Failed(BackupReadFailure.IO)
                 val bytes = try {
-                    input.use { stream -> readBounded(stream, limits.maxBytes) }
+                    input.use { stream ->
+                        val job = kotlin.coroutines.coroutineContext[Job]
+                        cancellableIo(closeOnCancel = { stream.close() }) {
+                            readBounded(stream, limits.maxBytes, job)
+                        }
+                    }
                 } catch (_: ReadLimitExceeded) {
                     return@withContext BackupInspection.Failed(BackupReadFailure.LIMIT)
                 } catch (cancelled: CancellationException) {
@@ -176,6 +200,19 @@ class BackupFileCoordinator(
 
     private fun portableSnapshot(): PortableSnapshot {
         val dao = database.trackingDao()
+        val userTextBytes = try {
+            Math.addExact(dao.projectTextBytes(), dao.entryTextBytes())
+        } catch (_: ArithmeticException) {
+            throw BackupError.LimitError()
+        }
+        if (
+            dao.projectCount() > operationalLimits.maxProjects ||
+            dao.entryCount() > operationalLimits.maxEntries ||
+            dao.closedSegmentCount() > operationalLimits.maxSegments ||
+            userTextBytes > operationalLimits.maxUserTextBytes
+        ) {
+            throw BackupError.LimitError()
+        }
         val projects = dao.projects().map { PortableProject(ProjectId(it.id), it.name) }
         val entries = dao.entries().map {
             PortableEntry(
@@ -226,17 +263,33 @@ class BackupFileCoordinator(
 
     companion object {
         const val MIME_TYPE = "application/octet-stream"
+        const val APP_MAX_BYTES = 4 * 1024 * 1024
+        const val APP_MAX_SEGMENTS = 20_000
+        private const val IO_CHUNK_SIZE = 32 * 1024
+        val APP_LIMITS = BackupLimits(maxBytes = APP_MAX_BYTES, maxSegments = APP_MAX_SEGMENTS)
         private val BACKUP_DATE = DateTimeFormatter.ISO_LOCAL_DATE
+    }
+}
+
+data class BackupOperationalLimits(
+    val maxProjects: Long = 20_000,
+    val maxEntries: Long = 20_000,
+    val maxSegments: Long = 20_000,
+    val maxUserTextBytes: Long = 3L * 1024 * 1024,
+) {
+    init {
+        require(maxProjects >= 0 && maxEntries >= 0 && maxSegments >= 0 && maxUserTextBytes >= 0)
     }
 }
 
 private class ReadLimitExceeded : Exception()
 
-private fun readBounded(input: java.io.InputStream, maxBytes: Int): ByteArray {
+private fun readBounded(input: java.io.InputStream, maxBytes: Int, job: Job?): ByteArray {
     val output = ByteArrayOutputStream(minOf(maxBytes, 16 * 1024))
     val buffer = ByteArray(8 * 1024)
     var total = 0
     while (true) {
+        job?.ensureActive()
         val read = input.read(buffer)
         if (read == -1) break
         total = try {

@@ -50,6 +50,7 @@ import dev.opentimemanager.app.backup.BackupConflictKind
 import dev.opentimemanager.app.backup.BackupInspection
 import dev.opentimemanager.app.backup.BackupPreview
 import dev.opentimemanager.app.backup.BackupReadFailure
+import dev.opentimemanager.app.ui.launchOwnedSecret
 import dev.opentimemanager.app.backup.RestoreMode
 import dev.opentimemanager.app.backup.RestoreResult
 import kotlinx.coroutines.CancellationException
@@ -256,15 +257,14 @@ fun SettingsScreen(
             if (actions == null) {
                 password.fill('\u0000')
             } else {
-                scope.launch {
+                scope.launchOwnedSecret(password) { ownedPassword ->
                     try {
-                        val fileName = actions.prepare(password)
+                        val fileName = actions.prepare(ownedPassword)
                         onLaunchBackupDocument(fileName)
                     } catch (cancelled: CancellationException) {
                         actions.cancelPrepare()
                         throw cancelled
                     } catch (_: Exception) {
-                        password.fill('\u0000')
                         actions.cancelPrepare()
                         status = TransferUiStatus.IO_ERROR
                     }
@@ -282,9 +282,9 @@ fun SettingsScreen(
             if (actions == null) {
                 password.fill('\u0000')
             } else {
-                scope.launch {
+                scope.launchOwnedSecret(password) { ownedPassword ->
                     try {
-                        when (val inspection = actions.inspect(uri, password)) {
+                        when (val inspection = actions.inspect(uri, ownedPassword)) {
                             BackupInspection.Cancelled -> Unit
                             is BackupInspection.Ready -> preview = inspection.preview
                             is BackupInspection.Failed -> status = inspection.reason.status()
@@ -292,7 +292,6 @@ fun SettingsScreen(
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        password.fill('\u0000')
                         status = TransferUiStatus.IO_ERROR
                     }
                 }

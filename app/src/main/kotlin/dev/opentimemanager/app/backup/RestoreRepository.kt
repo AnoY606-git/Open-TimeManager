@@ -30,14 +30,14 @@ class RestoreRepository(
             conflicts = database.restoreDao().conflicts(payload),
             skippedEntriesWithoutConfirmedTime = snapshot.entries.size - payload.entries.size,
             activeStateWillBeStopped = snapshot.activeEntry != null,
-            snapshot = snapshot,
+            payload = payload,
         )
     }
 
     suspend fun restore(preview: BackupPreview, mode: RestoreMode): RestoreResult {
-        val snapshot = preview.takePayload()
+        val payload = preview.takePayload()
         return withContext(dispatcher) {
-            database.restoreDao().restore(snapshot.toRestorePayload(nowUtcMillis()), mode)
+            database.restoreDao().restore(payload, mode)
         }
     }
 }
@@ -50,14 +50,17 @@ data class RestorePayload(
 
 @Dao
 abstract class RestoreDao {
-    @Query("SELECT * FROM projects ORDER BY id")
-    abstract fun projects(): List<ProjectEntity>
+    @Query("SELECT * FROM projects WHERE id IN (:ids) ORDER BY id")
+    abstract fun projectsByIds(ids: List<String>): List<ProjectEntity>
 
-    @Query("SELECT * FROM entries ORDER BY id")
-    abstract fun entries(): List<EntryEntity>
+    @Query("SELECT * FROM entries WHERE id IN (:ids) ORDER BY id")
+    abstract fun entriesByIds(ids: List<String>): List<EntryEntity>
 
-    @Query("SELECT * FROM segments ORDER BY id")
-    abstract fun segments(): List<SegmentEntity>
+    @Query("SELECT * FROM segments WHERE id IN (:ids) ORDER BY id")
+    abstract fun segmentsByIds(ids: List<String>): List<SegmentEntity>
+
+    @Query("SELECT entryId, COUNT(*) AS count FROM segments WHERE entryId IN (:entryIds) GROUP BY entryId")
+    abstract fun segmentCountsByEntryIds(entryIds: List<String>): List<EntrySegmentCount>
 
     @Query("SELECT * FROM tracking_slot WHERE id = 1")
     abstract fun slot(): TrackingSlotEntity?
@@ -97,8 +100,10 @@ abstract class RestoreDao {
         val currentState = slot()?.let { TrackingState.valueOf(it.state) } ?: TrackingState.IDLE
         if (currentState != TrackingState.IDLE) return RestoreResult.ActiveTimerBlocked(currentState)
 
-        val conflicts = findConflicts(payload)
-        if (mode == RestoreMode.MERGE && conflicts.isNotEmpty()) return RestoreResult.Conflicts(conflicts)
+        if (mode == RestoreMode.MERGE) {
+            val conflicts = findConflicts(payload)
+            if (conflicts.isNotEmpty()) return RestoreResult.Conflicts(conflicts)
+        }
 
         if (slot() == null) insertSlot(TrackingSlotEntity())
         if (mode == RestoreMode.REPLACE) {
@@ -122,11 +127,13 @@ abstract class RestoreDao {
     }
 
     private fun findConflicts(payload: RestorePayload): List<BackupConflict> {
-        val localProjects = projects().associateBy(ProjectEntity::id)
-        val localEntries = entries().associateBy(EntryEntity::id)
-        val localSegments = segments().associateBy(SegmentEntity::id)
+        val localProjects = payload.projects.map(ProjectEntity::id).batched(::projectsByIds).associateBy(ProjectEntity::id)
+        val localEntries = payload.entries.map(EntryEntity::id).batched(::entriesByIds).associateBy(EntryEntity::id)
+        val localSegments = payload.segments.map(SegmentEntity::id).batched(::segmentsByIds).associateBy(SegmentEntity::id)
         val payloadSegmentsByEntry = payload.segments.groupBy(SegmentEntity::entryId)
-        val localSegmentsByEntry = localSegments.values.groupBy(SegmentEntity::entryId)
+        val localSegmentCounts = payload.entries.map(EntryEntity::id)
+            .batched(::segmentCountsByEntryIds)
+            .associate { it.entryId to it.count }
         val conflicts = mutableListOf<BackupConflict>()
 
         payload.projects.forEach { imported ->
@@ -143,8 +150,11 @@ abstract class RestoreDao {
                     local.source == imported.source &&
                     local.zoneId == imported.zoneId &&
                     local.completed
-                val sameSegments = localSegmentsByEntry[local.id].orEmpty().map(::stableSegment)
-                    .toSet() == payloadSegmentsByEntry[imported.id].orEmpty().map(::stableSegment).toSet()
+                val importedSegments = payloadSegmentsByEntry[imported.id].orEmpty()
+                val sameSegments = localSegmentCounts[local.id].orZero() == importedSegments.size.toLong() &&
+                    importedSegments.all { segment ->
+                        localSegments[segment.id]?.let(::stableSegment) == stableSegment(segment)
+                    }
                 if (!sameMetadata || !sameSegments) {
                     conflicts += BackupConflict(BackupConflictKind.ENTRY, imported.id)
                 }
@@ -160,6 +170,18 @@ abstract class RestoreDao {
         return conflicts.distinct().sortedWith(compareBy({ it.kind.ordinal }, BackupConflict::id))
     }
 }
+
+data class EntrySegmentCount(
+    val entryId: String,
+    val count: Long,
+)
+
+private const val SQLITE_BIND_BATCH = 500
+
+private fun <T> List<String>.batched(query: (List<String>) -> List<T>): List<T> =
+    chunked(SQLITE_BIND_BATCH).flatMap(query)
+
+private fun Long?.orZero(): Long = this ?: 0L
 
 private data class StableSegment(
     val id: String,

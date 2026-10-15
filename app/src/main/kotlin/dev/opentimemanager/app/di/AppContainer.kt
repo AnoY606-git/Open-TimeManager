@@ -26,13 +26,13 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val restore = RestoreRepository(database, dispatcher)
     val csvExport = CsvExportCoordinator(
         database,
-        ResolverDocumentStore(context.contentResolver),
+        ResolverDocumentStore(context),
         dispatcher,
         ZoneId.systemDefault(),
     )
     val backupFiles = BackupFileCoordinator(
         database,
-        ResolverDocumentStore(context.contentResolver),
+        ResolverDocumentStore(context),
         restore,
         dispatcher,
     )

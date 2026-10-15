@@ -1,7 +1,11 @@
 package dev.opentimemanager.app.dataexport
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
 import androidx.sqlite.db.SimpleSQLiteQuery
 import dev.opentimemanager.app.data.AppDatabase
 import dev.opentimemanager.app.ui.UtcBounds
@@ -23,19 +27,30 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Единственная подменяемая граница в tests: внешний document provider. */
 interface DocumentStore {
-    fun openInput(uri: Uri): InputStream?
-    fun openOutput(uri: Uri): OutputStream?
+    fun openInput(uri: Uri, cancellationSignal: CancellationSignal): InputStream?
+    fun openOutput(uri: Uri, cancellationSignal: CancellationSignal): OutputStream?
     fun delete(uri: Uri): Boolean
 }
 
-class ResolverDocumentStore(private val resolver: ContentResolver) : DocumentStore {
-    override fun openInput(uri: Uri): InputStream? = resolver.openInputStream(uri)
-    override fun openOutput(uri: Uri): OutputStream? = resolver.openOutputStream(uri, "w")
-    override fun delete(uri: Uri): Boolean = resolver.delete(uri, null, null) > 0
+class ResolverDocumentStore(context: Context) : DocumentStore {
+    private val applicationContext = context.applicationContext
+    private val resolver: ContentResolver = applicationContext.contentResolver
+
+    override fun openInput(uri: Uri, cancellationSignal: CancellationSignal): InputStream? =
+        resolver.openFileDescriptor(uri, "r", cancellationSignal)?.let(ParcelFileDescriptor::AutoCloseInputStream)
+
+    override fun openOutput(uri: Uri, cancellationSignal: CancellationSignal): OutputStream? =
+        resolver.openFileDescriptor(uri, "wt", cancellationSignal)?.let(ParcelFileDescriptor::AutoCloseOutputStream)
+    override fun delete(uri: Uri): Boolean = when {
+        DocumentsContract.isDocumentUri(applicationContext, uri) -> DocumentsContract.deleteDocument(resolver, uri)
+        uri.scheme == ContentResolver.SCHEME_CONTENT -> resolver.delete(uri, null, null) > 0
+        else -> false
+    }
 }
 
 sealed interface CsvExportResult {
@@ -59,32 +74,49 @@ class CsvExportCoordinator(
         return try {
             require(range.fromUtcMillis < range.toUtcMillis) { "Invalid CSV range" }
             withContext(dispatcher) {
-                val output = documents.openOutput(uri) ?: throw IOException("Document provider returned no output stream")
+                val output = cancellableIo(discardOnCancellation = { stream -> stream?.close() }) { signal ->
+                    documents.openOutput(uri, signal)
+                }
+                    ?: throw IOException("Document provider returned no output stream")
                 BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
-                    database.openHelper.readableDatabase.query(
-                        SimpleSQLiteQuery(EXPORT_SQL, arrayOf(range.toUtcMillis, range.fromUtcMillis)),
-                    ).use { cursor ->
-                        val records = sequence {
-                            while (cursor.moveToNext()) {
-                                val projectId = ProjectId(cursor.getString(2))
-                                yield(
-                                    ExportRecord(
-                                        segment = Segment(
-                                            id = SegmentId(cursor.getString(0)),
-                                            entryId = EntryId(cursor.getString(1)),
-                                            projectId = projectId,
-                                            startUtcMillis = cursor.getLong(4),
-                                            durationMillis = cursor.getLong(5),
+                    val job = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
+                    cancellableIo(closeOnCancel = { output.close() }) { signal ->
+                        database.openHelper.readableDatabase.query(
+                            SimpleSQLiteQuery(
+                                EXPORT_SQL,
+                                arrayOf(
+                                    range.fromUtcMillis,
+                                    range.toUtcMillis,
+                                    range.fromUtcMillis,
+                                    range.toUtcMillis,
+                                    range.fromUtcMillis,
+                                ),
+                            ),
+                            signal,
+                        ).use { cursor ->
+                            val records = sequence {
+                                while (cursor.moveToNext()) {
+                                    job?.ensureActive()
+                                    val projectId = ProjectId(cursor.getString(2))
+                                    yield(
+                                        ExportRecord(
+                                            segment = Segment(
+                                                id = SegmentId(cursor.getString(0)),
+                                                entryId = EntryId(cursor.getString(1)),
+                                                projectId = projectId,
+                                                startUtcMillis = cursor.getLong(4),
+                                                durationMillis = cursor.getLong(5),
+                                            ),
+                                            projectName = cursor.getString(3),
+                                            note = cursor.getString(6),
+                                            zoneId = ZoneId.of(cursor.getString(7)),
+                                            source = EntrySource.valueOf(cursor.getString(8)),
                                         ),
-                                        projectName = cursor.getString(3),
-                                        note = cursor.getString(6),
-                                        zoneId = ZoneId.of(cursor.getString(7)),
-                                        source = EntrySource.valueOf(cursor.getString(8)),
-                                    ),
-                                )
+                                    )
+                                }
                             }
+                            CsvExporter.write(records, writer)
                         }
-                        CsvExporter.write(records, writer)
                     }
                 }
                 CsvExportResult.Success
@@ -126,7 +158,9 @@ class CsvExportCoordinator(
         private val DATE = DateTimeFormatter.ISO_LOCAL_DATE
         private const val EXPORT_SQL = """
             SELECT segments.id, segments.entryId, entries.projectId, projects.name,
-                   segments.startedAtUtcMillis, segments.durationMillis, entries.note,
+                   MAX(segments.startedAtUtcMillis, ?) AS clippedStartUtcMillis,
+                   MIN(segments.endUtcMillis, ?) - MAX(segments.startedAtUtcMillis, ?) AS clippedDurationMillis,
+                   entries.note,
                    entries.zoneId, entries.source
             FROM segments
             JOIN entries ON entries.id = segments.entryId
@@ -134,7 +168,7 @@ class CsvExportCoordinator(
             WHERE segments.durationMillis IS NOT NULL
               AND segments.startedAtUtcMillis < ?
               AND segments.endUtcMillis > ?
-            ORDER BY segments.startedAtUtcMillis, segments.id
+            ORDER BY clippedStartUtcMillis, segments.id
         """
     }
 }

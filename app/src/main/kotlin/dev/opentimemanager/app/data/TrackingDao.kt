@@ -17,6 +17,11 @@ abstract class TrackingDao {
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
     @Query("SELECT * FROM applied_commands WHERE commandId = :id") abstract fun command(id: String): AppliedCommandEntity?
+    @Query("SELECT COUNT(*) FROM projects") abstract fun projectCount(): Long
+    @Query("SELECT COUNT(*) FROM entries") abstract fun entryCount(): Long
+    @Query("SELECT COUNT(*) FROM segments WHERE durationMillis IS NOT NULL") abstract fun closedSegmentCount(): Long
+    @Query("SELECT COALESCE(SUM(LENGTH(CAST(name AS BLOB))), 0) FROM projects") abstract fun projectTextBytes(): Long
+    @Query("SELECT COALESCE(SUM(LENGTH(CAST(note AS BLOB))), 0) FROM entries") abstract fun entryTextBytes(): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) abstract fun insertDefault(project: ProjectEntity): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) abstract fun insertSlot(slot: TrackingSlotEntity): Long
     @Update abstract fun updateSlot(slot: TrackingSlotEntity)
