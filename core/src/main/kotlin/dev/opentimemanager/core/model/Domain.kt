@@ -27,6 +27,7 @@ data class ClockSnapshot(
 }
 
 enum class TrackingState { IDLE, RUNNING, PAUSED, NEEDS_REVIEW }
+enum class EntrySource { TIMER, MANUAL, IMPORT }
 
 /** Закрытый полуоткрытый UTC-интервал; длительность измерена монотонными часами. */
 data class Segment(
