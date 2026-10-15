@@ -121,6 +121,7 @@
     <string name="close">Close</string>
     <string name="error_invalid_entry">Check the project, date, time, duration and note.</string>
     <string name="error_invalid_project">Enter a project name of 1–80 characters.</string>
+    <string name="error_project_limit_reached">The 20,000-project limit has been reached.</string>
     <string name="error_stale_entry">The entry changed. Reload it and try again.</string>
     <string name="error_action_failed">The action could not be completed.</string>
     <string name="action_completed">Saved</string>

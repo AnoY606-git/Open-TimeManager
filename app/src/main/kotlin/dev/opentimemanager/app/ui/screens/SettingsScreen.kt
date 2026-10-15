@@ -121,6 +121,7 @@ fun SettingsScreen(
                     is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
                     is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
                     is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
+                    is RestoreResult.LimitExceeded -> TransferUiStatus.LIMIT_EXCEEDED
                 }.also { if (it == TransferUiStatus.BACKUP_RESTORED) preview = null }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -511,6 +512,7 @@ private fun RestoreResult.status(): TransferUiStatus = when (this) {
     is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
     is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
     is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
+    is RestoreResult.LimitExceeded -> TransferUiStatus.LIMIT_EXCEEDED
 }
 
 internal fun backupCreateFailureStatus(error: Throwable): TransferUiStatus = when (error) {

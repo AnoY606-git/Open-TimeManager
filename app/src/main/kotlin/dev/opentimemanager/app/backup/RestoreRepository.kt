@@ -80,6 +80,9 @@ class RestoreRepository(
         val dao = database.restoreDao()
         val currentState = dao.slot()?.let { TrackingState.valueOf(it.state) } ?: TrackingState.IDLE
         if (currentState != TrackingState.IDLE) return RestoreResult.ActiveTimerBlocked(currentState)
+        if (dao.resultingProjectCount(payload, mode) > ProjectRepository.MAX_PROJECTS) {
+            return RestoreResult.LimitExceeded(ProjectRepository.MAX_PROJECTS)
+        }
         if (mode == RestoreMode.MERGE) {
             val conflicts = dao.conflicts(payload)
             if (conflicts.isNotEmpty()) return RestoreResult.Conflicts(conflicts)
@@ -125,6 +128,9 @@ data class RestorePayload(
 abstract class RestoreDao {
     @Query("SELECT * FROM projects WHERE id IN (:ids) ORDER BY id")
     abstract fun projectsByIds(ids: List<String>): List<ProjectEntity>
+
+    @Query("SELECT COUNT(*) FROM projects")
+    abstract fun projectCount(): Long
 
     @Query("SELECT * FROM entries WHERE id IN (:ids) ORDER BY id")
     abstract fun entriesByIds(ids: List<String>): List<EntryEntity>
@@ -177,6 +183,13 @@ abstract class RestoreDao {
     @Transaction
     open fun conflicts(payload: RestorePayload): List<BackupConflict> = findConflicts(payload)
 
+    fun resultingProjectCount(payload: RestorePayload, mode: RestoreMode): Long {
+        val importedIds = payload.projects.map(ProjectEntity::id).distinct()
+        if (mode == RestoreMode.REPLACE) return importedIds.size.toLong()
+        val existingImported = importedIds.batched(::projectsByIds).size.toLong()
+        return Math.addExact(projectCount(), importedIds.size.toLong() - existingImported)
+    }
+
     private fun findConflicts(payload: RestorePayload): List<BackupConflict> {
         val localProjects = payload.projects.map(ProjectEntity::id).batched(::projectsByIds).associateBy(ProjectEntity::id)
         val localEntries = payload.entries.map(EntryEntity::id).batched(::entriesByIds).associateBy(EntryEntity::id)
@@ -189,10 +202,11 @@ abstract class RestoreDao {
 
         payload.projects.forEach { imported ->
             localProjects[imported.id]?.let { local ->
-                val same = if (payload.sourceSchemaVersion == 1) {
-                    local.name == imported.name
-                } else {
-                    local == imported
+                val same = when {
+                    payload.sourceSchemaVersion == 1 -> local.name == imported.name
+                    imported.id == ProjectRepository.DEFAULT_PROJECT_ID.value ->
+                        local.copy(createdAtUtcMillis = imported.createdAtUtcMillis) == imported
+                    else -> local == imported
                 }
                 if (!same) {
                     conflicts += BackupConflict(BackupConflictKind.PROJECT, imported.id)

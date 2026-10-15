@@ -57,6 +57,7 @@ enum class AppDestination { TIMER, HISTORY, REPORTS, SETTINGS }
 enum class UiMessage {
     INVALID_ENTRY,
     INVALID_PROJECT,
+    PROJECT_LIMIT_REACHED,
     STALE_ENTRY,
     ACTION_FAILED,
     SAVED,
@@ -243,7 +244,7 @@ class AppViewModel(
 
     fun createProject(name: String, colorArgb: Int) = launchWrite {
         val result = container.projects.create(ProjectId(UUID.randomUUID().toString()), name, colorArgb, System.currentTimeMillis())
-        if (result == ProjectEditResult.APPLIED) UiMessage.SAVED else UiMessage.INVALID_PROJECT
+        projectEditMessage(result)
     }
 
     fun archiveProject(projectId: String) = launchWrite {
@@ -499,6 +500,15 @@ private fun systemControlAttempt(operation: () -> Boolean): Boolean = try {
 
 internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage =
     if (partialDocumentDeleted) UiMessage.DATA_IO_ERROR else UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED
+
+internal fun projectEditMessage(result: ProjectEditResult): UiMessage = when (result) {
+    ProjectEditResult.APPLIED -> UiMessage.SAVED
+    ProjectEditResult.LIMIT_REACHED -> UiMessage.PROJECT_LIMIT_REACHED
+    ProjectEditResult.NOT_FOUND,
+    ProjectEditResult.DUPLICATE_ID,
+    ProjectEditResult.INVALID_NAME,
+    -> UiMessage.INVALID_PROJECT
+}
 
 internal data class LocalDayContext(val date: LocalDate, val zoneId: ZoneId)
 

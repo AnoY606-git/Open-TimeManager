@@ -122,6 +122,7 @@
     <string name="close">Закрыть</string>
     <string name="error_invalid_entry">Проверьте проект, дату, время, длительность и заметку.</string>
     <string name="error_invalid_project">Введите название проекта длиной 1–80 знаков.</string>
+    <string name="error_project_limit_reached">Достигнут лимит в 20 000 проектов.</string>
     <string name="error_stale_entry">Запись изменилась. Обновите её и повторите.</string>
     <string name="error_action_failed">Не удалось выполнить действие.</string>
     <string name="action_completed">Сохранено</string>

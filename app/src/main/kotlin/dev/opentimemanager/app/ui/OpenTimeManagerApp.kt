@@ -268,6 +268,7 @@ private fun AppDestination.description(): Int = when (this) {
 private fun UiMessage.resource(): Int = when (this) {
     UiMessage.INVALID_ENTRY -> R.string.error_invalid_entry
     UiMessage.INVALID_PROJECT -> R.string.error_invalid_project
+    UiMessage.PROJECT_LIMIT_REACHED -> R.string.error_project_limit_reached
     UiMessage.STALE_ENTRY -> R.string.error_stale_entry
     UiMessage.ACTION_FAILED -> R.string.error_action_failed
     UiMessage.SAVED -> R.string.action_completed

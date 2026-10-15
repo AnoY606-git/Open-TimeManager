@@ -1,5 +1,6 @@
 package dev.opentimemanager.app.ui
 
+import dev.opentimemanager.app.data.ProjectEditResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 
 class UiWriteBoundaryTest {
+    @Test
+    fun projectLimitHasASeparateUserMessageFromInvalidName() {
+        assertEquals(UiMessage.PROJECT_LIMIT_REACHED, projectEditMessage(ProjectEditResult.LIMIT_REACHED))
+        assertEquals(UiMessage.INVALID_PROJECT, projectEditMessage(ProjectEditResult.INVALID_NAME))
+        assertEquals(UiMessage.SAVED, projectEditMessage(ProjectEditResult.APPLIED))
+    }
+
     @Test
     fun ownedSecretIsClearedWhenCoroutineIsCancelledBeforeItsBodyStarts() = runBlocking {
         val parent = SupervisorJob().also { it.cancel() }

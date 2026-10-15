@@ -133,6 +133,52 @@ class RestoreRepositoryTest {
     }
 
     @Test
+    fun v2MergeTreatsCanonicalDefaultAsTheSameProjectAcrossInstallations() = runBlocking {
+        val localDefault = requireNotNull(
+            database.trackingDao().project(ProjectRepository.DEFAULT_PROJECT_ID.value),
+        )
+        val fromAnotherInstallation = PortableSnapshot(
+            projects = listOf(
+                PortableProject(
+                    id = ProjectRepository.DEFAULT_PROJECT_ID,
+                    name = dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME,
+                    colorArgb = localDefault.colorArgb,
+                    createdAtUtcMillis = localDefault.createdAtUtcMillis + 9_999,
+                    archivedAtUtcMillis = null,
+                    isDefault = true,
+                ),
+            ),
+        )
+
+        val preview = repository.preview(fromAnotherInstallation)
+
+        assertTrue(preview.conflicts.isEmpty())
+        assertEquals(RestoreResult.Applied(0, 0, 0), repository.restore(preview, RestoreMode.MERGE))
+        assertEquals(
+            localDefault.createdAtUtcMillis,
+            database.trackingDao().project(ProjectRepository.DEFAULT_PROJECT_ID.value)?.createdAtUtcMillis,
+        )
+    }
+
+    @Test
+    fun mergeRejectsProjectUnionBeyondMobileLimitWithoutMutation() = runBlocking {
+        (1 until ProjectRepository.MAX_PROJECTS).chunked(500).forEach { indexes ->
+            database.restoreDao().insertProjects(
+                indexes.map { index -> ProjectEntity(uuid(0x52000000, index), "Local $index", 1, index.toLong()) },
+            )
+        }
+        assertEquals(ProjectRepository.MAX_PROJECTS.toLong(), database.trackingDao().projectCount())
+        val preview = repository.preview(snapshot())
+
+        val result = repository.restore(preview, RestoreMode.MERGE)
+
+        assertEquals(RestoreResult.LimitExceeded(ProjectRepository.MAX_PROJECTS), result)
+        assertEquals(ProjectRepository.MAX_PROJECTS.toLong(), database.trackingDao().projectCount())
+        assertFalse(database.trackingDao().projects().any { it.id == projectId.value })
+        assertTrue(preview.hasPayload)
+    }
+
+    @Test
     fun mergeRejectsChangedUuidContentWithoutPartialInsert() = runBlocking {
         database.projectDao().insert(ProjectEntity(projectId.value, "Local", 1, 1))
         val preview = repository.preview(snapshot(projectName = "Backup"))

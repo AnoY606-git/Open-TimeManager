@@ -84,4 +84,5 @@ sealed interface RestoreResult {
     data class Applied(val projects: Int, val entries: Int, val segments: Int) : RestoreResult
     data class Conflicts(val conflicts: List<BackupConflict>) : RestoreResult
     data class ActiveTimerBlocked(val state: dev.opentimemanager.core.model.TrackingState) : RestoreResult
+    data class LimitExceeded(val maximumProjects: Int) : RestoreResult
 }
