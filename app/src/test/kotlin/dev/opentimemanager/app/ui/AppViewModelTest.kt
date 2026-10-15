@@ -1,12 +1,17 @@
 package dev.opentimemanager.app.ui
 
 import android.app.Application
+import android.app.NotificationManager
+import android.provider.Settings
 import android.content.res.Configuration
 import androidx.test.core.app.ApplicationProvider
+import androidx.core.os.LocaleListCompat
 import dev.opentimemanager.app.settings.AppLanguage
+import dev.opentimemanager.app.system.TrackingNotification
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.data.ProjectEntity
+import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.tracking.AppSnapshot
 import dev.opentimemanager.app.tracking.TrackingCommand
 import dev.opentimemanager.core.model.ClockSnapshot
@@ -129,6 +134,49 @@ class AppViewModelTest {
         assertEquals(EntryValidationError.NOTE_TOO_LONG, validateManualEntry("project", 1_000, 2_000, "x".repeat(2_001)).error)
     }
 
+    @Test fun noteOnlyEditPreservesExactTrackedStartAndSubMinuteDuration() {
+        val exactStart = Instant.parse("2026-10-15T12:34:56.789Z").toEpochMilli()
+        for (exactDuration in listOf(30_500L, 90_001L)) {
+            val entry = EntryEntity(
+                id = "entry-$exactDuration",
+                projectId = "project",
+                note = "old",
+                startedAtUtcMillis = exactStart,
+                endedAtUtcMillis = exactStart + exactDuration,
+                source = "TIMER",
+                revision = 4,
+                completed = true,
+            )
+            val edited = entryFormState(entry, exactDuration, ZoneId.of("UTC")).copy(noteInput = "updated")
+
+            val draft = validateEntryForm(edited, ZoneId.of("UTC")).value
+            assertEquals(ManualEntryDraft("project", exactStart, exactDuration, "updated", preserveTiming = true), draft)
+            assertTrue(requireNotNull(draft).preserveTiming)
+        }
+    }
+
+    @Test fun dateOnlyEditPreservesHiddenSecondsAndRevertedFieldsPreserveExactValues() {
+        val originalStart = Instant.parse("2026-10-15T12:34:56.789Z").toEpochMilli()
+        val entry = EntryEntity("entry", "project", "note", originalStart, originalStart + 90_001, "TIMER", 2, true)
+        val original = entryFormState(entry, 90_001, ZoneId.of("UTC"))
+
+        val dateOnly = validateEntryForm(
+            original.copy(dateInput = "2026-10-16", dateEdited = true),
+            ZoneId.of("UTC"),
+        ).value
+        assertEquals(Instant.parse("2026-10-16T12:34:56.789Z").toEpochMilli(), dateOnly?.startUtcMillis)
+        assertEquals(90_001L, dateOnly?.durationMillis)
+        assertFalse(requireNotNull(dateOnly).preserveTiming)
+
+        val reverted = validateEntryForm(
+            original.copy(timeInput = original.timeInput, timeEdited = false),
+            ZoneId.of("UTC"),
+        ).value
+        assertEquals(originalStart, reverted?.startUtcMillis)
+        assertEquals(90_001L, reverted?.durationMillis)
+        assertTrue(requireNotNull(reverted).preserveTiming)
+    }
+
     @Test fun destructiveHistoryActionsRequireExplicitMatchingConfirmation() {
         var state = HistoryDialogState()
         state = state.requestDelete("entry-a")
@@ -136,6 +184,21 @@ class AppViewModelTest {
         assertFalse(state.confirmDelete("entry-b").confirmed)
         assertTrue(state.confirmDelete("entry-a").confirmed)
         assertNull(state.confirmDelete("entry-a").next.pendingDeleteId)
+    }
+
+    @Test fun historySearchUsesTheLocalizedProjectNameThatIsActuallyDisplayed() {
+        val project = ProjectEntity("default", "Без проекта", 0, 0)
+        val entry = EntryEntity("entry", project.id, "quiet note", 1_000, 2_000, "MANUAL", 0, true)
+
+        assertEquals(
+            listOf(entry),
+            filterCompletedEntries(listOf(entry), listOf(project), "no project") { "No project" },
+        )
+        assertEquals(
+            listOf(entry),
+            filterCompletedEntries(listOf(entry), listOf(project), "без проекта") { "Без проекта" },
+        )
+        assertTrue(filterCompletedEntries(listOf(entry), listOf(project), "invisible") { "No project" }.isEmpty())
     }
 
     @Test fun reportPeriodsUseLocalHalfOpenCalendarBoundaries() {
@@ -153,19 +216,50 @@ class AppViewModelTest {
         assertEquals(Instant.parse("2026-10-04T21:00:00Z").toEpochMilli(), custom.toUtcMillis)
     }
 
-    @Test fun settingsPersistThemeLanguagePrivacyAndDailyGoalAcrossInstances() = runBlocking {
+    @Test fun typedDateValidationRejectsExtremeOverflowAndReversedRanges() {
+        val utc = ZoneId.of("UTC")
+        assertEquals(DateInputError.OUT_OF_SUPPORTED_RANGE, validateReviewEndInput(LocalDate.MIN.toString(), "00:00", utc).error)
+        assertEquals(DateInputError.OUT_OF_SUPPORTED_RANGE, validateReviewEndInput(LocalDate.MAX.toString(), "23:59", utc).error)
+        assertNull(validateCustomReportInput(LocalDate.MIN.toString(), "2026-10-15", utc).value)
+        assertNull(validateCustomReportInput("2026-10-15", LocalDate.MAX.toString(), utc).value)
+        assertEquals(
+            DateInputError.REVERSED_RANGE,
+            validateCustomReportInput("2026-10-16", "2026-10-15", utc).error,
+        )
+        assertEquals(DateInputError.MALFORMED, validateCustomReportInput("not-a-date", "2026-10-15", utc).error)
+        assertEquals(
+            DateInputError.OUT_OF_SUPPORTED_RANGE,
+            ReportPeriod.Custom(LocalDate.MIN, LocalDate.of(2026, 10, 15)).validatedBounds(LocalDate.now(), utc).error,
+        )
+        assertEquals(DateInputError.OUT_OF_SUPPORTED_RANGE, ReportPeriod.WEEK.validatedBounds(LocalDate.MAX, utc).error)
+
+        assertEquals(
+            Instant.parse("2026-10-15T12:34:00Z").toEpochMilli(),
+            validateReviewEndInput("2026-10-15", "12:34", utc).value,
+        )
+        assertEquals(
+            ReportPeriod.Custom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 15)),
+            validateCustomReportInput("2026-10-01", "2026-10-15", utc).value,
+        )
+    }
+
+    @Test fun appCompatLocalesAreTheSingleSourceOfTruthForTheSettingsSelection() {
+        assertEquals(AppLanguage.SYSTEM, applicationLanguage(LocaleListCompat.getEmptyLocaleList()))
+        assertEquals(AppLanguage.ENGLISH, applicationLanguage(LocaleListCompat.forLanguageTags("en-US")))
+        assertEquals(AppLanguage.RUSSIAN, applicationLanguage(LocaleListCompat.forLanguageTags("ru-RU")))
+    }
+
+    @Test fun settingsPersistThemePrivacyAndDailyGoalAcrossInstances() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         context.getSharedPreferences("system_surfaces", 0).edit().clear().commit()
         val name = "settings-${System.nanoTime()}"
         val first = UserSettings(context, name)
         first.setTheme(ThemeMode.DARK)
-        first.setLanguage(AppLanguage.RUSSIAN)
         first.setDynamicColor(false)
         first.setPrivacy(false)
         first.setDailyGoalMinutes(510)
 
         val persisted = withTimeout(5_000) { UserSettings(context, name).values.first { it.theme == ThemeMode.DARK } }
-        assertEquals(AppLanguage.RUSSIAN, persisted.language)
         assertFalse(persisted.dynamicColor)
         assertFalse(persisted.privacyMode)
         assertEquals(510, persisted.dailyGoalMinutes)
@@ -174,8 +268,10 @@ class AppViewModelTest {
 
     @Test fun adaptiveNavigationUsesBottomRailAndMeaningfulTwoPane() {
         assertEquals(NavigationLayout.BOTTOM, navigationLayout(widthDp = 599, heightDp = 900))
-        assertEquals(NavigationLayout.RAIL, navigationLayout(widthDp = 700, heightDp = 900))
-        assertEquals(NavigationLayout.TWO_PANE, navigationLayout(widthDp = 1_000, heightDp = 900))
+        assertEquals(NavigationLayout.RAIL, navigationLayout(widthDp = 600, heightDp = 900))
+        assertEquals(NavigationLayout.RAIL, navigationLayout(widthDp = 839, heightDp = 900))
+        assertEquals(NavigationLayout.RAIL, navigationLayout(widthDp = 840, heightDp = 599))
+        assertEquals(NavigationLayout.TWO_PANE, navigationLayout(widthDp = 840, heightDp = 600))
         assertEquals(NavigationLayout.RAIL, navigationLayout(widthDp = 900, heightDp = 380))
         assertTrue(timerUsesCompactLayout(heightDp = 380, fontScale = 1f))
         assertTrue(timerUsesCompactLayout(heightDp = 700, fontScale = 2f))
@@ -191,19 +287,119 @@ class AppViewModelTest {
             OpenSegment(SegmentId("open"), ClockSnapshot(2_000, 100, 1)),
             listOf(closed),
         )
-        val value = todayTrackedMillis(
-            AppSnapshot(session, emptyList(), emptyList(), listOf(closed)),
-            nowElapsedMillis = 1_100,
-            today = LocalDate.of(1970, 1, 1),
-            zoneId = ZoneId.of("UTC"),
-        )
+        val projection = confirmedDayProjection(listOf(closed), LocalDate.of(1970, 1, 1), ZoneId.of("UTC"))
+        val value = todayTrackedMillis(projection, session, nowElapsedMillis = 1_100)
         assertEquals(1_500L, value)
     }
 
+    @Test fun confirmedDayProjectionClipsCrossMidnightRowsAndTickAddsOnlyOpenTail() {
+        val utc = ZoneId.of("UTC")
+        val day = LocalDate.of(2026, 10, 15)
+        val beforeMidnight = Instant.parse("2026-10-14T23:50:00Z").toEpochMilli()
+        val beforeNextMidnight = Instant.parse("2026-10-15T23:50:00Z").toEpochMilli()
+        val confirmed = listOf(
+            Segment(SegmentId("from-yesterday"), EntryId("night-a"), ProjectId("project"), beforeMidnight, 20 * 60_000L),
+            Segment(SegmentId("into-tomorrow"), EntryId("night-b"), ProjectId("project"), beforeNextMidnight, 20 * 60_000L),
+        )
+        val projection = confirmedDayProjection(confirmed, day, utc)
+
+        assertEquals(20 * 60_000L, projection.confirmedMillis)
+        assertEquals(listOf(10 * 60_000L, 10 * 60_000L), projection.rows.map { it.durationMillis })
+        assertEquals(
+            listOf(
+                Instant.parse("2026-10-15T23:50:00Z").toEpochMilli(),
+                Instant.parse("2026-10-15T00:00:00Z").toEpochMilli(),
+            ),
+            projection.rows.map { it.firstStartUtcMillis },
+        )
+
+        val openStart = Instant.parse("2026-10-15T12:00:00Z").toEpochMilli()
+        val running = TrackingSession.restore(
+            TrackingState.RUNNING,
+            1,
+            EntryId("open-entry"),
+            ProjectId("project"),
+            OpenSegment(SegmentId("open"), ClockSnapshot(openStart, 100L, 1L)),
+            emptyList(),
+        )
+        assertEquals(projection.confirmedMillis + 1_000L, todayTrackedMillis(projection, running, 1_100L))
+        assertEquals(projection.confirmedMillis + 2_000L, todayTrackedMillis(projection, running, 2_100L))
+        assertEquals(20 * 60_000L, projection.confirmedMillis)
+    }
+
+    @Test fun confirmedDayProjectionGroupsSplitEntryWithExactSubMinuteDurations() {
+        val day = LocalDate.of(2026, 10, 15)
+        val from = Instant.parse("2026-10-15T00:00:00Z").toEpochMilli()
+        val entryId = EntryId("split")
+        val projectId = ProjectId("project")
+        val projection = confirmedDayProjection(
+            listOf(
+                Segment(SegmentId("first"), entryId, projectId, from + 1_000, 30_500),
+                Segment(SegmentId("second"), entryId, projectId, from + 90_000, 90_001),
+                Segment(SegmentId("ends-at-start"), EntryId("excluded-a"), projectId, from - 1_000, 1_000),
+                Segment(SegmentId("starts-at-end"), EntryId("excluded-b"), projectId, from + 86_400_000, 1_000),
+            ),
+            day,
+            ZoneId.of("UTC"),
+        )
+
+        assertEquals(120_501L, projection.confirmedMillis)
+        assertEquals(listOf(TodayEntryProjection(entryId, projectId, from + 1_000, 120_501L)), projection.rows)
+    }
+
+    @Test fun localDayTickWaitsForTheExactNextMidnightIncludingDst() {
+        assertEquals(
+            500L,
+            millisUntilNextLocalDay(
+                Instant.parse("2026-10-18T20:59:59.500Z"),
+                ZoneId.of("Europe/Moscow"),
+            ),
+        )
+        assertEquals(
+            22L * 60 * 60 * 1_000 + 30L * 60 * 1_000,
+            millisUntilNextLocalDay(
+                Instant.parse("2026-03-28T23:30:00Z"),
+                ZoneId.of("Europe/Berlin"),
+            ),
+        )
+    }
+
     @Test fun notificationControlStatusDistinguishesPermissionAndBlockedChannel() {
-        assertEquals(NotificationControlStatus.AVAILABLE, notificationControlStatus(permissionGranted = true, notificationsEnabled = true))
-        assertEquals(NotificationControlStatus.PERMISSION_REQUIRED, notificationControlStatus(permissionGranted = false, notificationsEnabled = false))
-        assertEquals(NotificationControlStatus.BLOCKED, notificationControlStatus(permissionGranted = true, notificationsEnabled = false))
+        assertFalse(shouldRecordNotificationDenial(false, false, false))
+        assertTrue(shouldRecordNotificationDenial(false, false, true))
+        assertTrue(shouldRecordNotificationDenial(false, true, false))
+        assertFalse(shouldRecordNotificationDenial(true, true, false))
+        assertEquals(
+            NotificationControlStatus.PERMISSION_REQUESTABLE,
+            notificationControlStatus(33, false, false, false, true, NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        assertEquals(
+            NotificationControlStatus.PERMISSION_REQUESTABLE,
+            notificationControlStatus(33, false, true, true, true, NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        assertEquals(
+            NotificationControlStatus.PERMISSION_FIXED,
+            notificationControlStatus(33, false, true, false, true, NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        assertEquals(
+            NotificationControlStatus.APP_BLOCKED,
+            notificationControlStatus(36, true, true, false, false, NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        assertEquals(
+            NotificationControlStatus.CHANNEL_BLOCKED,
+            notificationControlStatus(31, true, false, false, true, NotificationManager.IMPORTANCE_NONE),
+        )
+        assertEquals(NotificationControlAction.REQUEST_PERMISSION, notificationControlAction(NotificationControlStatus.PERMISSION_REQUESTABLE))
+        assertEquals(NotificationControlAction.OPEN_APP_SETTINGS, notificationControlAction(NotificationControlStatus.PERMISSION_FIXED))
+        assertEquals(NotificationControlAction.OPEN_CHANNEL_SETTINGS, notificationControlAction(NotificationControlStatus.CHANNEL_BLOCKED))
+
+        val appIntent = notificationSettingsIntent(NotificationControlAction.OPEN_APP_SETTINGS, "dev.test")
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, appIntent?.action)
+        assertEquals("dev.test", appIntent?.getStringExtra(Settings.EXTRA_APP_PACKAGE))
+        val channelIntent = notificationSettingsIntent(NotificationControlAction.OPEN_CHANNEL_SETTINGS, "dev.test")
+        assertEquals(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS, channelIntent?.action)
+        assertEquals("dev.test", channelIntent?.getStringExtra(Settings.EXTRA_APP_PACKAGE))
+        assertEquals(TrackingNotification.CHANNEL_ID, channelIntent?.getStringExtra(Settings.EXTRA_CHANNEL_ID))
     }
 
     @Test fun russianMinuteHourAndDayPluralsCoverOneFewManyElevenAndTwentyOne() {

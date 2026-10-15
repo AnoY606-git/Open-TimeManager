@@ -24,7 +24,6 @@ enum class AppLanguage { SYSTEM, ENGLISH, RUSSIAN }
 data class UserPreferences(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
-    val language: AppLanguage = AppLanguage.SYSTEM,
     val privacyMode: Boolean = true,
     val dailyGoalMinutes: Int = 480,
 )
@@ -50,7 +49,6 @@ class UserSettings(
             UserPreferences(
                 theme = preferences[THEME]?.toEnumOrNull<ThemeMode>() ?: ThemeMode.SYSTEM,
                 dynamicColor = preferences[DYNAMIC_COLOR] ?: true,
-                language = preferences[LANGUAGE]?.toEnumOrNull<AppLanguage>() ?: AppLanguage.SYSTEM,
                 privacyMode = preferences[PRIVACY]
                     ?: appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
                         .getBoolean(PRIVACY_KEY, true),
@@ -60,7 +58,6 @@ class UserSettings(
 
     suspend fun setTheme(value: ThemeMode) = store.edit { it[THEME] = value.name }.let { Unit }
     suspend fun setDynamicColor(value: Boolean) = store.edit { it[DYNAMIC_COLOR] = value }.let { Unit }
-    suspend fun setLanguage(value: AppLanguage) = store.edit { it[LANGUAGE] = value.name }.let { Unit }
 
     suspend fun setPrivacy(value: Boolean) {
         store.edit { it[PRIVACY] = value }
@@ -81,7 +78,6 @@ class UserSettings(
         private const val PRIVACY_KEY = "privacy"
         private val THEME = stringPreferencesKey("theme")
         private val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
-        private val LANGUAGE = stringPreferencesKey("language")
         private val PRIVACY = booleanPreferencesKey("privacy")
         private val DAILY_GOAL = intPreferencesKey("daily_goal_minutes")
         private val stores = ConcurrentHashMap<String, DataStore<Preferences>>()

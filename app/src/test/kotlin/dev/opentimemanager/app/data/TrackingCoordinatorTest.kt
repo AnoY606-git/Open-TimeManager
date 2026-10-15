@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.opentimemanager.app.tracking.*
+import dev.opentimemanager.app.ui.UiMessage
+import dev.opentimemanager.app.ui.cancellationAwareUiWrite
 import dev.opentimemanager.core.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -149,6 +151,87 @@ class TrackingCoordinatorTest {
         val active = snapshot()
         assertEquals(EditResult.ActiveEntry, history.save(active.session.entryId!!, defaultProject, "", 0, 100, 0))
         assertEquals(active.session.openSegment, snapshot().session.openSegment)
+    }
+
+    @Test fun uiWriteBoundaryMapsEveryFaultingRepositoryGroupToActionFailed() = runBlocking {
+        val notes = ActiveEntryNoteRepository(db, Dispatchers.IO)
+        val projects = ProjectRepository(db, Dispatchers.IO)
+        val entries = CompletedEntryRepository(db, Dispatchers.IO)
+        db.close()
+
+        val actions = listOf<suspend () -> Unit>(
+            { notes.update(EntryId("entry"), 0, "note") },
+            { projects.create(ProjectId("project"), "Project", 0, 0) },
+            { projects.archive(ProjectId("project"), 0) },
+            { entries.save(EntryId("entry"), ProjectId("project"), "note", 0, 1, null) },
+            { entries.delete(EntryId("entry"), 0) },
+        )
+
+        actions.forEach { action ->
+            assertEquals(UiMessage.ACTION_FAILED, cancellationAwareUiWrite { action(); UiMessage.SAVED })
+        }
+    }
+    @Test fun completedEntryMetadataUpdatePreservesTrackedTimingAndSegmentTopology() = runBlocking {
+        val projects = ProjectRepository(db, Dispatchers.IO)
+        assertEquals(ProjectEditResult.APPLIED, projects.create(ProjectId("second"), "Second", 0xff123456.toInt(), 500))
+        start("metadata-start")
+        now = ClockSnapshot(1_500, 600, 7)
+        tracker.execute(TrackingCommand.Pause(target(snapshot(), "metadata-pause")))
+        now = ClockSnapshot(2_000, 900, 7)
+        tracker.execute(TrackingCommand.Resume(target(snapshot(), "metadata-resume")))
+        now = ClockSnapshot(3_000, 1_200, 7)
+        tracker.execute(TrackingCommand.Stop(target(snapshot(), "metadata-stop")))
+        val before = snapshot().entries.single()
+        val segmentsBefore = withContext(Dispatchers.IO) { db.trackingDao().segments() }
+        assertEquals(EntrySource.TIMER.name, before.source)
+        assertEquals(4L, before.revision)
+        assertEquals(2, segmentsBefore.size)
+
+        val result = CompletedEntryRepository(db, Dispatchers.IO).updateMetadata(
+            EntryId(before.id),
+            ProjectId("second"),
+            "updated note",
+            expectedRevision = 4,
+        )
+
+        assertEquals(EditResult.Applied, result)
+        val after = snapshot().entries.single()
+        assertEquals("second", after.projectId)
+        assertEquals("updated note", after.note)
+        assertEquals(5L, after.revision)
+        assertEquals(before.startedAtUtcMillis, after.startedAtUtcMillis)
+        assertEquals(before.endedAtUtcMillis, after.endedAtUtcMillis)
+        assertEquals(before.source, after.source)
+        assertEquals(before.completed, after.completed)
+        assertEquals(segmentsBefore, withContext(Dispatchers.IO) { db.trackingDao().segments() })
+    }
+
+    @Test fun completedEntryMetadataUpdateRejectsStaleAndInvalidProjectWithoutMutation() = runBlocking {
+        start("validation-start")
+        now = ClockSnapshot(1_500, 600, 7)
+        tracker.execute(TrackingCommand.Stop(target(snapshot(), "validation-stop")))
+        val projects = ProjectRepository(db, Dispatchers.IO)
+        assertEquals(ProjectEditResult.APPLIED, projects.create(ProjectId("archived"), "Archived", 0, 2_000))
+        assertEquals(ProjectEditResult.APPLIED, projects.archive(ProjectId("archived"), 2_500))
+        val history = CompletedEntryRepository(db, Dispatchers.IO)
+        val before = snapshot().entries.single()
+        val segmentsBefore = withContext(Dispatchers.IO) { db.trackingDao().segments() }
+
+        assertEquals(
+            EditResult.StaleRevision,
+            history.updateMetadata(EntryId(before.id), ProjectId("missing"), "stale", before.revision - 1),
+        )
+        assertEquals(
+            EditResult.MissingProject,
+            history.updateMetadata(EntryId(before.id), ProjectId("missing"), "missing", before.revision),
+        )
+        assertEquals(
+            EditResult.ArchivedProject,
+            history.updateMetadata(EntryId(before.id), ProjectId("archived"), "archived", before.revision),
+        )
+
+        assertEquals(before, snapshot().entries.single())
+        assertEquals(segmentsBefore, withContext(Dispatchers.IO) { db.trackingDao().segments() })
     }
     @Test fun failedSwitchRollsBackClosingOldEntryAndDeduplication() = runBlocking {
         ProjectRepository(db, Dispatchers.IO).create(ProjectId("second"), "Другой", 0, 0)

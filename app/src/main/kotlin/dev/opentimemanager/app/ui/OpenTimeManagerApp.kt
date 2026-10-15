@@ -2,6 +2,7 @@ package dev.opentimemanager.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,15 +28,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
+import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.ui.screens.HistoryScreen
 import dev.opentimemanager.app.ui.screens.ReportsScreen
 import dev.opentimemanager.app.ui.screens.SettingsScreen
@@ -45,63 +44,68 @@ import dev.opentimemanager.app.ui.screens.TodayPane
 @Composable
 fun OpenTimeManagerApp(
     state: AppUiState,
-    viewModel: AppViewModel,
+    viewModel: AppViewModel?,
     notificationStatus: NotificationControlStatus,
     onManageNotifications: () -> Unit,
+    selectedLanguage: AppLanguage,
+    onLanguage: (AppLanguage) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val snapshot = state.snapshot
     val configuration = LocalConfiguration.current
-    val windowSize = LocalWindowInfo.current.containerSize
-    val density = LocalDensity.current
-    val widthDp = with(density) { windowSize.width.toDp().value.toInt() }
-    val heightDp = with(density) { windowSize.height.toDp().value.toInt() }
-    val layout = navigationLayout(widthDp, heightDp)
-    val compactTimer = timerUsesCompactLayout(heightDp, configuration.fontScale)
     val snackbar = remember { SnackbarHostState() }
     val message = state.controls.message
     val messageText = message?.let { stringResource(it.resource()) }
     LaunchedEffect(message, messageText) {
         if (message != null && messageText != null) {
             snackbar.showSnackbar(messageText)
-            viewModel.clearMessage()
+            viewModel?.clearMessage()
         }
     }
-    if (snapshot == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        return
-    }
-    val destinations = AppDestination.entries
-    if (layout == NavigationLayout.BOTTOM) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = {
-                NavigationBar(Modifier.testTag("compact_navigation")) {
-                    destinations.forEach { destination ->
-                        NavigationBarItem(
-                            selected = state.controls.destination == destination,
-                            onClick = { viewModel.navigate(destination) },
-                            icon = { DestinationMarker(destination) },
-                            label = { Text(stringResource(destination.label())) },
-                        )
-                    }
+    BoxWithConstraints(modifier.fillMaxSize().testTag("adaptive_shell")) {
+        val widthDp = maxWidth.value.toInt()
+        val heightDp = maxHeight.value.toInt()
+        val layout = navigationLayout(widthDp, heightDp)
+        val compactTimer = timerUsesCompactLayout(heightDp, configuration.fontScale)
+        if (snapshot == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            val destinations = AppDestination.entries
+            if (layout == NavigationLayout.BOTTOM) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                    snackbarHost = { SnackbarHost(snackbar) },
+                    bottomBar = {
+                        NavigationBar(Modifier.testTag("compact_navigation")) {
+                            destinations.forEach { destination ->
+                                NavigationBarItem(
+                                    selected = state.controls.destination == destination,
+                                    onClick = { viewModel?.navigate(destination) },
+                                    icon = { DestinationMarker(destination) },
+                                    label = { Text(stringResource(destination.label())) },
+                                )
+                            }
+                        }
+                    },
+                ) { padding ->
+                    DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, selectedLanguage, onLanguage, Modifier.padding(padding))
                 }
-            },
-        ) { padding -> DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, Modifier.padding(padding)) }
-    } else {
-        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            NavigationRail(Modifier.testTag("expanded_navigation")) {
-                destinations.forEach { destination ->
-                    NavigationRailItem(
-                        selected = state.controls.destination == destination,
-                        onClick = { viewModel.navigate(destination) },
-                        icon = { DestinationMarker(destination) },
-                        label = { Text(stringResource(destination.label())) },
-                    )
+            } else {
+                Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    NavigationRail(Modifier.testTag("expanded_navigation")) {
+                        destinations.forEach { destination ->
+                            NavigationRailItem(
+                                selected = state.controls.destination == destination,
+                                onClick = { viewModel?.navigate(destination) },
+                                icon = { DestinationMarker(destination) },
+                                label = { Text(stringResource(destination.label())) },
+                            )
+                        }
+                    }
+                    DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, selectedLanguage, onLanguage, Modifier.weight(1f))
                 }
             }
-            DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, Modifier.weight(1f))
         }
     }
 }
@@ -118,11 +122,13 @@ private fun DestinationMarker(destination: AppDestination) {
 @Composable
 private fun DestinationContent(
     state: AppUiState,
-    viewModel: AppViewModel,
+    viewModel: AppViewModel?,
     layout: NavigationLayout,
     compactTimer: Boolean,
     notificationStatus: NotificationControlStatus,
     onManageNotifications: () -> Unit,
+    selectedLanguage: AppLanguage,
+    onLanguage: (AppLanguage) -> Unit,
     modifier: Modifier,
 ) {
     when (state.controls.destination) {
@@ -131,19 +137,20 @@ private fun DestinationContent(
         } else AdaptiveTimerSurface(state, layout, compactTimer, modifier = modifier, viewModel = viewModel, notificationStatus = notificationStatus, onManageNotifications = onManageNotifications)
         AppDestination.HISTORY -> HistoryScreen(
             state = state,
-            onSearch = viewModel::searchHistory,
-            onSave = viewModel::saveManualEntry,
-            onDelete = viewModel::deleteEntry,
+            onSearch = { viewModel?.searchHistory(it) },
+            onSave = { id, revision, draft -> viewModel?.saveManualEntry(id, revision, draft) },
+            onDelete = { id, revision -> viewModel?.deleteEntry(id, revision) },
             modifier = modifier,
         )
-        AppDestination.REPORTS -> ReportsScreen(state, viewModel::selectReportPeriod, modifier)
+        AppDestination.REPORTS -> ReportsScreen(state, { viewModel?.selectReportPeriod(it) }, modifier)
         AppDestination.SETTINGS -> SettingsScreen(
             state = state,
-            onTheme = viewModel::setTheme,
-            onDynamicColor = viewModel::setDynamicColor,
-            onLanguage = viewModel::setLanguage,
-            onPrivacy = viewModel::setPrivacy,
-            onDailyGoal = viewModel::setDailyGoalMinutes,
+            onTheme = { viewModel?.setTheme(it) },
+            onDynamicColor = { viewModel?.setDynamicColor(it) },
+            selectedLanguage = selectedLanguage,
+            onLanguage = onLanguage,
+            onPrivacy = { viewModel?.setPrivacy(it) },
+            onDailyGoal = { viewModel?.setDailyGoalMinutes(it) },
             modifier = modifier,
         )
     }

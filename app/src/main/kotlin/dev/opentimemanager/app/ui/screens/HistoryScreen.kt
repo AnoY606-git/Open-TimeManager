@@ -33,23 +33,23 @@ import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.ui.AppUiState
+import dev.opentimemanager.app.ui.EntryFormState
+import dev.opentimemanager.app.ui.ManualEntryDraft
+import dev.opentimemanager.app.ui.entryFormState
 import dev.opentimemanager.app.ui.entryDurationMillis
 import dev.opentimemanager.app.ui.formatDateTime
 import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
+import dev.opentimemanager.app.ui.validateEntryForm
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun HistoryScreen(
     state: AppUiState,
     onSearch: (String) -> Unit,
-    onSave: (String?, Long?, String, Long, Long, String) -> Unit,
+    onSave: (String?, Long?, ManualEntryDraft) -> Unit,
     onDelete: (String, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,7 +58,7 @@ fun HistoryScreen(
     var edited by remember { mutableStateOf<EntryEntity?>(null) }
     var addEntry by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<EntryEntity?>(null) }
-    val groups = state.completedEntries.groupBy {
+    val groups = state.completedEntries(context::projectName).groupBy {
         Instant.ofEpochMilli(it.startedAtUtcMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     }
     LazyColumn(
@@ -123,9 +123,9 @@ fun HistoryScreen(
             entry = edited,
             state = state,
             onDismiss = { addEntry = false; edited = null },
-            onSave = { project, start, end, note ->
+            onSave = { draft ->
                 val item = edited
-                onSave(item?.id, item?.revision, project, start, end, note)
+                onSave(item?.id, item?.revision, draft)
                 addEntry = false
                 edited = null
             },
@@ -149,28 +149,26 @@ private fun EntryDialog(
     entry: EntryEntity?,
     state: AppUiState,
     onDismiss: () -> Unit,
-    onSave: (String, Long, Long, String) -> Unit,
+    onSave: (ManualEntryDraft) -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
-    val initial = entry?.startedAtUtcMillis?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDateTime() }
-        ?: LocalDateTime.now().minusHours(1).withSecond(0).withNano(0)
-    var projectId by remember(entry?.id) { mutableStateOf(entry?.projectId ?: state.selectedProjectId.orEmpty()) }
-    var date by remember(entry?.id) { mutableStateOf(initial.toLocalDate().toString()) }
-    var time by remember(entry?.id) { mutableStateOf(initial.toLocalTime().toString().take(5)) }
-    var duration by remember(entry?.id) {
-        mutableStateOf(entry?.let { (entryDurationMillis(it.id, state) / 60_000).coerceAtLeast(1).toString() } ?: "60")
+    val initialForm = remember(entry?.id, entry?.revision) {
+        entry?.let { entryFormState(it, entryDurationMillis(it.id, state), zone) } ?: run {
+            val initial = java.time.LocalDateTime.now().minusHours(1).withSecond(0).withNano(0)
+            EntryFormState(
+                projectId = state.selectedProjectId.orEmpty(),
+                dateInput = initial.toLocalDate().toString(),
+                timeInput = initial.toLocalTime().toString().take(5),
+                durationMinutesInput = "60",
+                noteInput = "",
+            )
+        }
     }
-    var note by remember(entry?.id) { mutableStateOf(entry?.note.orEmpty()) }
-    var invalid by remember(entry?.id) { mutableStateOf(false) }
+    var form by remember(entry?.id, entry?.revision) { mutableStateOf(initialForm) }
+    var invalid by remember(entry?.id, entry?.revision) { mutableStateOf(false) }
     fun submit() {
-        try {
-            val start = LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(zone).toInstant().toEpochMilli()
-            val minutes = duration.toLong()
-            val end = Math.addExact(start, Math.multiplyExact(minutes, 60_000L))
-            if (minutes <= 0 || projectId.isBlank()) invalid = true else onSave(projectId, start, end, note)
-        } catch (_: DateTimeParseException) { invalid = true }
-        catch (_: ArithmeticException) { invalid = true }
-        catch (_: NumberFormatException) { invalid = true }
+        val validation = validateEntryForm(form, zone)
+        validation.value?.let(onSave) ?: run { invalid = true }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -181,25 +179,59 @@ private fun EntryDialog(
                     Text(stringResource(R.string.selected_project), style = MaterialTheme.typography.labelLarge)
                     state.availableProjects.forEach { project ->
                         FilterChip(
-                            selected = project.id == projectId,
-                            onClick = { projectId = project.id },
+                            selected = project.id == form.projectId,
+                            onClick = { form = form.copy(projectId = project.id); invalid = false },
                             label = { Text(LocalContext.current.projectName(project)) },
                             modifier = Modifier.padding(end = 6.dp),
                         )
                     }
                 }
-                item { OutlinedTextField(date, { date = it; invalid = false }, label = { Text(stringResource(R.string.entry_date)) }, singleLine = true) }
-                item { OutlinedTextField(time, { time = it; invalid = false }, label = { Text(stringResource(R.string.entry_time)) }, singleLine = true) }
                 item {
                     OutlinedTextField(
-                        duration,
-                        { duration = it.filter(Char::isDigit); invalid = false },
+                        form.dateInput,
+                        { value ->
+                            form = form.copy(dateInput = value, dateEdited = value != initialForm.dateInput)
+                            invalid = false
+                        },
+                        label = { Text(stringResource(R.string.entry_date)) },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        form.timeInput,
+                        { value ->
+                            form = form.copy(timeInput = value, timeEdited = value != initialForm.timeInput)
+                            invalid = false
+                        },
+                        label = { Text(stringResource(R.string.entry_time)) },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        form.durationMinutesInput,
+                        { raw ->
+                            val value = raw.filter(Char::isDigit)
+                            form = form.copy(
+                                durationMinutesInput = value,
+                                durationEdited = value != initialForm.durationMinutesInput,
+                            )
+                            invalid = false
+                        },
                         label = { Text(stringResource(R.string.entry_duration_minutes)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                     )
                 }
-                item { OutlinedTextField(note, { note = it; invalid = false }, label = { Text(stringResource(R.string.entry_note)) }, minLines = 2) }
+                item {
+                    OutlinedTextField(
+                        form.noteInput,
+                        { form = form.copy(noteInput = it); invalid = false },
+                        label = { Text(stringResource(R.string.entry_note)) },
+                        minLines = 2,
+                    )
+                }
                 if (invalid) item { Text(stringResource(R.string.error_invalid_entry), color = MaterialTheme.colorScheme.error) }
             }
         },

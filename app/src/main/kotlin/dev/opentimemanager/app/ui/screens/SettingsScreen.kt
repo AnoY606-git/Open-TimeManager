@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
@@ -41,6 +42,7 @@ fun SettingsScreen(
     state: AppUiState,
     onTheme: (ThemeMode) -> Unit,
     onDynamicColor: (Boolean) -> Unit,
+    selectedLanguage: AppLanguage,
     onLanguage: (AppLanguage) -> Unit,
     onPrivacy: (Boolean) -> Unit,
     onDailyGoal: (Int) -> Unit,
@@ -96,9 +98,10 @@ fun SettingsScreen(
                 ) {
                     AppLanguage.entries.forEach { language ->
                         FilterChip(
-                            selected = preferences.language == language,
+                            selected = selectedLanguage == language,
                             onClick = { onLanguage(language) },
                             label = { Text(stringResource(language.label())) },
+                            modifier = Modifier.testTag("language_${language.name.lowercase()}"),
                         )
                     }
                 }

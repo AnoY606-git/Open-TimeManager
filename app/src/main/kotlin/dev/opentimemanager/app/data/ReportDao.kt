@@ -45,6 +45,21 @@ abstract class ReportDao {
     }
 
     @Transaction
+    open fun updateMetadata(id: String, projectId: String, note: String, expectedRevision: Long): EditResult {
+        val current = entry(id) ?: return EditResult.NotFound
+        if (!current.completed) return EditResult.ActiveEntry
+        if (current.revision != expectedRevision) return EditResult.StaleRevision
+        if (note.codePointCount(0, note.length) > 2000) return EditResult.InvalidInput
+        val revision = try { Math.incrementExact(current.revision) } catch (_: ArithmeticException) {
+            return EditResult.InvalidInput
+        }
+        val project = project(projectId) ?: return EditResult.MissingProject
+        if (project.archivedAtUtcMillis != null && current.projectId != projectId) return EditResult.ArchivedProject
+        saveEntry(current.copy(projectId = projectId, note = note, revision = revision))
+        return EditResult.Applied
+    }
+
+    @Transaction
     open fun delete(id: String, expectedRevision: Long): EditResult {
         val current = entry(id) ?: return EditResult.NotFound
         if (!current.completed) return EditResult.ActiveEntry
@@ -64,6 +79,9 @@ abstract class ReportDao {
 class CompletedEntryRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
     suspend fun save(id: EntryId, projectId: ProjectId, note: String, startUtcMillis: Long, durationMillis: Long, expectedRevision: Long?): EditResult = withContext(dispatcher) {
         database.reportDao().save(id.value, projectId.value, note, startUtcMillis, durationMillis, expectedRevision)
+    }
+    suspend fun updateMetadata(id: EntryId, projectId: ProjectId, note: String, expectedRevision: Long): EditResult = withContext(dispatcher) {
+        database.reportDao().updateMetadata(id.value, projectId.value, note, expectedRevision)
     }
     suspend fun delete(id: EntryId, expectedRevision: Long): EditResult = withContext(dispatcher) { database.reportDao().delete(id.value, expectedRevision) }
     suspend fun report(fromUtcMillis: Long, toUtcMillis: Long): List<Segment> = withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }

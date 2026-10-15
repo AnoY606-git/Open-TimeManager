@@ -1,24 +1,22 @@
 package dev.opentimemanager.app
 
 import android.os.Bundle
-import android.Manifest
 import android.app.NotificationManager
-import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.core.os.LocaleListCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,13 +25,22 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.ui.AppViewModel
 import dev.opentimemanager.app.ui.OpenTimeManagerApp
 import dev.opentimemanager.app.ui.NotificationControlStatus
+import dev.opentimemanager.app.ui.NotificationControlAction
+import dev.opentimemanager.app.ui.notificationControlAction
+import dev.opentimemanager.app.ui.notificationSettingsIntent
 import dev.opentimemanager.app.ui.notificationControlStatus
+import dev.opentimemanager.app.ui.applicationLanguage
+import dev.opentimemanager.app.ui.applicationLocales
+import dev.opentimemanager.app.system.SystemSurfaceUpdater
+import dev.opentimemanager.app.system.TrackingNotification
+import dev.opentimemanager.app.system.containSystemSurfaceFailure
 import dev.opentimemanager.app.ui.theme.OpenTimeManagerTheme
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,16 +50,42 @@ class MainActivity : AppCompatActivity() {
         setContent {
             val model: AppViewModel = viewModel(factory = AppViewModel.factory(application))
             val state by model.state.collectAsStateWithLifecycle()
+            val selectedLanguage = applicationLanguage(AppCompatDelegate.getApplicationLocales())
             fun currentNotificationStatus(): NotificationControlStatus {
+                val manager = getSystemService(NotificationManager::class.java)
                 val permissionGranted = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
                     this@MainActivity,
-                    Manifest.permission.POST_NOTIFICATIONS,
+                    POST_NOTIFICATIONS_PERMISSION,
                 ) == PackageManager.PERMISSION_GRANTED
-                val enabled = getSystemService(NotificationManager::class.java).areNotificationsEnabled()
-                return notificationControlStatus(permissionGranted, enabled)
+                val preferences = getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, Context.MODE_PRIVATE)
+                return notificationControlStatus(
+                    sdkInt = Build.VERSION.SDK_INT,
+                    permissionGranted = permissionGranted,
+                    permissionDeniedOnce = preferences.getBoolean(NOTIFICATION_PERMISSION_DENIED_ONCE, false),
+                    shouldShowPermissionRationale = Build.VERSION.SDK_INT >= 33 && ActivityCompat.shouldShowRequestPermissionRationale(
+                        this@MainActivity,
+                        POST_NOTIFICATIONS_PERMISSION,
+                    ),
+                    notificationsEnabled = manager.areNotificationsEnabled(),
+                    channelImportance = manager.getNotificationChannel(TrackingNotification.CHANNEL_ID)?.importance,
+                )
             }
             val notificationStatus = remember { mutableStateOf(currentNotificationStatus()) }
-            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            val rationaleBeforePermissionRequest = remember { mutableStateOf(false) }
+            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                val shouldShowRationale = Build.VERSION.SDK_INT >= 33 && ActivityCompat.shouldShowRequestPermissionRationale(
+                    this@MainActivity,
+                    POST_NOTIFICATIONS_PERMISSION,
+                )
+                if (dev.opentimemanager.app.ui.shouldRecordNotificationDenial(
+                        granted,
+                        rationaleBeforePermissionRequest.value,
+                        shouldShowRationale,
+                    )
+                ) {
+                    getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, Context.MODE_PRIVATE)
+                        .edit { putBoolean(NOTIFICATION_PERMISSION_DENIED_ONCE, true) }
+                }
                 notificationStatus.value = currentNotificationStatus()
             }
             DisposableEffect(lifecycle) {
@@ -61,17 +94,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 lifecycle.addObserver(observer)
                 onDispose { lifecycle.removeObserver(observer) }
-            }
-            LaunchedEffect(state.preferences.language) {
-                if (state.snapshot == null) return@LaunchedEffect
-                val locales = when (state.preferences.language) {
-                    AppLanguage.SYSTEM -> LocaleListCompat.getEmptyLocaleList()
-                    AppLanguage.ENGLISH -> LocaleListCompat.forLanguageTags("en")
-                    AppLanguage.RUSSIAN -> LocaleListCompat.forLanguageTags("ru")
-                }
-                if (AppCompatDelegate.getApplicationLocales() != locales) {
-                    AppCompatDelegate.setApplicationLocales(locales)
-                }
             }
             val useDarkSystemBars = when (state.preferences.theme) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -90,14 +112,44 @@ class MainActivity : AppCompatActivity() {
                     model,
                     notificationStatus.value,
                     onManageNotifications = {
-                        if (notificationStatus.value == NotificationControlStatus.PERMISSION_REQUIRED && Build.VERSION.SDK_INT >= 33) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        when (val action = notificationControlAction(notificationStatus.value)) {
+                            NotificationControlAction.REQUEST_PERMISSION -> {
+                                rationaleBeforePermissionRequest.value = Build.VERSION.SDK_INT >= 33 &&
+                                    ActivityCompat.shouldShowRequestPermissionRationale(
+                                        this@MainActivity,
+                                        POST_NOTIFICATIONS_PERMISSION,
+                                    )
+                                permissionLauncher.launch(POST_NOTIFICATIONS_PERMISSION)
+                            }
+                            NotificationControlAction.OPEN_APP_SETTINGS,
+                            NotificationControlAction.OPEN_CHANNEL_SETTINGS ->
+                                notificationSettingsIntent(action, packageName)?.let(::startActivity)
+                            NotificationControlAction.NONE -> Unit
+                        }
+                    },
+                    selectedLanguage = selectedLanguage,
+                    onLanguage = { language ->
+                        val locales = applicationLocales(language)
+                        if (AppCompatDelegate.getApplicationLocales() != locales) {
+                            AppCompatDelegate.setApplicationLocales(locales)
+                            application.applicationScope.launch {
+                                containSystemSurfaceFailure {
+                                    val latestSnapshot = application.container.trackingCoordinator
+                                        .observeSnapshot()
+                                        .first()
+                                    SystemSurfaceUpdater(application).refresh(latestSnapshot)
+                                }
+                            }
                         }
                     },
                 )
             }
         }
+    }
+
+    private companion object {
+        const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
+        const val NOTIFICATION_PERMISSION_DENIED_ONCE = "denied_once"
+        const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
     }
 }

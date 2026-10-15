@@ -8,8 +8,8 @@ import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.data.EditResult
 import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.data.ProjectEditResult
+import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.di.AppContainer
-import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.system.SystemSurfaceUpdater
@@ -61,19 +61,31 @@ data class AppUiState(
             ?: availableProjects.firstOrNull()?.id
     }
 
-    val completedEntries: List<EntryEntity> get() {
-        val query = controls.historySearch.trim()
-        val projectNames = snapshot?.projects.orEmpty().associate { it.id to it.name }
-        return snapshot?.entries.orEmpty()
-            .asSequence()
-            .filter { it.completed }
-            .filter {
-                query.isBlank() || it.note.contains(query, ignoreCase = true) ||
-                    projectNames[it.projectId].orEmpty().contains(query, ignoreCase = true)
-            }
-            .sortedByDescending { it.startedAtUtcMillis }
-            .toList()
-    }
+    fun completedEntries(projectDisplayName: (ProjectEntity) -> String): List<EntryEntity> =
+        filterCompletedEntries(
+            entries = snapshot?.entries.orEmpty(),
+            projects = snapshot?.projects.orEmpty(),
+            query = controls.historySearch,
+            projectDisplayName = projectDisplayName,
+        )
+}
+
+fun filterCompletedEntries(
+    entries: List<EntryEntity>,
+    projects: List<ProjectEntity>,
+    query: String,
+    projectDisplayName: (ProjectEntity) -> String,
+): List<EntryEntity> {
+    val normalizedQuery = query.trim()
+    val projectNames = projects.associate { it.id to projectDisplayName(it) }
+    return entries.asSequence()
+        .filter { it.completed }
+        .filter {
+            normalizedQuery.isBlank() || it.note.contains(normalizedQuery, ignoreCase = true) ||
+                projectNames[it.projectId].orEmpty().contains(normalizedQuery, ignoreCase = true)
+        }
+        .sortedByDescending { it.startedAtUtcMillis }
+        .toList()
 }
 
 class AppViewModel(
@@ -115,9 +127,9 @@ class AppViewModel(
     fun saveActiveNote(note: String) {
         val session = state.value.snapshot?.session ?: return
         val entryId = session.entryId ?: return
-        viewModelScope.launch {
+        launchWrite {
             val result = container.activeNotes.update(entryId, session.revision, note)
-            show(if (result == dev.opentimemanager.app.data.ActiveNoteResult.APPLIED) UiMessage.SAVED else UiMessage.ACTION_FAILED)
+            if (result == dev.opentimemanager.app.data.ActiveNoteResult.APPLIED) UiMessage.SAVED else UiMessage.ACTION_FAILED
         }
     }
 
@@ -131,77 +143,74 @@ class AppViewModel(
         ))
     }
 
-    fun createProject(name: String, colorArgb: Int) = viewModelScope.launch {
+    fun createProject(name: String, colorArgb: Int) = launchWrite {
         val result = container.projects.create(ProjectId(UUID.randomUUID().toString()), name, colorArgb, System.currentTimeMillis())
-        show(if (result == ProjectEditResult.APPLIED) UiMessage.SAVED else UiMessage.INVALID_PROJECT)
+        if (result == ProjectEditResult.APPLIED) UiMessage.SAVED else UiMessage.INVALID_PROJECT
     }
 
-    fun archiveProject(projectId: String) = viewModelScope.launch {
+    fun archiveProject(projectId: String) = launchWrite {
         val result = container.projects.archive(ProjectId(projectId), System.currentTimeMillis())
-        show(if (result == ProjectEditResult.APPLIED) UiMessage.SAVED else UiMessage.ACTION_FAILED)
+        if (result == ProjectEditResult.APPLIED) UiMessage.SAVED else UiMessage.ACTION_FAILED
     }
 
     fun saveManualEntry(
         entryId: String?,
         expectedRevision: Long?,
-        projectId: String,
-        startUtcMillis: Long,
-        endUtcMillis: Long,
-        note: String,
+        draft: ManualEntryDraft,
     ) {
-        val validated = validateManualEntry(projectId, startUtcMillis, endUtcMillis, note)
-        val draft = validated.value ?: return show(UiMessage.INVALID_ENTRY)
-        viewModelScope.launch {
-            val result = container.completedEntries.save(
-                EntryId(entryId ?: UUID.randomUUID().toString()),
-                ProjectId(draft.projectId),
-                draft.note,
-                draft.startUtcMillis,
-                draft.durationMillis,
-                expectedRevision,
-            )
-            show(result.toMessage())
+        launchWrite {
+            val result = if (draft.preserveTiming && entryId != null && expectedRevision != null) {
+                container.completedEntries.updateMetadata(
+                    EntryId(entryId),
+                    ProjectId(draft.projectId),
+                    draft.note,
+                    expectedRevision,
+                )
+            } else {
+                container.completedEntries.save(
+                    EntryId(entryId ?: UUID.randomUUID().toString()),
+                    ProjectId(draft.projectId),
+                    draft.note,
+                    draft.startUtcMillis,
+                    draft.durationMillis,
+                    expectedRevision,
+                )
+            }
+            result.toMessage()
         }
     }
 
-    fun deleteEntry(entryId: String, expectedRevision: Long) = viewModelScope.launch {
-        show(container.completedEntries.delete(EntryId(entryId), expectedRevision).toMessage())
+    fun deleteEntry(entryId: String, expectedRevision: Long) = launchWrite {
+        container.completedEntries.delete(EntryId(entryId), expectedRevision).toMessage()
     }
 
     fun setTheme(value: ThemeMode) = changeSettings { container.settings.setTheme(value) }
     fun setDynamicColor(value: Boolean) = changeSettings { container.settings.setDynamicColor(value) }
-    fun setLanguage(value: AppLanguage) = changeSettings { container.settings.setLanguage(value) }
     fun setPrivacy(value: Boolean) = changeSettings { container.settings.setPrivacy(value) }
     fun setDailyGoalMinutes(value: Int) = changeSettings { container.settings.setDailyGoalMinutes(value) }
 
-    private fun execute(command: TrackingCommand) = viewModelScope.launch {
-        try {
-            when (val result = container.trackingCoordinator.execute(command)) {
-                is TrackingResult.Applied -> {
-                    val updater = SystemSurfaceUpdater(application)
-                    updater.refresh(result.snapshot)
-                    updater.ensureForegroundControls(result.snapshot)
-                }
-                is TrackingResult.Duplicate -> Unit
-                is TrackingResult.Rejected -> show(UiMessage.ACTION_FAILED)
+    private fun execute(command: TrackingCommand) = launchWrite {
+        when (val result = container.trackingCoordinator.execute(command)) {
+            is TrackingResult.Applied -> {
+                val updater = SystemSurfaceUpdater(application)
+                updater.refresh(result.snapshot)
+                updater.ensureForegroundControls(result.snapshot)
+                null
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            show(UiMessage.ACTION_FAILED)
+            is TrackingResult.Duplicate -> null
+            is TrackingResult.Rejected -> UiMessage.ACTION_FAILED
         }
     }
 
-    private fun changeSettings(block: suspend () -> Unit) = viewModelScope.launch {
-        try {
-            block()
-            val snapshot = container.trackingCoordinator.observeSnapshot().first()
-            SystemSurfaceUpdater(application).refresh(snapshot)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            show(UiMessage.ACTION_FAILED)
-        }
+    private fun changeSettings(block: suspend () -> Unit) = launchWrite {
+        block()
+        val snapshot = container.trackingCoordinator.observeSnapshot().first()
+        SystemSurfaceUpdater(application).refresh(snapshot)
+        null
+    }
+
+    private fun launchWrite(block: suspend () -> UiMessage?) = viewModelScope.launch {
+        cancellationAwareUiWrite(block)?.let(::show)
     }
 
     private fun show(message: UiMessage) = updateControls { copy(message = message) }
@@ -215,6 +224,14 @@ class AppViewModel(
                 AppViewModel(application, application.container) as T
         }
     }
+}
+
+internal suspend fun cancellationAwareUiWrite(block: suspend () -> UiMessage?): UiMessage? = try {
+    block()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    UiMessage.ACTION_FAILED
 }
 
 private fun EditResult.toMessage(): UiMessage = when (this) {

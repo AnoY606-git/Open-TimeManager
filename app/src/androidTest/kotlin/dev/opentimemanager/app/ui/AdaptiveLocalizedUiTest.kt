@@ -1,29 +1,36 @@
 package dev.opentimemanager.app.ui
 
-import android.app.Application
-import android.content.res.Configuration
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.FontScale
+import androidx.compose.ui.test.Locales
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.test.core.app.ApplicationProvider
+import androidx.compose.ui.test.then
+import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.text.intl.LocaleList
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectRepository
+import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.tracking.AppSnapshot
 import dev.opentimemanager.app.ui.theme.OpenTimeManagerTheme
 import dev.opentimemanager.core.model.TrackingSession
-import java.util.Locale
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Device/CI matrix contract. This task verifies the instrumentation source by compilation only. */
+/** Runtime execution requires a device; CI still compiles this measured-shell contract. */
 @RunWith(AndroidJUnit4::class)
 class AdaptiveLocalizedUiTest {
     @get:Rule val compose = createComposeRule()
@@ -37,44 +44,63 @@ class AdaptiveLocalizedUiTest {
         ),
     )
 
-    private fun show(locale: String, theme: ThemeMode, width: Int, height: Int, fontScale: Float, layout: NavigationLayout) {
-        val base = ApplicationProvider.getApplicationContext<Application>()
-        val config = Configuration(base.resources.configuration).apply {
-            setLocale(Locale.forLanguageTag(locale))
-            screenWidthDp = width
-            screenHeightDp = height
-            this.fontScale = fontScale
-        }
-        val localized = base.createConfigurationContext(config)
+    private fun show(locale: String, theme: ThemeMode, width: Int, height: Int, fontScale: Float) {
+        val overrides = DeviceConfigurationOverride.ForcedSize(DpSize(width.dp, height.dp)) then
+            DeviceConfigurationOverride.FontScale(fontScale) then
+            DeviceConfigurationOverride.Locales(LocaleList(Locale(locale)))
         compose.setContent {
-            CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config) {
+            DeviceConfigurationOverride(overrides) {
                 OpenTimeManagerTheme(theme, dynamicColor = false) {
-                    AdaptiveTimerSurface(state(), layout, timerUsesCompactLayout(height, fontScale))
+                    OpenTimeManagerApp(
+                        state = state(),
+                        viewModel = null,
+                        notificationStatus = NotificationControlStatus.AVAILABLE,
+                        onManageNotifications = {},
+                        selectedLanguage = if (locale == "ru") AppLanguage.RUSSIAN else AppLanguage.ENGLISH,
+                        onLanguage = {},
+                    )
                 }
             }
         }
     }
 
-    @Test fun russianCompactLightShowsPrimaryActionAndGoalSemantics() {
-        show("ru", ThemeMode.LIGHT, 412, 915, 1f, NavigationLayout.BOTTOM)
+    private fun assertPrimaryActionInsideShell() {
+        val shell: DpRect = compose.onNodeWithTag("adaptive_shell").getUnclippedBoundsInRoot()
+        val action: DpRect = compose.onNodeWithTag("timer_primary_action").getUnclippedBoundsInRoot()
+        assertTrue(action.left >= shell.left && action.top >= shell.top)
+        assertTrue(action.right <= shell.right && action.bottom <= shell.bottom)
+    }
+
+    @Test fun russianCompactLightMeasuresBottomNavigationAndPrimaryAction() {
+        show("ru", ThemeMode.LIGHT, 412, 915, 1f)
+        compose.onNode(hasTestTag("compact_navigation")).assertExists()
+        compose.onNode(hasTestTag("expanded_navigation")).assertDoesNotExist()
+        compose.onNode(hasTestTag("timer_today_pane")).assertDoesNotExist()
         compose.onNodeWithText("Начать", substring = false).assertIsDisplayed()
         compose.onNode(hasContentDescription("Прогресс дневной цели — 0%")).assertIsDisplayed()
+        assertPrimaryActionInsideShell()
     }
 
-    @Test fun englishCompactDarkAtTwoHundredPercentKeepsStartVisible() {
-        show("en", ThemeMode.DARK, 412, 915, 2f, NavigationLayout.BOTTOM)
+    @Test fun englishCompactDarkAtTwoHundredPercentKeepsActionInsideViewport() {
+        show("en", ThemeMode.DARK, 412, 915, 2f)
         compose.onNodeWithText("Start", substring = false).assertIsDisplayed()
+        assertPrimaryActionInsideShell()
     }
 
-    @Test fun russianLowHeightLandscapeKeepsPrimaryActionVisible() {
-        show("ru", ThemeMode.LIGHT, 800, 380, 1f, NavigationLayout.RAIL)
-        compose.onNodeWithText("Начать", substring = false).assertIsDisplayed()
+    @Test fun russianLowHeightLandscapeMeasuresRailWithoutForcingTwoPane() {
+        show("ru", ThemeMode.LIGHT, 800, 380, 1f)
+        compose.onNode(hasTestTag("expanded_navigation")).assertExists()
+        compose.onNode(hasTestTag("compact_navigation")).assertDoesNotExist()
+        compose.onNode(hasTestTag("timer_today_pane")).assertDoesNotExist()
+        assertPrimaryActionInsideShell()
     }
 
-    @Test fun englishExpandedSurfaceExposesTwoUsefulPanes() {
-        show("en", ThemeMode.LIGHT, 1_000, 900, 1f, NavigationLayout.TWO_PANE)
+    @Test fun englishExpandedMeasuredShellExposesTwoUsefulPanes() {
+        show("en", ThemeMode.LIGHT, 1_000, 900, 1f)
+        compose.onNode(hasTestTag("expanded_navigation")).assertExists()
         compose.onNode(hasTestTag("timer_primary_pane")).assertExists()
         compose.onNode(hasTestTag("timer_today_pane")).assertExists()
         compose.onNodeWithText("Start", substring = false).assertIsDisplayed()
+        assertPrimaryActionInsideShell()
     }
 }

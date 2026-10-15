@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,19 +52,19 @@ import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectRepository
 import dev.opentimemanager.app.system.TrackingNotification
 import dev.opentimemanager.app.ui.AppUiState
-import dev.opentimemanager.app.ui.entryDurationMillis
+import dev.opentimemanager.app.ui.confirmedDayProjection
 import dev.opentimemanager.app.ui.formatDateTime
 import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
 import dev.opentimemanager.app.ui.todayTrackedMillis
 import dev.opentimemanager.app.ui.NotificationControlStatus
+import dev.opentimemanager.app.ui.validateReviewEndInput
 import dev.opentimemanager.core.model.TrackingState
-import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 
 private val ProjectColors = listOf(
@@ -89,6 +90,7 @@ fun TimerScreen(
 ) {
     val snapshot = state.snapshot ?: return
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val selected = state.availableProjects.firstOrNull { it.id == state.selectedProjectId }
     var nowElapsed by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     var showCreate by remember { mutableStateOf(false) }
@@ -96,16 +98,21 @@ fun TimerScreen(
     var archiveCandidate by remember { mutableStateOf<ProjectEntity?>(null) }
     val activeEntry = snapshot.entries.firstOrNull { it.id == snapshot.session.entryId?.value }
     var activeNote by remember(activeEntry?.id, activeEntry?.note) { mutableStateOf(activeEntry?.note.orEmpty()) }
-    LaunchedEffect(snapshot.session.state, snapshot.session.revision) {
-        while (snapshot.session.state == TrackingState.RUNNING) {
-            nowElapsed = SystemClock.elapsedRealtime()
-            delay(1_000 - (nowElapsed % 1_000))
+    LaunchedEffect(lifecycle, snapshot.session.state, snapshot.session.revision) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (snapshot.session.state == TrackingState.RUNNING) {
+                nowElapsed = SystemClock.elapsedRealtime()
+                delay((1_000 - (nowElapsed % 1_000)).coerceAtLeast(1))
+            }
         }
     }
     val elapsed = TrackingNotification.elapsedMillis(snapshot, nowElapsed)
-    val today = LocalDate.now()
     val zone = ZoneId.systemDefault()
-    val todayWithActive = todayTrackedMillis(snapshot, nowElapsed, today, zone)
+    val today = rememberCurrentDate(zone)
+    val dayProjection = remember(snapshot.segments, today, zone) {
+        confirmedDayProjection(snapshot.segments, today, zone)
+    }
+    val todayWithActive = todayTrackedMillis(dayProjection, snapshot.session, nowElapsed)
     val goalMillis = state.preferences.dailyGoalMinutes * 60_000L
     val progress = (todayWithActive.toFloat() / goalMillis).coerceIn(0f, 1f)
 
@@ -139,7 +146,14 @@ fun TimerScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(if (notificationStatus == NotificationControlStatus.PERMISSION_REQUIRED) R.string.notification_permission_needed else R.string.notification_channel_blocked))
+                        Text(
+                            stringResource(
+                                if (notificationStatus == NotificationControlStatus.PERMISSION_REQUESTABLE ||
+                                    notificationStatus == NotificationControlStatus.PERMISSION_FIXED
+                                ) R.string.notification_permission_needed
+                                else R.string.notification_channel_blocked,
+                            ),
+                        )
                         TextButton(onClick = onManageNotifications) { Text(stringResource(R.string.manage_notifications)) }
                     }
                 }
@@ -180,7 +194,7 @@ fun TimerScreen(
                             Button(
                                 onClick = onPrimary,
                                 enabled = selected != null,
-                                modifier = buttonModifier,
+                                modifier = buttonModifier.testTag("timer_primary_action"),
                             ) { Text(stringResource(TrackingNotification.primaryString(snapshot.session.state))) }
                         }
                         val hasStop = snapshot.session.state == TrackingState.RUNNING || snapshot.session.state == TrackingState.PAUSED
@@ -283,9 +297,7 @@ private fun ReviewEndDialog(onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                try {
-                    onConfirm(LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(zone).toInstant().toEpochMilli())
-                } catch (_: DateTimeParseException) { invalid = true }
+                validateReviewEndInput(date, time, zone).value?.let(onConfirm) ?: run { invalid = true }
             }) { Text(stringResource(R.string.confirm)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
@@ -326,23 +338,25 @@ private fun ProjectDialog(onDismiss: () -> Unit, onCreate: (String, Int) -> Unit
 fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
     val snapshot = state.snapshot ?: return
     val context = LocalContext.current
-    val today = LocalDate.now()
     val zone = ZoneId.systemDefault()
-    val entries = snapshot.entries.filter { entry ->
-        entry.completed && Instant.ofEpochMilli(entry.startedAtUtcMillis).atZone(zone).toLocalDate() == today
-    }.sortedByDescending { it.startedAtUtcMillis }
+    val today = rememberCurrentDate(zone)
+    val projection = remember(snapshot.segments, today, zone) {
+        confirmedDayProjection(snapshot.segments, today, zone)
+    }
     Column(modifier.fillMaxSize().padding(20.dp)) {
         Text(stringResource(R.string.today_heading), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
-        if (entries.isEmpty()) Text(stringResource(R.string.no_history), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (projection.rows.isEmpty()) Text(stringResource(R.string.no_history), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(entries, key = { it.id }) { entry ->
-                val project = snapshot.projects.firstOrNull { it.id == entry.projectId }
+            items(projection.rows, key = { "${it.entryId.value}:${it.projectId.value}" }) { row ->
+                val entry = snapshot.entries.firstOrNull { it.id == row.entryId.value }
+                val project = snapshot.projects.firstOrNull { it.id == row.projectId.value }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(project?.let(context::projectName).orEmpty(), fontWeight = FontWeight.Medium)
-                        Text(formatDateTime(entry.startedAtUtcMillis), style = MaterialTheme.typography.bodySmall)
-                        Text(formatDuration(entryDurationMillis(entry.id, state), false), color = MaterialTheme.colorScheme.primary)
+                        Text(formatDateTime(row.firstStartUtcMillis), style = MaterialTheme.typography.bodySmall)
+                        if (!entry?.note.isNullOrBlank()) Text(entry?.note.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                        Text(formatDuration(row.durationMillis, false), color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }

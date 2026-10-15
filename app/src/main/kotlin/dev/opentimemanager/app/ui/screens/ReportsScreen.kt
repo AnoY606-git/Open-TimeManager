@@ -34,10 +34,9 @@ import dev.opentimemanager.app.ui.ReportPeriod
 import dev.opentimemanager.app.ui.defaultCustomReport
 import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
+import dev.opentimemanager.app.ui.validateCustomReportInput
 import dev.opentimemanager.core.report.ReportAggregator
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -49,8 +48,9 @@ fun ReportsScreen(
     val snapshot = state.snapshot ?: return
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
-    val today = LocalDate.now(zone)
-    val bounds = state.controls.reportPeriod.bounds(today, zone)
+    val today = rememberCurrentDate(zone)
+    val bounds = state.controls.reportPeriod.validatedBounds(today, zone).value
+        ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
     val totals = remember(snapshot.segments, bounds, zone) {
         ReportAggregator.aggregate(snapshot.segments, bounds.fromUtcMillis, bounds.toUtcMillis, zone)
     }
@@ -144,12 +144,8 @@ private fun CustomPeriodDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                try {
-                    val period = ReportPeriod.Custom(LocalDate.parse(from), LocalDate.parse(through))
-                    period.bounds(LocalDate.now(), ZoneId.systemDefault())
-                    onApply(period)
-                } catch (_: DateTimeParseException) { invalid = true }
-                catch (_: IllegalArgumentException) { invalid = true }
+                validateCustomReportInput(from, through, ZoneId.systemDefault()).value?.let(onApply)
+                    ?: run { invalid = true }
             }) { Text(stringResource(R.string.apply)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
