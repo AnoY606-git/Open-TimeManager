@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.opentimemanager.app.tracking.*
 import dev.opentimemanager.app.ui.confirmedDayProjection
+import dev.opentimemanager.app.ui.MAX_PROJECT_LIMIT
 import dev.opentimemanager.core.model.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -56,12 +57,26 @@ class HardeningDataContractTest {
         }
 
         val firstPage = coordinator.observeSnapshot(historyLimit = 100, projectLimit = 100).first()
+        val pinnedPage = coordinator.observeSnapshot(
+            historyLimit = 100,
+            projectLimit = 100,
+            pinnedProjectId = "active-0",
+        ).first()
         val secondPage = coordinator.observeSnapshot(historyLimit = 100, projectLimit = 200).first()
+        val finalPage = coordinator.observeSnapshot(historyLimit = 100, projectLimit = MAX_PROJECT_LIMIT).first()
 
-        assertEquals(100, firstPage.projects.size)
+        assertEquals(101, firstPage.projects.size)
+        assertTrue(firstPage.projects.any { it.id == ProjectRepository.DEFAULT_PROJECT_ID.value })
         assertTrue(firstPage.hasMoreProjects)
-        assertEquals(200, secondPage.projects.size)
+        assertTrue(pinnedPage.projects.any { it.id == "active-0" })
+        assertEquals(201, secondPage.projects.size)
         assertTrue(secondPage.hasMoreProjects)
+        assertEquals(MAX_PROJECT_LIMIT, finalPage.projects.size)
+        assertFalse(finalPage.hasMoreProjects)
+        assertEquals(
+            ProjectEditResult.LIMIT_REACHED,
+            ProjectRepository(database, Dispatchers.IO).create(ProjectId("beyond-cap"), "Beyond", 0, 30_000),
+        )
     }
 
     @Test fun systemProjectionCardinalityDoesNotGrowWithTwentyThousandArchivedRows() = runBlocking {

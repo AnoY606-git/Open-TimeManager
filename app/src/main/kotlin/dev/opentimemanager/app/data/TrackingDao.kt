@@ -14,7 +14,7 @@ abstract class TrackingDao {
     @Query("SELECT * FROM segments ORDER BY startedAtUtcMillis, id") abstract fun segments(): List<SegmentEntity>
     @Query("SELECT * FROM projects WHERE archivedAtUtcMillis IS NULL ORDER BY createdAtUtcMillis, id LIMIT 2") abstract fun eligibleProjects(): List<ProjectEntity>
     @Query("""SELECT * FROM projects
-        WHERE id = :activeProjectId OR id IN (
+        WHERE id = :activeProjectId OR id = :pinnedProjectId OR id IN (
             SELECT projectId FROM entries WHERE completed = 1
             ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :historyLimit
         ) OR id IN (
@@ -22,7 +22,12 @@ abstract class TrackingDao {
             ORDER BY createdAtUtcMillis DESC, id DESC LIMIT :projectLimit
         )
         ORDER BY createdAtUtcMillis, id""")
-    abstract fun uiProjects(historyLimit: Int, projectLimit: Int, activeProjectId: String?): List<ProjectEntity>
+    abstract fun uiProjects(
+        historyLimit: Int,
+        projectLimit: Int,
+        activeProjectId: String?,
+        pinnedProjectId: String,
+    ): List<ProjectEntity>
     @Query("SELECT * FROM entries WHERE completed = 1 ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :limit") abstract fun recentCompletedEntries(limit: Int): List<EntryEntity>
     @Query("SELECT COUNT(*) FROM entries WHERE completed = 1") abstract fun completedEntryCount(): Long
     @Query("""SELECT entryId, SUM(durationMillis) AS durationMillis FROM segments
@@ -85,11 +90,16 @@ abstract class TrackingDao {
     }
 
     @Transaction
-    open fun snapshot(clock: ClockSnapshotSource, historyLimit: Int, projectLimit: Int): AppSnapshot {
+    open fun snapshot(
+        clock: ClockSnapshotSource,
+        historyLimit: Int,
+        projectLimit: Int,
+        pinnedProjectId: String,
+    ): AppSnapshot {
         val now = clock.now()
         initialize(now.wallUtcMillis)
         recover(now)
-        return uiSnapshotWithoutRecovery(historyLimit, projectLimit)
+        return uiSnapshotWithoutRecovery(historyLimit, projectLimit, pinnedProjectId)
     }
 
     @Transaction
@@ -112,7 +122,11 @@ abstract class TrackingDao {
         )
     }
 
-    private fun uiSnapshotWithoutRecovery(historyLimit: Int, projectLimit: Int): AppSnapshot {
+    private fun uiSnapshotWithoutRecovery(
+        historyLimit: Int,
+        projectLimit: Int,
+        pinnedProjectId: String,
+    ): AppSnapshot {
         require(historyLimit in 1..20_000)
         require(projectLimit in 1..20_000)
         val session = restored()
@@ -123,7 +137,7 @@ abstract class TrackingDao {
             addAll(completed)
         }
         val projectByEntry = entries.associate { it.id to it.projectId }
-        val projects = uiProjects(historyLimit, projectLimit, session.projectId?.value)
+        val projects = uiProjects(historyLimit, projectLimit, session.projectId?.value, pinnedProjectId)
         val durations = if (completed.isEmpty()) emptyMap() else {
             entryDurations(historyLimit).associate { it.entryId to it.durationMillis }
         }
@@ -139,7 +153,7 @@ abstract class TrackingDao {
             generation = requireNotNull(slot()).generation,
             hasMoreHistory = completedEntryCount() > completed.size,
             entryDurations = durations,
-            hasMoreProjects = activeProjectCount() > projectLimit,
+            hasMoreProjects = projectLimit < ProjectRepository.MAX_PROJECTS && activeProjectCount() > projectLimit,
         )
     }
 

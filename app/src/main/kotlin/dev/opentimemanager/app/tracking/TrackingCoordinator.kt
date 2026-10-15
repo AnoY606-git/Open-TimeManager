@@ -60,6 +60,9 @@ data class AppSnapshot(
 class TrackingCoordinator(private val repository: RoomTrackingRepository) {
     suspend fun execute(command: TrackingCommand): TrackingResult = repository.execute(command)
     fun observeSystemSnapshot(): Flow<SystemSnapshot> = repository.observeSystemSnapshot()
-    fun observeSnapshot(historyLimit: Int = 100, projectLimit: Int = 100): Flow<AppSnapshot> =
-        repository.observeSnapshot(historyLimit, projectLimit)
+    fun observeSnapshot(
+        historyLimit: Int = 100,
+        projectLimit: Int = 100,
+        pinnedProjectId: String = ProjectRepository.DEFAULT_PROJECT_ID.value,
+    ): Flow<AppSnapshot> = repository.observeSnapshot(historyLimit, projectLimit, pinnedProjectId)
 }

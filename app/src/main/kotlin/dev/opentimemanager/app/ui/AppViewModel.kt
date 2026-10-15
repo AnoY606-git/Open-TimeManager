@@ -137,10 +137,20 @@ class AppViewModel(
     private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
     private val snapshots = controls
-        .map { current -> current.historyLimit to current.projectLimit }
+        .map { current ->
+            SnapshotRequest(
+                current.historyLimit,
+                current.projectLimit,
+                current.selectedProjectId ?: dev.opentimemanager.app.data.ProjectRepository.DEFAULT_PROJECT_ID.value,
+            )
+        }
         .distinctUntilChanged()
-        .flatMapLatest { (historyLimit, projectLimit) ->
-            container.trackingCoordinator.observeSnapshot(historyLimit, projectLimit)
+        .flatMapLatest { request ->
+            container.trackingCoordinator.observeSnapshot(
+                request.historyLimit,
+                request.projectLimit,
+                request.pinnedProjectId,
+            )
         }
     private val localDays = localDayContexts()
         .distinctUntilChanged()
@@ -492,6 +502,12 @@ internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage 
 
 internal data class LocalDayContext(val date: LocalDate, val zoneId: ZoneId)
 
+private data class SnapshotRequest(
+    val historyLimit: Int,
+    val projectLimit: Int,
+    val pinnedProjectId: String,
+)
+
 internal data class TodayRangeProjection(
     val projection: ConfirmedDayProjection,
     val entries: List<EntryEntity>,
@@ -529,6 +545,6 @@ internal const val MAX_HISTORY_LIMIT = 2_000
 internal fun nextHistoryLimit(current: Int): Int =
     (current + INITIAL_HISTORY_LIMIT).coerceAtMost(MAX_HISTORY_LIMIT)
 internal const val INITIAL_PROJECT_LIMIT = 100
-internal const val MAX_PROJECT_LIMIT = 20_000
+internal const val MAX_PROJECT_LIMIT = dev.opentimemanager.app.data.ProjectRepository.MAX_PROJECTS
 internal fun nextProjectLimit(current: Int): Int =
     (current + INITIAL_PROJECT_LIMIT).coerceAtMost(MAX_PROJECT_LIMIT)

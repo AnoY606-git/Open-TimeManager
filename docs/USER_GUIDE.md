@@ -10,7 +10,7 @@
 2. Нажмите «Начать». Можно добавить заметку, поставить учёт на паузу, продолжить или завершить.
 3. Переключение проекта закрывает прежний отрезок и начинает новый без двух одновременных таймеров.
 
-При большом числе активных проектов список загружается порциями; нажмите «Загрузить ещё проекты», чтобы показать следующую порцию.
+При большом числе активных проектов список загружается порциями; нажмите «Загрузить ещё проекты», чтобы показать следующую порцию. Мобильный лимит — 20 000 проектов.
 
 После перезагрузки или потери надёжной опоры времени запись переходит в «Нужна проверка». Оставьте только подтверждённое время или укажите проверенное время окончания.
 
@@ -37,7 +37,7 @@
 2. Tap Start. You can add a note, pause, resume, or stop the session.
 3. Switching projects closes the previous segment and starts a new one without allowing two concurrent timers.
 
-When many active projects exist, the selector loads them in bounded pages; tap Load more projects to show the next page.
+When many active projects exist, the selector loads them in bounded pages; tap Load more projects to show the next page. The mobile limit is 20,000 projects.
 
 After a reboot or an untrustworthy monotonic-time reference, the entry changes to Needs review. Keep only confirmed time or provide an end time you can verify.
 
