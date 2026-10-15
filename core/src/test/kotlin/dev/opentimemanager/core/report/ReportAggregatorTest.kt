@@ -35,6 +35,34 @@ class ReportAggregatorTest {
         assertEquals(93_600_000L, result.totalMillis)
     }
 
+    // Возврат через полночь не должен выбирать прошлое начало суток как новую границу.
+    @Test fun `segment after date rollback belongs entirely to previous local day`() {
+        val result = ReportAggregator.aggregate(
+            listOf(segment(millis("2009-11-01T02:31:00Z"), 60_000)),
+            millis("2009-11-01T02:31:00Z"),
+            millis("2009-11-01T02:32:00Z"),
+            ZoneId.of("America/St_Johns"),
+        )
+        assertEquals(mapOf(LocalDate.parse("2009-10-31") to 60_000L), result.dayTotals)
+        assertEquals(mapOf(project to 60_000L), result.projectTotals)
+        assertEquals(60_000L, result.totalMillis)
+    }
+
+    // Игнорирование offset transition ошибочно отнесёт весь час к 1 ноября.
+    @Test fun `segment crossing date rollback attributes each side to its local day`() {
+        val result = ReportAggregator.aggregate(
+            listOf(segment(millis("2009-11-01T02:30:00Z"), 3_600_000)),
+            millis("2009-11-01T02:30:00Z"),
+            millis("2009-11-01T03:30:00Z"),
+            ZoneId.of("America/St_Johns"),
+        )
+        assertEquals(mapOf(LocalDate.parse("2009-11-01") to 60_000L, LocalDate.parse("2009-10-31") to 3_540_000L), result.dayTotals)
+        assertEquals(60_000L, result.dayProjectTotals[DayProject(LocalDate.parse("2009-11-01"), project)])
+        assertEquals(3_540_000L, result.dayProjectTotals[DayProject(LocalDate.parse("2009-10-31"), project)])
+        assertEquals(mapOf(project to 3_600_000L), result.projectTotals)
+        assertEquals(3_600_000L, result.totalMillis)
+    }
+
     @Test fun `range clips both ends and excludes adjacent segments`() {
         val result = ReportAggregator.aggregate(listOf(segment(100, 900), segment(0, 200, "before"), segment(800, 200, "after")), 200, 800, utc)
         assertEquals(600L, result.totalMillis)

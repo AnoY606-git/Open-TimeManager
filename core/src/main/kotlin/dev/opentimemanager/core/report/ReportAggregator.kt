@@ -39,10 +39,9 @@ object ReportAggregator {
             var cursor = maxOf(segment.startUtcMillis, fromInclusive)
             val end = minOf(segment.endUtcMillis, toExclusive)
             while (cursor < end) {
-                val date = Instant.ofEpochMilli(cursor).atZone(zoneId).toLocalDate()
-                // Длина суток задаётся ZoneId: при DST она может отличаться от 24 часов.
-                val nextDay = date.plusDays(1).atStartOfDay(zoneId).toInstant()
-                val boundary = if (nextDay < Instant.ofEpochMilli(end)) nextDay.toEpochMilli() else end
+                val instant = Instant.ofEpochMilli(cursor)
+                val date = instant.atZone(zoneId).toLocalDate()
+                val boundary = nextDateBoundary(instant, Instant.ofEpochMilli(end), zoneId).toEpochMilli()
                 val duration = Math.subtractExact(boundary, cursor)
                 check(duration > 0) { "Граница суток не продвигает время" }
                 days.add(date, duration)
@@ -52,6 +51,23 @@ object ReportAggregator {
             }
         }
         return ReportTotals(total, days, projects, dayProjects)
+    }
+
+    private fun nextDateBoundary(start: Instant, end: Instant, zoneId: ZoneId): Instant {
+        val date = start.atZone(zoneId).toLocalDate()
+        val rules = zoneId.rules
+        var cursor = start
+        while (true) {
+            // До ближайшего offset transition действует текущий offset. Разрешение
+            // полуночи через ZoneId могло бы выбрать уже прошедшую первую полночь.
+            val midnight = date.plusDays(1).atStartOfDay().toInstant(rules.getOffset(cursor))
+            val transition = rules.nextTransition(cursor)?.instant
+            val candidate = if (transition == null) minOf(midnight, end) else minOf(midnight, transition, end)
+            if (candidate == end || candidate.atZone(zoneId).toLocalDate() != date) return candidate
+            // Переход может сохранить дату или вернуть её назад; проверяем новую
+            // дату на самом instant перехода, а не предполагаем следующий день.
+            cursor = candidate
+        }
     }
 
     private fun <K> MutableMap<K, Long>.add(key: K, duration: Long) {
