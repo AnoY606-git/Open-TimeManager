@@ -138,6 +138,10 @@ class RepositoryPolicyTest(unittest.TestCase):
         workflow = self.root / ".github/workflows/ci.yml"
         workflow.write_text(
             "steps:\n"
+            "  - name: Free disk space for emulator\n"
+            "    run: |\n"
+            "      sudo rm -rf -- /usr/local/lib/android/sdk/ndk\n"
+            "      df -h /\n"
             "  - name: Enable KVM group permissions\n"
             "    run: |\n"
             "      echo 'KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", "
@@ -153,10 +157,30 @@ class RepositoryPolicyTest(unittest.TestCase):
         result = self.run_checker()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_rejects_emulator_runner_without_ndk_cleanup(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            "steps:\n"
+            "  - name: Enable KVM group permissions\n"
+            "    run: |\n"
+            "      echo OPTIONS+=\"static_node=kvm\"\n"
+            "      sudo udevadm trigger --name-match=kvm\n"
+            f"  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n"
+            "    with:\n"
+            "      disk-size: 2G\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("free the unused Android NDK")
+
     def test_rejects_emulator_runner_without_bounded_disk_size(self) -> None:
         workflow = self.root / ".github/workflows/ci.yml"
         workflow.write_text(
             "steps:\n"
+            "  - name: Free disk space for emulator\n"
+            "    run: |\n"
+            "      sudo rm -rf -- /usr/local/lib/android/sdk/ndk\n"
+            "      df -h /\n"
             "  - name: Enable KVM group permissions\n"
             "    run: |\n"
             "      echo OPTIONS+=\"static_node=kvm\"\n"

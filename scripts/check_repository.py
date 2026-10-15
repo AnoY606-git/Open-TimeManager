@@ -296,7 +296,14 @@ def emulator_kvm_errors(text: str, relative: str) -> list[str]:
             continue
         # Keep the permission setup in the same local step sequence. A marker
         # in another job must not make an emulator job appear accelerated.
-        preceding_steps = "\n".join(lines[max(0, index - 12) : index])
+        preceding_steps = "\n".join(lines[max(0, index - 24) : index])
+        if (
+            "sudo rm -rf -- /usr/local/lib/android/sdk/ndk" not in preceding_steps
+            or "df -h /" not in preceding_steps
+        ):
+            errors.append(
+                f"GitHub emulator job must free the unused Android NDK before startup: {relative}"
+            )
         if "static_node=kvm" not in preceding_steps or "udevadm trigger --name-match=kvm" not in preceding_steps:
             errors.append(
                 f"GitHub workflow must enable KVM before android-emulator-runner: {relative}"

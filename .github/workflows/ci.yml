@@ -84,6 +84,11 @@ jobs:
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           packages: ''
+      - name: Free disk space for emulator
+        run: |
+          # Hosted runners include several NDK versions; this project has no native build.
+          sudo rm -rf -- /usr/local/lib/android/sdk/ndk
+          df -h /
       - name: Install compile SDK
         run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - name: Validate Gradle Wrapper
