@@ -10,9 +10,9 @@ The app does not request the `INTERNET` permission. Projects, notes, settings, a
 
 - one durable timer with start, pause, resume, stop, and safe project switching;
 - colored projects, active-entry notes, and project archiving without deleting history;
-- manual entries, search, editing, and confirmed deletion;
-- week, month, and custom reports, per-project totals, and UTF-8 CSV export;
-- encrypted `.otmbackup` files with verified preview, Merge, and Replace modes;
+- manual entries, search, editing, confirmed deletion, and bounded loading of older history;
+- week, month, and custom reports up to 10 years, per-project totals, and UTF-8 CSV export;
+- encrypted `.otmbackup` files with project metadata and preferences, retryable verified preview, Merge, and Replace modes;
 - foreground-service notification, Quick Settings tile, and widget with stale-action protection;
 - complete Russian and English UI, system/light/dark themes, and dynamic color;
 - adaptive navigation for phones, landscape, split-screen, and wide windows;
@@ -55,9 +55,9 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
 
 ## Data and security
 
-Backup files use the `OTMB1` container: PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated header. The Android app enforces a **4 MiB** operational limit and at most 20,000 projects, entries, and segments. The underlying format and core codec have hard ceilings of 50 MiB and 200,000 elements. Those larger ceilings define the format; they are not the limits accepted by the Android UI.
+Backup files use the compatible `OTMB1` container: PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated header. The current payload schema v2 preserves project colors and timestamps plus theme, dynamic color, privacy mode, and the daily goal; v1 remains readable with safe defaults. Language continues to follow the system locale and is not transferred. The Android app enforces a **4 MiB** operational limit and at most 20,000 projects, entries, and segments. The underlying format and core codec have hard ceilings of 50 MiB and 200,000 elements. Those larger ceilings define the format; they are not the limits accepted by the Android UI.
 
-A forgotten backup password cannot be recovered. A wrong password and damaged ciphertext deliberately produce the same outcome. A successful Replace permanently removes current local projects and history before importing within one database transaction—create and verify a separate backup first. The transaction rolls back on failure, but cannot undo a successfully confirmed replacement. Restore is blocked while a timer is running, paused, or awaiting review.
+A forgotten backup password cannot be recovered. A wrong password and damaged ciphertext deliberately produce the same outcome. A successful Replace permanently removes current local projects and history before importing within one database transaction—create and verify a separate backup first. The Room transaction rolls back on failure or cancellation, but cannot undo a successfully confirmed replacement. DataStore preferences converge after the Room commit through a durable journal; the app does not claim one atomic transaction across both stores. Restore is blocked while a timer is running, paused, or awaiting review.
 
 See the [user guide](docs/USER_GUIDE.md), [security model](docs/SECURITY.md), and [backup/CSV format](docs/BACKUP_FORMAT.md).
 

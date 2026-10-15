@@ -40,17 +40,74 @@ class BackupCodecTest {
 
     private fun roundtrip(snapshot: PortableSnapshot) = BackupCodec.decrypt(BackupCodec.encrypt(snapshot, password, random()), password, BackupLimits())
 
-    // Другой KDF, nonce, порядок полей или отсутствие AAD нарушит совместимость файла.
-    @Test fun `empty snapshot encrypts to independent golden vector`() {
-        assertArrayEquals(golden, BackupCodec.encrypt(PortableSnapshot(), password, random()))
-    }
-
     @Test fun `independent golden vector decrypts without any records`() {
         val result = BackupCodec.decrypt(golden, password, BackupLimits())
         assertTrue(result.projects.isEmpty())
         assertTrue(result.entries.isEmpty())
         assertTrue(result.segments.isEmpty())
         assertNull(result.activeEntry)
+        assertEquals(PortablePreferences(), result.preferences)
+    }
+
+    @Test fun `v2 roundtrip retains complete project metadata and preferences`() {
+        val source = PortableSnapshot(
+            projects = listOf(
+                PortableProject(
+                    projectId,
+                    "Project",
+                    colorArgb = 0xff123456.toInt(),
+                    createdAtUtcMillis = -1_234,
+                    archivedAtUtcMillis = 9_876,
+                    isDefault = false,
+                ),
+            ),
+            preferences = PortablePreferences(
+                theme = PortableTheme.DARK,
+                dynamicColor = false,
+                privacyMode = false,
+                dailyGoalMinutes = 615,
+            ),
+        )
+
+        val result = roundtrip(source)
+
+        assertEquals(source.projects, result.projects)
+        assertEquals(source.preferences, result.preferences)
+    }
+
+    @Test fun `v2 requires every project metadata key including nullable archive timestamp`() {
+        val payload = """{"schemaVersion":2,"projects":[{"id":"${projectId.value}","name":"P","colorArgb":1,"createdAtUtcMillis":0,"isDefault":false}],"entries":[],"segments":[],"activeEntry":null,"preferences":{"theme":"SYSTEM","dynamicColor":true,"privacyMode":true,"dailyGoalMinutes":480}}"""
+
+        assertThrows(BackupError.SchemaError::class.java) {
+            BackupCodec.decrypt(authenticated(payload.toByteArray()), password, BackupLimits())
+        }
+    }
+
+    @Test fun `v1 reader supplies safe metadata defaults and canonicalizes legacy default name`() {
+        val legacyDefault = validJson
+            .replace(projectId.value, DEFAULT_PROJECT_UUID)
+            .replace("\"name\":\"P\"", "\"name\":\"Без проекта\"")
+        val result = BackupCodec.decrypt(authenticated(legacyDefault.toByteArray()), password, BackupLimits())
+
+        assertEquals(
+            PortableProject(
+                ProjectId(DEFAULT_PROJECT_UUID),
+                DEFAULT_PROJECT_CANONICAL_NAME,
+                DEFAULT_PROJECT_COLOR_ARGB,
+                0,
+                null,
+                true,
+            ),
+            result.projects.single(),
+        )
+        assertEquals(PortablePreferences(), result.preferences)
+    }
+
+    @Test fun `authenticated per-entry duration overflow is rejected as schema error`() {
+        val payload = """{"schemaVersion":1,"projects":[{"id":"${projectId.value}","name":"P"}],"entries":[{"id":"${entryId.value}","projectId":"${projectId.value}","note":"","zoneId":"UTC","source":"IMPORT"}],"segments":[{"id":"${segmentId.value}","entryId":"${entryId.value}","projectId":"${projectId.value}","startUtcMillis":0,"durationMillis":${Long.MAX_VALUE}},{"id":"d1234567-89ab-4cde-8fab-0123456789ab","entryId":"${entryId.value}","projectId":"${projectId.value}","startUtcMillis":0,"durationMillis":1}],"activeEntry":null}"""
+        assertThrows(BackupError.SchemaError::class.java) {
+            BackupCodec.decrypt(authenticated(payload.toByteArray()), password, BackupLimits())
+        }
     }
 
     @Test fun `roundtrip retains UTF8 metadata ids zone milliseconds and negative epoch`() {

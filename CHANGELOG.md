@@ -7,9 +7,9 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 ### Added
 
 - Local timer with start, pause, resume, stop, project switch, active note, and reboot review state.
-- Project creation/archive, manual entries, editing, deletion, history search, and daily goal.
-- Week, month, and custom reports with project totals and UTF-8 CSV export.
-- Encrypted `OTMB1` backup, verified preview, Merge/Replace restore, UUID conflict detection, and 4 MiB mobile policy.
+- Project creation/archive, manual entries, editing, deletion, bounded history loading, and daily goal.
+- Week, month, and custom reports up to 10 years with project totals and UTF-8 CSV export.
+- Encrypted `OTMB1` backup schema v2 with complete project metadata and portable preferences, v1 compatibility, retryable verified preview, transactional Merge/Replace restore, UUID conflict detection, and 4 MiB mobile policy.
 - Foreground notification, Quick Settings tile, and widget with privacy projection and stale-command checks.
 - Adaptive Material 3 UI, dynamic color, light/dark/system themes, English/Russian localization, compact/rail/two-pane layouts.
 - Offline license and third-party notices in Settings.
@@ -20,6 +20,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - No `INTERNET`, location, analytics, advertising, broad-storage, or account capability.
 - Android automatic backup and device-transfer extraction are disabled.
 - Portable backups use PBKDF2-HMAC-SHA256 and AES-256-GCM; CSV remains plaintext by design.
+- Cancellation during restore rolls back every Room table; a durable convergence journal applies portable settings after the database commit without claiming cross-store atomicity.
 
 ### Known limitations
 

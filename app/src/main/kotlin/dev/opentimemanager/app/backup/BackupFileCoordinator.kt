@@ -5,13 +5,20 @@ import androidx.room.withTransaction
 import dev.opentimemanager.app.data.AppDatabase
 import dev.opentimemanager.app.dataexport.DocumentStore
 import dev.opentimemanager.app.dataexport.cancellableIo
+import dev.opentimemanager.app.data.ProjectRepository
+import dev.opentimemanager.app.settings.ThemeMode
+import dev.opentimemanager.app.settings.UserPreferences
+import dev.opentimemanager.app.settings.UserSettings
+import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.BackupCodec
 import dev.opentimemanager.core.backup.BackupError
 import dev.opentimemanager.core.backup.BackupLimits
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
+import dev.opentimemanager.core.backup.PortablePreferences
 import dev.opentimemanager.core.backup.PortableSnapshot
+import dev.opentimemanager.core.backup.PortableTheme
 import dev.opentimemanager.core.model.EntryId
 import dev.opentimemanager.core.model.EntrySource
 import dev.opentimemanager.core.model.ProjectId
@@ -81,12 +88,14 @@ class BackupFileCoordinator(
     private val operationalLimits: BackupOperationalLimits = MobileBackupPolicy.operationalLimits,
     private val random: SecureRandom = SecureRandom(),
     private val clock: Clock = Clock.systemUTC(),
+    private val settings: UserSettings? = null,
 ) {
     suspend fun prepareBackup(password: CharArray): PreparedBackup {
         var prepared: PreparedBackup? = null
         try {
             return withContext(dispatcher) {
-                val snapshot = database.withTransaction { portableSnapshot() }
+                val preferences = settings?.current()?.toPortable() ?: PortablePreferences()
+                val snapshot = database.withTransaction { portableSnapshot(preferences) }
                 val encrypted = BackupCodec.encrypt(snapshot, password, random, limits)
                 PreparedBackup(
                     fileName = "open-timemanager-${BACKUP_DATE.format(clock.instant().atZone(ZoneOffset.UTC))}.otmbackup",
@@ -199,7 +208,7 @@ class BackupFileCoordinator(
     suspend fun discardCreatedDocument(uri: Uri?): BackupWriteResult =
         if (uri == null) BackupWriteResult.Cancelled else failedWrite(null, uri, newlyCreated = true)
 
-    private fun portableSnapshot(): PortableSnapshot {
+    private fun portableSnapshot(preferences: PortablePreferences): PortableSnapshot {
         val dao = database.trackingDao()
         val userTextBytes = try {
             Math.addExact(dao.projectTextBytes(), dao.entryTextBytes())
@@ -212,7 +221,17 @@ class BackupFileCoordinator(
             segments = dao.closedSegmentCount(),
             userTextBytes = userTextBytes,
         )
-        val projects = dao.projects().map { PortableProject(ProjectId(it.id), it.name) }
+        val projects = dao.projects().map {
+            val isDefault = it.id == ProjectRepository.DEFAULT_PROJECT_ID.value
+            PortableProject(
+                id = ProjectId(it.id),
+                name = if (isDefault) DEFAULT_PROJECT_CANONICAL_NAME else it.name,
+                colorArgb = it.colorArgb,
+                createdAtUtcMillis = it.createdAtUtcMillis,
+                archivedAtUtcMillis = if (isDefault) null else it.archivedAtUtcMillis,
+                isDefault = isDefault,
+            )
+        }
         val entries = dao.entries().map {
             PortableEntry(
                 id = EntryId(it.id),
@@ -237,7 +256,7 @@ class BackupFileCoordinator(
             val entry = requireNotNull(dao.entry(requireNotNull(it.entryId)))
             PortableActiveEntry(EntryId(entry.id), ProjectId(entry.projectId), TrackingState.valueOf(it.state))
         }
-        return PortableSnapshot(projects, entries, segments, active)
+        return PortableSnapshot(projects, entries, segments, active, preferences)
     }
 
     private suspend fun failedWrite(
@@ -269,6 +288,17 @@ class BackupFileCoordinator(
         private val BACKUP_DATE = DateTimeFormatter.ISO_LOCAL_DATE
     }
 }
+
+private fun UserPreferences.toPortable() = PortablePreferences(
+    theme = when (theme) {
+        ThemeMode.SYSTEM -> PortableTheme.SYSTEM
+        ThemeMode.LIGHT -> PortableTheme.LIGHT
+        ThemeMode.DARK -> PortableTheme.DARK
+    },
+    dynamicColor = dynamicColor,
+    privacyMode = privacyMode,
+    dailyGoalMinutes = dailyGoalMinutes,
+)
 
 data class BackupOperationalLimits(
     val maxProjects: Long = MobileBackupPolicy.MAX_PROJECTS,

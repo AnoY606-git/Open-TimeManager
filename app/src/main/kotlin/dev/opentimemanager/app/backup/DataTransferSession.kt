@@ -65,10 +65,11 @@ class DataTransferSession(
 
     fun currentPreview(): BackupPreview? = synchronized(lock) { preview }
 
-    fun consumePreview(expected: BackupPreview) {
+    fun onRestoreResult(expected: BackupPreview, result: RestoreResult) {
         synchronized(lock) {
+            if (result is RestoreResult.Applied && preview == null) return
             check(preview === expected) { "Backup preview is no longer current" }
-            preview = null
+            if (result is RestoreResult.Applied) preview = null
         }
     }
 

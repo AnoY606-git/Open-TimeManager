@@ -102,7 +102,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     var goal by remember(preferences.dailyGoalMinutes) { mutableStateOf(preferences.dailyGoalMinutes.toString()) }
     val busy = state.controls.dataTransferBusy
-    var status by remember { mutableStateOf<TransferUiStatus?>(null) }
+    var status by remember(state.controls.lastRestoreResult) {
+        mutableStateOf(state.controls.lastRestoreResult?.status())
+    }
     var showBackupPassword by remember { mutableStateOf(false) }
     val restoreUri = state.controls.pendingRestoreUri?.let(Uri::parse)
     var preview by remember { mutableStateOf(backupActions?.currentPreview?.invoke()) }
@@ -112,7 +114,6 @@ fun SettingsScreen(
     fun restore(mode: RestoreMode) {
         val selected = preview ?: return
         val actions = backupActions ?: return
-        preview = null
         confirmReplace = false
         scope.launch {
             try {
@@ -120,11 +121,10 @@ fun SettingsScreen(
                     is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
                     is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
                     is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
-                }
+                }.also { if (it == TransferUiStatus.BACKUP_RESTORED) preview = null }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                selected.discard()
                 status = TransferUiStatus.IO_ERROR
             }
         }
@@ -505,6 +505,12 @@ private fun BackupReadFailure.status(): TransferUiStatus = when (this) {
     BackupReadFailure.LIMIT -> TransferUiStatus.LIMIT_EXCEEDED
     BackupReadFailure.UNSUPPORTED_VERSION -> TransferUiStatus.UNSUPPORTED_VERSION
     BackupReadFailure.IO -> TransferUiStatus.IO_ERROR
+}
+
+private fun RestoreResult.status(): TransferUiStatus = when (this) {
+    is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
+    is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
+    is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
 }
 
 internal fun backupCreateFailureStatus(error: Throwable): TransferUiStatus = when (error) {

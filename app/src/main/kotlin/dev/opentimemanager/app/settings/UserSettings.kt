@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.ConcurrentHashMap
 
@@ -68,6 +69,27 @@ class UserSettings(
     suspend fun setDailyGoalMinutes(value: Int) {
         require(value in MIN_GOAL..MAX_GOAL)
         store.edit { it[DAILY_GOAL] = value }
+    }
+
+    suspend fun current(): UserPreferences = values.first()
+
+    /**
+     * Replaces the DataStore record in one edit, then mirrors privacy for system
+     * surfaces. A Room journal provides retryable convergence; the two stores
+     * are intentionally not described as atomically committed together.
+     */
+    suspend fun replace(value: UserPreferences) {
+        require(value.dailyGoalMinutes in MIN_GOAL..MAX_GOAL)
+        store.edit { preferences ->
+            preferences[THEME] = value.theme.name
+            preferences[DYNAMIC_COLOR] = value.dynamicColor
+            preferences[PRIVACY] = value.privacyMode
+            preferences[DAILY_GOAL] = value.dailyGoalMinutes
+        }
+        check(
+            appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
+                .edit().putBoolean(PRIVACY_KEY, value.privacyMode).commit(),
+        ) { "Unable to mirror privacy preference" }
     }
 
     companion object {

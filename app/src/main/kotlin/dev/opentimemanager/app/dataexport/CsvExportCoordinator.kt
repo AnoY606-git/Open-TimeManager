@@ -64,6 +64,7 @@ class CsvExportCoordinator(
     private val documents: DocumentStore,
     private val dispatcher: CoroutineDispatcher,
     private val zoneId: ZoneId,
+    private val projectDisplayName: (projectId: String, storedName: String) -> String = { _, storedName -> storedName },
 ) {
     suspend fun exportCsv(
         range: UtcBounds,
@@ -107,7 +108,7 @@ class CsvExportCoordinator(
                                                 startUtcMillis = cursor.getLong(4),
                                                 durationMillis = cursor.getLong(5),
                                             ),
-                                            projectName = cursor.getString(3),
+                                            projectName = projectDisplayName(cursor.getString(2), cursor.getString(3)),
                                             note = cursor.getString(6),
                                             zoneId = ZoneId.of(cursor.getString(7)),
                                             source = EntrySource.valueOf(cursor.getString(8)),

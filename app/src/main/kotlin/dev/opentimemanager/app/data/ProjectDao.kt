@@ -1,6 +1,8 @@
 package dev.opentimemanager.app.data
 
 import androidx.room.*
+import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
+import dev.opentimemanager.core.backup.DEFAULT_PROJECT_UUID
 import dev.opentimemanager.core.model.ProjectId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -20,8 +22,8 @@ abstract class ProjectDao {
 
 class ProjectRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
     companion object {
-        val DEFAULT_PROJECT_ID = ProjectId("00000000-0000-4000-8000-000000000001")
-        const val DEFAULT_PROJECT_STORAGE_NAME = "@default"
+        val DEFAULT_PROJECT_ID = ProjectId(DEFAULT_PROJECT_UUID)
+        const val DEFAULT_PROJECT_STORAGE_NAME = DEFAULT_PROJECT_CANONICAL_NAME
     }
     suspend fun create(id: ProjectId, name: String, colorArgb: Int, nowUtcMillis: Long): ProjectEditResult = withContext(dispatcher) {
         val normalized = normalizedName(name) ?: return@withContext ProjectEditResult.INVALID_NAME

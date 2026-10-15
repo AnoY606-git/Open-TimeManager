@@ -2,6 +2,7 @@ package dev.opentimemanager.app.di
 
 import android.content.Context
 import androidx.room.Room
+import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.*
 import dev.opentimemanager.app.backup.BackupFileCoordinator
 import dev.opentimemanager.app.backup.RestoreRepository
@@ -23,17 +24,25 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val completedEntries = CompletedEntryRepository(database, dispatcher)
     val activeNotes = ActiveEntryNoteRepository(database, dispatcher)
     val settings = UserSettings(context)
-    val restore = RestoreRepository(database, dispatcher)
+    val restore = RestoreRepository(database, dispatcher, settings = settings)
     val csvExport = CsvExportCoordinator(
         database,
         ResolverDocumentStore(context),
         dispatcher,
         ZoneId.systemDefault(),
+        projectDisplayName = { id, storedName ->
+            if (id == ProjectRepository.DEFAULT_PROJECT_ID.value) {
+                context.applicationContext.getString(R.string.default_project_name)
+            } else {
+                storedName
+            }
+        },
     )
     val backupFiles = BackupFileCoordinator(
         database,
         ResolverDocumentStore(context),
         restore,
         dispatcher,
+        settings = settings,
     )
 }

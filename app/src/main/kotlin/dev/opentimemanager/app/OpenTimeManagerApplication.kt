@@ -16,6 +16,7 @@ class OpenTimeManagerApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         applicationScope.launch {
+            containSystemSurfaceFailure { container.restore.reconcilePendingPreferences() }
             containSystemSurfaceFailure {
                 val surfaces = SystemSurfaceUpdater(this@OpenTimeManagerApplication)
                 container.trackingCoordinator.observeSystemSnapshot().collect { snapshot ->

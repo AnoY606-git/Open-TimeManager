@@ -13,6 +13,10 @@ import dev.opentimemanager.app.data.SegmentEntity
 import dev.opentimemanager.app.dataexport.CsvExportCoordinator
 import dev.opentimemanager.app.dataexport.CsvExportResult
 import dev.opentimemanager.app.dataexport.DocumentStore
+import dev.opentimemanager.app.data.ProjectEntity
+import dev.opentimemanager.app.settings.ThemeMode
+import dev.opentimemanager.app.settings.UserPreferences
+import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.ui.UtcBounds
 import dev.opentimemanager.core.backup.BackupCodec
 import dev.opentimemanager.core.backup.BackupLimits
@@ -31,6 +35,12 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.SecureRandom
+import java.nio.ByteBuffer
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 import java.time.ZoneId
 import java.math.BigDecimal
 import java.util.concurrent.CountDownLatch
@@ -113,6 +123,27 @@ class BackupFileCoordinatorTest {
         assertTrue(csv.contains(",90.5,\"Client, phase 1\",MANUAL\r\n"))
         assertEquals("open-timemanager-1970-01-01_1970-01-01.csv", coordinator.fileName(UtcBounds(0, 100_000)))
         assertEquals("text/csv", CsvExportCoordinator.MIME_TYPE)
+    }
+
+    @Test
+    fun csvUsesCurrentLocaleDisplayNameForCanonicalDefaultProject() = runBlocking {
+        val english = CsvExportCoordinator(
+            database,
+            documents,
+            Dispatchers.IO,
+            ZoneId.of("UTC"),
+        ) { id, stored -> if (id == ProjectRepository.DEFAULT_PROJECT_ID.value) "No project" else stored }
+        assertEquals(CsvExportResult.Success, english.exportCsv(UtcBounds(0, 100_000), csvUri, true))
+        assertTrue(documents.bytes.getValue(csvUri).toString(Charsets.UTF_8).contains(",No project,"))
+
+        val russian = CsvExportCoordinator(
+            database,
+            documents,
+            Dispatchers.IO,
+            ZoneId.of("UTC"),
+        ) { id, stored -> if (id == ProjectRepository.DEFAULT_PROJECT_ID.value) "Без проекта" else stored }
+        assertEquals(CsvExportResult.Success, russian.exportCsv(UtcBounds(0, 100_000), csvUri, true))
+        assertTrue(documents.bytes.getValue(csvUri).toString(Charsets.UTF_8).contains(",Без проекта,"))
     }
 
     @Test
@@ -204,6 +235,40 @@ class BackupFileCoordinatorTest {
     }
 
     @Test
+    fun v2FileRoundTripRestoresCompleteProjectMetadataAndSettings() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val settings = UserSettings(context, "backup-v2-${System.nanoTime()}")
+        val expectedPreferences = UserPreferences(ThemeMode.DARK, false, false, 615)
+        settings.replace(expectedPreferences)
+        val custom = ProjectEntity(
+            "15000000-0000-4000-8000-000000000001",
+            "Archived",
+            0xff123456.toInt(),
+            -123,
+            9_999,
+        )
+        database.projectDao().insert(custom)
+        val restore = RestoreRepository(database, Dispatchers.IO, settings = settings)
+        val backup = BackupFileCoordinator(
+            database,
+            documents,
+            restore,
+            Dispatchers.IO,
+            settings = settings,
+        )
+        val prepared = backup.prepareBackup("secret".toCharArray())
+        assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
+        database.projectDao().deleteEmpty(custom.id)
+        settings.replace(UserPreferences())
+
+        val inspection = backup.inspectBackup(backupUri, "secret".toCharArray()) as BackupInspection.Ready
+        assertTrue(restore.restore(inspection.preview, RestoreMode.REPLACE) is RestoreResult.Applied)
+
+        assertEquals(custom, database.trackingDao().project(custom.id))
+        assertEquals(expectedPreferences, settings.current())
+    }
+
+    @Test
     fun wrongPasswordAndTamperAreIndistinguishable() = runBlocking {
         val coordinator = coordinator()
         val prepared = coordinator.prepareBackup("secret".toCharArray())
@@ -218,6 +283,22 @@ class BackupFileCoordinatorTest {
 
         assertEquals(BackupInspection.Failed(BackupReadFailure.INTEGRITY), wrong)
         assertEquals(BackupInspection.Failed(BackupReadFailure.INTEGRITY), changed)
+    }
+
+    @Test
+    fun authenticatedDurationOverflowMapsToInvalidFormatAndLeavesDatabaseUnchanged() = runBlocking {
+        val project = ProjectRepository.DEFAULT_PROJECT_ID.value
+        val entry = "16000000-0000-4000-8000-000000000001"
+        val payload = """{"schemaVersion":1,"projects":[{"id":"$project","name":"Без проекта"}],"entries":[{"id":"$entry","projectId":"$project","note":"","zoneId":"UTC","source":"IMPORT"}],"segments":[{"id":"17000000-0000-4000-8000-000000000001","entryId":"$entry","projectId":"$project","startUtcMillis":0,"durationMillis":${Long.MAX_VALUE}},{"id":"17000000-0000-4000-8000-000000000002","entryId":"$entry","projectId":"$project","startUtcMillis":0,"durationMillis":1}],"activeEntry":null}"""
+        documents.bytes[backupUri] = authenticated(payload.toByteArray(), "secret".toCharArray())
+        val beforeProjects = database.trackingDao().projects()
+        val beforeEntries = database.trackingDao().entries()
+
+        val result = coordinator().inspectBackup(backupUri, "secret".toCharArray())
+
+        assertEquals(BackupInspection.Failed(BackupReadFailure.INVALID_FORMAT), result)
+        assertEquals(beforeProjects, database.trackingDao().projects())
+        assertEquals(beforeEntries, database.trackingDao().entries())
     }
 
     @Test
@@ -609,6 +690,30 @@ class BackupFileCoordinatorTest {
                 )
             },
         )
+    }
+
+    private fun authenticated(payload: ByteArray, password: CharArray): ByteArray {
+        val salt = ByteArray(16) { it.toByte() }
+        val nonce = ByteArray(12) { (it + 16).toByte() }
+        val header = ByteBuffer.allocate(42)
+            .put("OTMB1".toByteArray())
+            .put(1)
+            .putInt(310_000)
+            .put(salt)
+            .put(nonce)
+            .putInt(payload.size)
+            .array()
+        val spec = PBEKeySpec(password, salt, 310_000, 256)
+        val key = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        spec.clearPassword()
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+            cipher.updateAAD(header)
+            header + cipher.doFinal(payload)
+        } finally {
+            key.fill(0)
+        }
     }
 
     private fun insertCompleted(

@@ -24,6 +24,7 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
 object BackupCodec {
@@ -149,11 +150,23 @@ object BackupCodec {
 
     private fun encode(snapshot: PortableSnapshot, maxBytes: Int): ByteArray {
         val payload = SnapshotJson(
-            1,
-            snapshot.projects.map { ProjectJson(it.id.value, it.name) },
+            2,
+            snapshot.projects.map {
+                ProjectJson(
+                    it.id.value,
+                    it.name,
+                    it.colorArgb,
+                    it.createdAtUtcMillis,
+                    it.archivedAtUtcMillis,
+                    it.isDefault,
+                )
+            },
             snapshot.entries.map { EntryJson(it.id.value, it.projectId.value, it.note, it.zoneId.id, it.source.name) },
             snapshot.segments.map { SegmentJson(it.id.value, it.entryId.value, it.projectId.value, it.startUtcMillis, it.durationMillis) },
             snapshot.activeEntry?.let { ActiveJson(it.entryId.value, it.projectId.value, it.state.name) },
+            snapshot.preferences.let {
+                PreferencesJson(it.theme.name, it.dynamicColor, it.privacyMode, it.dailyGoalMinutes)
+            },
         )
         val text = json.encodeToString(SnapshotJson.serializer(), payload)
         if (utf8Size(text) > maxBytes) throw BackupError.LimitError()
@@ -163,9 +176,31 @@ object BackupCodec {
     private fun decode(plain: ByteArray, limits: BackupLimits): PortableSnapshot = schemaBoundary {
         val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plain)).toString()
         val payload = json.decodeFromString(SnapshotJson.serializer(), text)
-        if (payload.schemaVersion != 1) throw BackupError.SchemaError()
+        if (payload.schemaVersion !in 1..2) throw BackupError.SchemaError()
         if (payload.segments.size > limits.maxSegments) throw BackupError.LimitError()
-        val projects = payload.projects.map { PortableProject(ProjectId(it.id), it.name) }
+        if (payload.schemaVersion == 1 &&
+            (payload.preferences != null || payload.projects.any { it.hasV2Metadata() })) {
+            throw BackupError.SchemaError()
+        }
+        if (payload.schemaVersion == 2 &&
+            (payload.preferences == null || payload.projects.any { !it.hasRequiredV2Metadata() })) {
+            throw BackupError.SchemaError()
+        }
+        val projects = payload.projects.map {
+            val isDefault = if (payload.schemaVersion == 1) {
+                it.id.equals(DEFAULT_PROJECT_UUID, ignoreCase = true)
+            } else {
+                requireNotNull(it.isDefault)
+            }
+            PortableProject(
+                id = ProjectId(it.id),
+                name = if (isDefault) DEFAULT_PROJECT_CANONICAL_NAME else it.name,
+                colorArgb = it.colorArgb ?: DEFAULT_PROJECT_COLOR_ARGB,
+                createdAtUtcMillis = it.createdAtUtcMillis ?: 0,
+                archivedAtUtcMillis = it.archivedAtUtcMillis,
+                isDefault = isDefault,
+            )
+        }
         val entries = payload.entries.map { PortableEntry(EntryId(it.id), ProjectId(it.projectId), it.note, ZoneId.of(it.zoneId), EntrySource.valueOf(it.source)) }
         val segments = payload.segments.map {
             Segment(SegmentId(it.id), EntryId(it.entryId), ProjectId(it.projectId), it.startUtcMillis, it.durationMillis)
@@ -174,7 +209,15 @@ object BackupCodec {
             val state = TrackingState.valueOf(it.state)
             PortableActiveEntry(EntryId(it.entryId), ProjectId(it.projectId), if (state == TrackingState.RUNNING) TrackingState.NEEDS_REVIEW else state)
         }
-        PortableSnapshot(projects, entries, segments, active).also(::validate)
+        val preferences = payload.preferences?.let {
+            PortablePreferences(
+                theme = PortableTheme.valueOf(it.theme),
+                dynamicColor = it.dynamicColor,
+                privacyMode = it.privacyMode,
+                dailyGoalMinutes = it.dailyGoalMinutes,
+            )
+        } ?: PortablePreferences()
+        PortableSnapshot(projects, entries, segments, active, preferences).also(::validate)
     }
 
     private fun checkCounts(snapshot: PortableSnapshot, limits: BackupLimits) {
@@ -197,6 +240,21 @@ object BackupCodec {
             snapshot.segments.any { entries[it.entryId]?.projectId != it.projectId }) throw BackupError.SchemaError()
         snapshot.activeEntry?.let {
             if (it.state == TrackingState.IDLE || entries[it.entryId]?.projectId != it.projectId) throw BackupError.SchemaError()
+        }
+        snapshot.projects.forEach {
+            val reserved = it.id.value.equals(DEFAULT_PROJECT_UUID, ignoreCase = true)
+            if (it.isDefault != reserved || (reserved && it.name != DEFAULT_PROJECT_CANONICAL_NAME)) {
+                throw BackupError.SchemaError()
+            }
+        }
+        if (snapshot.preferences.dailyGoalMinutes !in 15..1_440) throw BackupError.SchemaError()
+        val durationByEntry = mutableMapOf<EntryId, Long>()
+        snapshot.segments.forEach { segment ->
+            durationByEntry[segment.entryId] = try {
+                Math.addExact(durationByEntry[segment.entryId] ?: 0L, segment.durationMillis)
+            } catch (_: ArithmeticException) {
+                throw BackupError.SchemaError()
+            }
         }
     }
 
@@ -247,10 +305,77 @@ private data class SnapshotJson(
     @SerialName("entries") @Serializable(with = EntryListSerializer::class) val entries: List<EntryJson>,
     @SerialName("segments") @Serializable(with = SegmentListSerializer::class) val segments: List<SegmentJson>,
     @SerialName("activeEntry") val activeEntry: ActiveJson?,
+    @SerialName("preferences") val preferences: PreferencesJson? = null,
 )
 
+@Serializable(with = ProjectJsonSerializer::class)
+private data class ProjectJson(
+    @SerialName("id") val id: String,
+    @SerialName("name") val name: String,
+    @SerialName("colorArgb") val colorArgb: Int? = null,
+    @SerialName("createdAtUtcMillis") val createdAtUtcMillis: Long? = null,
+    @SerialName("archivedAtUtcMillis") val archivedAtUtcMillis: Long? = null,
+    @SerialName("isDefault") val isDefault: Boolean? = null,
+    val presentFields: Set<String> = emptySet(),
+) {
+    fun hasV2Metadata(): Boolean = presentFields.any(V2_PROJECT_KEYS::contains)
+    fun hasRequiredV2Metadata(): Boolean = presentFields.containsAll(V2_PROJECT_KEYS)
+}
+
+private val V2_PROJECT_KEYS = setOf("colorArgb", "createdAtUtcMillis", "archivedAtUtcMillis", "isDefault")
+
 @Serializable
-private data class ProjectJson(@SerialName("id") val id: String, @SerialName("name") val name: String)
+private data class ProjectJsonFields(
+    @SerialName("id") val id: String,
+    @SerialName("name") val name: String,
+    @SerialName("colorArgb") val colorArgb: Int? = null,
+    @SerialName("createdAtUtcMillis") val createdAtUtcMillis: Long? = null,
+    @SerialName("archivedAtUtcMillis") val archivedAtUtcMillis: Long? = null,
+    @SerialName("isDefault") val isDefault: Boolean? = null,
+)
+
+private object ProjectJsonSerializer : KSerializer<ProjectJson> {
+    private val delegate = ProjectJsonFields.serializer()
+    override val descriptor = delegate.descriptor
+
+    override fun serialize(encoder: Encoder, value: ProjectJson) {
+        encoder.encodeSerializableValue(
+            delegate,
+            ProjectJsonFields(
+                value.id,
+                value.name,
+                value.colorArgb,
+                value.createdAtUtcMillis,
+                value.archivedAtUtcMillis,
+                value.isDefault,
+            ),
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): ProjectJson {
+        val jsonDecoder = decoder as? JsonDecoder ?: throw BackupError.SchemaError()
+        val element = jsonDecoder.decodeJsonElement()
+        val fields = jsonDecoder.json.decodeFromJsonElement(delegate, element)
+        val keys = element.jsonObject.keys
+        return ProjectJson(
+            fields.id,
+            fields.name,
+            fields.colorArgb,
+            fields.createdAtUtcMillis,
+            fields.archivedAtUtcMillis,
+            fields.isDefault,
+            keys,
+        )
+    }
+}
+
+@Serializable
+private data class PreferencesJson(
+    @SerialName("theme") val theme: String,
+    @SerialName("dynamicColor") val dynamicColor: Boolean,
+    @SerialName("privacyMode") val privacyMode: Boolean,
+    @SerialName("dailyGoalMinutes") val dailyGoalMinutes: Int,
+)
 
 @Serializable
 private data class EntryJson(

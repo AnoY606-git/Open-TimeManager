@@ -102,7 +102,7 @@
     <string name="backup_conflict_segment">Segment</string>
     <string name="backup_preview_skipped">Entries without confirmed time to omit: %1$d</string>
     <string name="backup_preview_active_stopped">The backup contains an active session. It will be restored only as stopped, confirmed history.</string>
-    <string name="backup_preview_modes">Merge keeps local records and is available only without conflicts. Replace deletes local projects and history in one transaction, then imports this verified backup. Newly imported projects receive stable colors and are active.</string>
+    <string name="backup_preview_modes">Merge keeps local records and is available only without conflicts. Replace imports this verified backup in one database transaction and restores its project metadata and settings. If blocked or cancelled, this preview remains available to retry.</string>
     <string name="restore_merge">Merge</string>
     <string name="restore_replace">Replace</string>
     <string name="replace_backup_title">Replace all local history?</string>

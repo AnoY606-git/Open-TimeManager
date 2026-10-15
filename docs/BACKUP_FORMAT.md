@@ -1,9 +1,9 @@
-# Формат переносимых данных Open TimeManager, версия 1
+# Формат переносимых данных Open TimeManager
 
 Файл `.otmbackup` (`application/octet-stream`) содержит зашифрованный UTF-8 JSON
 snapshot. Формат не является копией Room. Кодек работает с неизменяемыми
-`PortableSnapshot`, `PortableProject`, `PortableEntry`, закрытыми `Segment` и
-необязательной `PortableActiveEntry`. Запись файла и замена данных в БД относятся
+`PortableSnapshot`, `PortableProject`, `PortableEntry`, закрытыми `Segment`,
+необязательной `PortableActiveEntry` и переносимыми настройками. Запись файла и замена данных в БД относятся
 к вызывающему коду; сам кодек не изменяет хранилище.
 
 ## Решение и границы
@@ -46,7 +46,7 @@ AES/GCM/NoPadding и 128-битный tag. Другой алгоритм тре�
 JVM и криптографический provider могут создавать внутренние копии данных;
 полное уничтожение всех копий памяти не заявляется.
 
-## JSON schemaVersion 1
+## JSON schemaVersion 2
 
 Все ключи обязательны, включая `activeEntry: null`. Неизвестные ключи на любом
 уровне, неизвестные значения source/state, невалидный UTF-8, неправильные типы,
@@ -57,10 +57,14 @@ JVM и криптографический provider могут создавать
 независимо от locale; `startUtcMillis` — Unix epoch UTC.
 
 ```json
-{"schemaVersion":1,"projects":[{"id":"a1234567-89ab-4cde-8fab-0123456789ab","name":"Работа"}],"entries":[{"id":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","note":"","zoneId":"Europe/Moscow","source":"TIMER"}],"segments":[{"id":"c1234567-89ab-4cde-8fab-0123456789ab","entryId":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","startUtcMillis":0,"durationMillis":1000}],"activeEntry":null}
+{"schemaVersion":2,"projects":[{"id":"a1234567-89ab-4cde-8fab-0123456789ab","name":"Работа","colorArgb":-15584170,"createdAtUtcMillis":0,"archivedAtUtcMillis":null,"isDefault":false}],"entries":[{"id":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","note":"","zoneId":"Europe/Moscow","source":"TIMER"}],"segments":[{"id":"c1234567-89ab-4cde-8fab-0123456789ab","entryId":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","startUtcMillis":0,"durationMillis":1000}],"activeEntry":null,"preferences":{"theme":"SYSTEM","dynamicColor":true,"privacyMode":true,"dailyGoalMinutes":480}}
 ```
 
-`projects` хранит id и имя; `entries` — id, projectId, заметку, исходный IANA/Java
+`projects` хранит id, имя, ARGB-цвет, время создания, необязательное время
+архивации и `isDefault`. Единственный canonical default имеет зарезервированный
+UUID `00000000-0000-4000-8000-000000000001`, имя хранения `@default`,
+`isDefault: true` и не архивируется. Пользователь видит локализованное имя, а не
+маркер хранения. `entries` хранит id, projectId, заметку, исходный IANA/Java
 ZoneId и source (`TIMER`, `MANUAL`, `IMPORT`). Каждый `segments` содержит id,
 entryId, projectId, startUtcMillis и строго положительную durationMillis.
 Конец сегмента вычисляется как `startUtcMillis + durationMillis` с проверкой
@@ -71,7 +75,9 @@ activeEntry, должны быть UUID в полной стандартной 3
 не-hex символы и пробельные префиксы отклоняются как `SchemaError` при encrypt
 и decrypt. Регистр исходного текста сохраняется, автоматической нормализации
 ID или ссылок нет; ссылки должны совпадать с текстом определённого ID.
-Общие конструкторы Domain ID этим форматом не ограничены. Повторяющиеся project/entry/segment id и
+Сумма длительностей каждого entry вычисляется через `Math.addExact`; переполнение
+отклоняется при создании backup, после аутентифицированного чтения и повторно на
+границе Room restore. Общие конструкторы Domain ID этим форматом не ограничены. Повторяющиеся project/entry/segment id и
 несуществующие ссылки отклоняются. projectId сегмента должен совпадать с проектом
 его записи. Пустые имя/заметка допустимы; их исходный текст сохраняется.
 
@@ -83,6 +89,34 @@ ID или ссылок нет; ссылки должны совпадать с �
 добавляет длительность от момента backup до импорта и не создаёт runtime session.
 Снимок RUNNING сохраняет только уже закрытые сегменты; вызывающий код отвечает
 за подготовку снимка на выбранный момент и явное указание незавершённости.
+
+`preferences` переносит `theme` (`SYSTEM`, `LIGHT`, `DARK`), `dynamicColor`,
+`privacyMode` и `dailyGoalMinutes` (15–1440). Язык намеренно не записывается:
+он остаётся framework locale Android/AppCompat на принимающем устройстве.
+
+### Чтение schemaVersion 1
+
+Контейнер `OTMB1` и его версия `01` не менялись. Reader продолжает принимать
+payload schemaVersion 1 из независимого golden vector. Для отсутствующих полей
+он использует безопасные детерминированные значения: стандартный цвет, createdAt
+`0`, отсутствие архивации и настройки SYSTEM/dynamic/privacy с целью 480 минут.
+Зарезервированный default UUID canonicalизируется в `@default`, включая старые
+копии с именем «Без проекта». Writer всегда создаёт schemaVersion 2.
+
+## Гарантии восстановления
+
+Preview не потребляется при конфликте UUID, активном таймере, отмене или откате;
+его можно повторно применить. Для Replace все Room-таблицы очищаются и заполняются
+в одной suspend-транзакции порциями с cancellation checkpoints. Отмена после
+начала удаления откатывает весь Room-граф. После успешного commit preview
+считается применённым, даже если обновление системных поверхностей не удалось.
+
+Room и Preferences DataStore — независимые хранилища, поэтому кросс-хранилищная
+атомарность **не заявляется**. Replace записывает в той же Room-транзакции durable
+journal с целевыми настройками, затем применяет одну DataStore edit и privacy
+mirror. Если этот этап прерван, journal сохраняется и повторяется при следующем
+старте. Гарантия — восстановимое схождение к настройкам backup после Room commit,
+а не мгновенная атомарность двух механизмов хранения.
 
 ## Ограничения и ошибки
 
@@ -151,6 +185,9 @@ start/end — ISO-8601 UTC (`Z`), zone_id — исходный ZoneId. duration_
 точное десятичное число секунд без группировки, с точкой и до трёх дробных знаков;
 лишние нули убираются. source использует те же `TIMER`, `MANUAL`, `IMPORT`.
 Пустая заметка остаётся пустой ячейкой. BOM не добавляется.
+
+Canonical default project экспортируется в CSV с текущим локализованным именем
+(`No project`/`Без проекта`), тогда как backup сохраняет canonical-маркер.
 
 Текстовая ячейка, первый непробельный символ которой равен `=`, `+`, `-`, `@`,
 получает ведущий апостроф до RFC 4180 quoting; это касается и ID. Исходные строки

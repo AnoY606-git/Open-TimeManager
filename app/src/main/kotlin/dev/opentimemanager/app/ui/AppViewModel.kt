@@ -36,6 +36,7 @@ import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,6 +71,7 @@ data class AppControls(
     val message: UiMessage? = null,
     val dataTransferBusy: Boolean = false,
     val pendingRestoreUri: String? = null,
+    val lastRestoreResult: RestoreResult? = null,
 )
 
 data class AppUiState(
@@ -325,20 +327,23 @@ class AppViewModel(
     suspend fun restoreBackup(
         preview: dev.opentimemanager.app.backup.BackupPreview,
         mode: RestoreMode,
-    ): RestoreResult {
-        updateControls { copy(dataTransferBusy = true) }
+    ): RestoreResult = viewModelScope.async {
+        updateControls { copy(dataTransferBusy = true, lastRestoreResult = null) }
         try {
-            transfers.consumePreview(preview)
             val result = container.restore.restore(preview, mode)
+            transfers.onRestoreResult(preview, result)
+            updateControls { copy(lastRestoreResult = result) }
             if (result is RestoreResult.Applied) {
-                val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-                SystemSurfaceUpdater(application).refresh(snapshot)
+                systemSurfaceWarning {
+                    val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
+                    SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
+                }?.let(::show)
             }
-            return result
+            result
         } finally {
             updateControls { copy(dataTransferBusy = false) }
         }
-    }
+    }.await()
 
     override fun onCleared() {
         transfers.clear()

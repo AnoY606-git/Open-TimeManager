@@ -4,9 +4,27 @@ import dev.opentimemanager.core.model.*
 import java.time.ZoneId
 import java.util.Collections
 
-data class PortableProject(val id: ProjectId, val name: String)
+const val DEFAULT_PROJECT_UUID = "00000000-0000-4000-8000-000000000001"
+const val DEFAULT_PROJECT_CANONICAL_NAME = "@default"
+const val DEFAULT_PROJECT_COLOR_ARGB: Int = 0xff607d8b.toInt()
+
+data class PortableProject(
+    val id: ProjectId,
+    val name: String,
+    val colorArgb: Int = DEFAULT_PROJECT_COLOR_ARGB,
+    val createdAtUtcMillis: Long = 0,
+    val archivedAtUtcMillis: Long? = null,
+    val isDefault: Boolean = id.value.equals(DEFAULT_PROJECT_UUID, ignoreCase = true),
+)
 data class PortableEntry(val id: EntryId, val projectId: ProjectId, val note: String, val zoneId: ZoneId, val source: EntrySource = EntrySource.TIMER)
 data class PortableActiveEntry(val entryId: EntryId, val projectId: ProjectId, val state: TrackingState)
+enum class PortableTheme { SYSTEM, LIGHT, DARK }
+data class PortablePreferences(
+    val theme: PortableTheme = PortableTheme.SYSTEM,
+    val dynamicColor: Boolean = true,
+    val privacyMode: Boolean = true,
+    val dailyGoalMinutes: Int = 480,
+)
 
 /** Переносит закрытые интервалы и метаданные; runtime clock/open anchor отсутствуют. */
 class PortableSnapshot(
@@ -14,6 +32,7 @@ class PortableSnapshot(
     entries: List<PortableEntry> = emptyList(),
     segments: List<Segment> = emptyList(),
     val activeEntry: PortableActiveEntry? = null,
+    val preferences: PortablePreferences = PortablePreferences(),
 ) {
     val projects: List<PortableProject> = Collections.unmodifiableList(projects.toList())
     val entries: List<PortableEntry> = Collections.unmodifiableList(entries.toList())

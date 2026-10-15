@@ -12,10 +12,16 @@ import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectRepository
 import dev.opentimemanager.app.data.SegmentEntity
 import dev.opentimemanager.app.data.TrackingSlotEntity
+import dev.opentimemanager.app.data.PendingPreferencesRestoreEntity
+import dev.opentimemanager.app.settings.ThemeMode
+import dev.opentimemanager.app.settings.UserPreferences
+import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
+import dev.opentimemanager.core.backup.PortablePreferences
 import dev.opentimemanager.core.backup.PortableSnapshot
+import dev.opentimemanager.core.backup.PortableTheme
 import dev.opentimemanager.core.model.EntryId
 import dev.opentimemanager.core.model.EntrySource
 import dev.opentimemanager.core.model.ProjectId
@@ -25,11 +31,16 @@ import dev.opentimemanager.core.model.TrackingState
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -94,8 +105,9 @@ class RestoreRepositoryTest {
     fun mergeIsIdempotentAndKeepsArchiveMetadataAndForeignKeys() = runBlocking {
         database.projectDao().insert(ProjectEntity(projectId.value, "Backup", 0xff112233.toInt(), 9, archivedAtUtcMillis = 10))
 
-        val first = repository.restore(repository.preview(snapshot()), RestoreMode.MERGE)
-        val second = repository.restore(repository.preview(snapshot()), RestoreMode.MERGE)
+        val matching = snapshot(projectColor = 0xff112233.toInt(), projectCreatedAt = 9, projectArchivedAt = 10)
+        val first = repository.restore(repository.preview(matching), RestoreMode.MERGE)
+        val second = repository.restore(repository.preview(matching), RestoreMode.MERGE)
 
         assertEquals(RestoreResult.Applied(projects = 0, entries = 1, segments = 1), first)
         assertEquals(RestoreResult.Applied(projects = 0, entries = 0, segments = 0), second)
@@ -113,7 +125,7 @@ class RestoreRepositoryTest {
 
         assertEquals(RestoreResult.Conflicts(listOf(BackupConflict(BackupConflictKind.PROJECT, projectId.value))), result)
         assertFalse(database.trackingDao().entries().any { it.id == entryId.value })
-        assertFalse(preview.hasPayload)
+        assertTrue(preview.hasPayload)
     }
 
     @Test
@@ -171,6 +183,88 @@ class RestoreRepositoryTest {
         assertEquals(listOf(localSegment), database.trackingDao().entrySegments(localEntry.id))
         assertEquals(localSlot, database.trackingDao().slot())
         assertEquals(receipt, database.trackingDao().command(receipt.commandId))
+        assertTrue(preview.hasPayload)
+    }
+
+    @Test
+    fun replacePreservesProjectMetadataAndAppliesPreferencesAfterRoomCommit() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settings = UserSettings(context, "restore-settings-${System.nanoTime()}")
+        val configured = RestoreRepository(database, Dispatchers.IO, settings = settings)
+        val source = PortableSnapshot(
+            projects = listOf(
+                PortableProject(projectId, "Archived", 0xff123456.toInt(), -123, 9_999, false),
+            ),
+            preferences = PortablePreferences(PortableTheme.DARK, false, false, 615),
+        )
+
+        assertEquals(RestoreResult.Applied(1, 0, 0), configured.restore(configured.preview(source), RestoreMode.REPLACE))
+
+        assertEquals(ProjectEntity(projectId.value, "Archived", 0xff123456.toInt(), -123, 9_999), database.trackingDao().project(projectId.value))
+        assertEquals(UserPreferences(ThemeMode.DARK, false, false, 615), settings.current())
+    }
+
+    @Test
+    fun startupReconciliationAppliesDurablePendingPreferencesAndClearsJournal() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settings = UserSettings(context, "pending-settings-${System.nanoTime()}")
+        database.restoreDao().savePendingPreferences(
+            PendingPreferencesRestoreEntity(
+                operationId = "operation",
+                theme = ThemeMode.LIGHT.name,
+                dynamicColor = false,
+                privacyMode = false,
+                dailyGoalMinutes = 300,
+            ),
+        )
+        val configured = RestoreRepository(database, Dispatchers.IO, settings = settings)
+
+        configured.reconcilePendingPreferences()
+
+        assertEquals(UserPreferences(ThemeMode.LIGHT, false, false, 300), settings.current())
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun cancellationAfterReplaceDeletesRollsBackEveryRoomTableAndKeepsPreviewRetryable() = runBlocking {
+        val local = ProjectEntity("85000000-0000-4000-8000-000000000001", "Local", 7, 77)
+        database.projectDao().insert(local)
+        val reachedBarrier = CompletableDeferred<Unit>()
+        val holdBarrier = CompletableDeferred<Unit>()
+        val cancellable = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            afterReplaceDelete = {
+                reachedBarrier.complete(Unit)
+                holdBarrier.await()
+            },
+        )
+        val preview = cancellable.preview(snapshot())
+        val operation = async { cancellable.restore(preview, RestoreMode.REPLACE) }
+
+        reachedBarrier.await()
+        operation.cancelAndJoin()
+
+        assertEquals(local, database.trackingDao().project(local.id))
+        assertTrue(preview.hasPayload)
+    }
+
+    @Test
+    fun restoreDefenseRejectsPerEntryDurationOverflowWithoutChangingDatabase() = runBlocking {
+        val local = database.trackingDao().projects()
+        val overflow = PortableSnapshot(
+            projects = listOf(PortableProject(projectId, "P")),
+            entries = listOf(PortableEntry(entryId, projectId, "", ZoneId.of("UTC"), EntrySource.IMPORT)),
+            segments = listOf(
+                Segment(segmentId, entryId, projectId, 0, Long.MAX_VALUE),
+                Segment(SegmentId("71000000-0000-4000-8000-000000000001"), entryId, projectId, 0, 1),
+            ),
+        )
+
+        org.junit.Assert.assertThrows(RestoreValidationError::class.java) {
+            runBlocking { repository.preview(overflow) }
+        }
+        assertEquals(local, database.trackingDao().projects())
     }
 
     @Test
@@ -195,8 +289,36 @@ class RestoreRepositoryTest {
     }
 
     @Test
+    fun activeTimerRejectionKeepsPreviewForRetryAfterTimerStops() = runBlocking {
+        database.putActiveFixture(TrackingState.PAUSED)
+        val preview = repository.preview(snapshot())
+
+        assertEquals(RestoreResult.ActiveTimerBlocked(TrackingState.PAUSED), repository.restore(preview, RestoreMode.REPLACE))
+        assertTrue(preview.hasPayload)
+
+        val slot = database.trackingDao().slot()!!
+        database.trackingDao().updateSlot(slot.copy(state = TrackingState.IDLE.name, entryId = null))
+        assertTrue(repository.restore(preview, RestoreMode.REPLACE) is RestoreResult.Applied)
+        assertFalse(preview.hasPayload)
+    }
+
+    @Test
+    fun concurrentRestoreAttemptsShareOneAppliedPreviewResult() = runBlocking {
+        val preview = repository.preview(snapshot())
+
+        val results = listOf(
+            async { repository.restore(preview, RestoreMode.MERGE) },
+            async { repository.restore(preview, RestoreMode.MERGE) },
+        ).awaitAll()
+
+        assertEquals(listOf(RestoreResult.Applied(1, 1, 1), RestoreResult.Applied(1, 1, 1)), results)
+        assertFalse(preview.hasPayload)
+    }
+
+    @Test
     fun importedActiveSnapshotNeverBecomesActiveAndReplaceClearsReceipts() = runBlocking {
         val withActive = snapshot(active = PortableActiveEntry(entryId, projectId, TrackingState.NEEDS_REVIEW))
+        val previousGeneration = database.trackingDao().slot()!!.generation
 
         val result = repository.restore(repository.preview(withActive), RestoreMode.REPLACE)
 
@@ -205,6 +327,7 @@ class RestoreRepositoryTest {
         assertEquals(TrackingState.IDLE.name, slot.state)
         assertEquals(0L, slot.revision)
         assertEquals(null, slot.entryId)
+        assertNotEquals(previousGeneration, slot.generation)
         assertTrue(database.trackingDao().entry(entryId.value)!!.completed)
         assertTrue(database.trackingDao().entrySegments(entryId.value).all { it.durationMillis != null })
         assertEquals(0, database.openHelper.readableDatabase.query("SELECT COUNT(*) FROM applied_commands").use { cursor -> cursor.moveToFirst(); cursor.getInt(0) })
@@ -250,6 +373,10 @@ class RestoreRepositoryTest {
                     arrayOf<Any?>("a0000000-0000-4000-8000-000000000001", "Legacy", 7, 100, 900),
                 )
                 raw.execSQL(
+                    "INSERT INTO projects VALUES (?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(ProjectRepository.DEFAULT_PROJECT_ID.value, "Без проекта", 11, 50, null),
+                )
+                raw.execSQL(
                     "INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     arrayOf<Any?>("a1000000-0000-4000-8000-000000000001", "a0000000-0000-4000-8000-000000000001", "Done", 1_000, 1_500, "MANUAL", 4, 1, null),
                 )
@@ -292,6 +419,7 @@ class RestoreRepositoryTest {
                 assertEquals("legacy", migrated.trackingDao().slot()?.generation)
                 assertEquals("RUNNING", migrated.trackingDao().command("legacy-command")?.state)
                 assertEquals(900L, migrated.trackingDao().project("a0000000-0000-4000-8000-000000000001")?.archivedAtUtcMillis)
+                assertEquals(ProjectRepository.DEFAULT_PROJECT_STORAGE_NAME, migrated.trackingDao().project(ProjectRepository.DEFAULT_PROJECT_ID.value)?.name)
                 migrated.openHelper.writableDatabase.query(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pending_preferences_restore'",
                 ).use { cursor -> assertTrue(cursor.moveToFirst()) }
@@ -305,9 +433,12 @@ class RestoreRepositoryTest {
 
     private fun snapshot(
         projectName: String = "Backup",
+        projectColor: Int = dev.opentimemanager.core.backup.DEFAULT_PROJECT_COLOR_ARGB,
+        projectCreatedAt: Long = 0,
+        projectArchivedAt: Long? = null,
         active: PortableActiveEntry? = null,
     ) = PortableSnapshot(
-        projects = listOf(PortableProject(projectId, projectName)),
+        projects = listOf(PortableProject(projectId, projectName, projectColor, projectCreatedAt, projectArchivedAt)),
         entries = listOf(PortableEntry(entryId, projectId, "Imported note", ZoneId.of("Europe/Moscow"), EntrySource.TIMER)),
         segments = listOf(Segment(segmentId, entryId, projectId, 10_000, 2_500)),
         activeEntry = active,

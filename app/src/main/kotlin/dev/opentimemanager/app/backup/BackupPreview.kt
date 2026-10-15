@@ -1,5 +1,8 @@
 package dev.opentimemanager.app.backup
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 data class BackupCounts(
     val projects: Int,
     val entries: Int,
@@ -24,18 +27,42 @@ class BackupPreview internal constructor(
     val activeStateWillBeStopped: Boolean,
     payload: RestorePayload,
 ) {
+    private val useMutex = Mutex()
     @Volatile
     private var payload: RestorePayload? = payload
+    @Volatile
+    private var completedResult: RestoreResult.Applied? = null
+    @Volatile
+    private var inUse: Boolean = false
 
     val hasPayload: Boolean
         get() = payload != null
 
-    internal fun takePayload(): RestorePayload = synchronized(this) {
-        payload?.also { payload = null } ?: throw IllegalStateException("Backup preview was already consumed")
+    internal suspend fun usePayload(operation: suspend (RestorePayload) -> RestoreResult): RestoreResult =
+        useMutex.withLock {
+            val value = synchronized(this) {
+                check(!inUse) { "Backup preview is already in use" }
+                completedResult?.let { return@withLock it }
+                (payload ?: throw IllegalStateException("Backup preview was already consumed")).also { inUse = true }
+            }
+            try {
+                operation(value).also { result ->
+                    if (result is RestoreResult.Applied) synchronized(this) {
+                        payload = null
+                        completedResult = result
+                    }
+                }
+            } finally {
+                synchronized(this) { inUse = false }
+            }
     }
 
     fun discard() {
-        synchronized(this) { payload = null }
+        synchronized(this) {
+            check(!inUse) { "Backup preview is being restored" }
+            payload = null
+            completedResult = null
+        }
     }
 }
 
