@@ -24,6 +24,10 @@ abstract class TrackingDao {
     @Upsert abstract fun saveSegment(segment: SegmentEntity)
     @Insert abstract fun insertCommand(command: AppliedCommandEntity)
     @Query("DELETE FROM applied_commands WHERE commandId NOT IN (SELECT commandId FROM applied_commands ORDER BY revision DESC LIMIT 1024)") abstract fun pruneCommands()
+    @Query("DELETE FROM segments WHERE entryId = :entryId AND durationMillis IS NULL") abstract fun deleteOpenSegment(entryId: String)
+    @Query("DELETE FROM segments WHERE entryId = :entryId") abstract fun deleteAllSegments(entryId: String)
+    @Query("DELETE FROM entries WHERE id = :entryId") abstract fun deleteEntryById(entryId: String)
+    @Query("UPDATE entries SET note = :note WHERE id = :entryId AND completed = 0 AND revision = :revision") abstract fun updateActiveNote(entryId: String, revision: Long, note: String): Int
 
     @Transaction
     open fun initialize(nowUtcMillis: Long) {
@@ -77,6 +81,7 @@ abstract class TrackingDao {
         command(command.commandId.value)?.let { return TrackingResult.Duplicate(CommandReceipt(it.revision, it.entryId, TrackingState.valueOf(it.state))) }
         recover(now)
         val session = restored()
+        if (command is TrackingCommand.ResolveReview) return resolveReview(session, command)
         val destination = when(command) { is TrackingCommand.Start -> command.projectId; is TrackingCommand.Switch -> command.projectId; else -> null }
         if (destination != null) {
             val project = project(destination.value) ?: return TrackingResult.Rejected(TrackingFailure.MISSING_PROJECT)
@@ -88,6 +93,7 @@ abstract class TrackingDao {
             is TrackingCommand.Resume -> TrackingReducer.resume(session, command.target, SegmentId(UUID.randomUUID().toString()), now)
             is TrackingCommand.Stop -> TrackingReducer.stop(session, command.target, now)
             is TrackingCommand.Switch -> TrackingReducer.stop(session, command.target, now)
+            is TrackingCommand.ResolveReview -> error("Handled before reducer")
         }
         if (result is TransitionResult.Rejected) return TrackingResult.Rejected(TrackingFailure.valueOf(result.reason.name))
         check(result is TransitionResult.Applied)
@@ -103,6 +109,44 @@ abstract class TrackingDao {
             persist(next, null)
         } else persist(next, result.completedEntry)
         insertCommand(AppliedCommandEntity(command.commandId.value, next.revision, next.entryId?.value, next.state.name))
+        pruneCommands()
+        return TrackingResult.Applied(snapshotWithoutRecovery())
+    }
+
+    private fun resolveReview(session: TrackingSession, command: TrackingCommand.ResolveReview): TrackingResult {
+        if (session.state != TrackingState.NEEDS_REVIEW) return TrackingResult.Rejected(TrackingFailure.INVALID_STATE)
+        if (session.entryId != command.target.entryId) return TrackingResult.Rejected(TrackingFailure.STALE_ENTRY)
+        if (session.revision != command.target.expectedRevision) return TrackingResult.Rejected(TrackingFailure.STALE_REVISION)
+        val nextRevision = try { Math.incrementExact(session.revision) } catch (_: ArithmeticException) {
+            return TrackingResult.Rejected(TrackingFailure.OVERFLOW)
+        }
+        val entryId = requireNotNull(session.entryId).value
+        val current = requireNotNull(entry(entryId))
+        val open = entrySegments(entryId).singleOrNull { it.durationMillis == null }
+            ?: return TrackingResult.Rejected(TrackingFailure.INVALID_STATE)
+        when (val resolution = command.resolution) {
+            ReviewResolution.CONFIRMED_CHECKPOINT -> deleteOpenSegment(entryId)
+            is ReviewResolution.ManualEnd -> {
+                val duration = try { Math.subtractExact(resolution.endUtcMillis, open.startedAtUtcMillis) }
+                catch (_: ArithmeticException) { return TrackingResult.Rejected(TrackingFailure.INVALID_DURATION) }
+                if (duration <= 0) return TrackingResult.Rejected(TrackingFailure.INVALID_DURATION)
+                saveSegment(open.copy(durationMillis = duration, endUtcMillis = resolution.endUtcMillis, openSlot = null))
+            }
+        }
+        val closed = entrySegments(entryId).filter { it.durationMillis != null }
+        updateSlot(TrackingSlotEntity(state = TrackingState.IDLE.name, entryId = null, revision = nextRevision))
+        if (closed.isEmpty()) {
+            deleteAllSegments(entryId)
+            deleteEntryById(entryId)
+        } else {
+            updateEntry(current.copy(
+                completed = true,
+                currentSlot = null,
+                revision = nextRevision,
+                endedAtUtcMillis = closed.maxOf { requireNotNull(it.endUtcMillis) },
+            ))
+        }
+        insertCommand(AppliedCommandEntity(command.commandId.value, nextRevision, null, TrackingState.IDLE.name))
         pruneCommands()
         return TrackingResult.Applied(snapshotWithoutRecovery())
     }
@@ -134,3 +178,17 @@ abstract class TrackingDao {
 }
 
 internal fun SegmentEntity.closed(projectId: String) = Segment(SegmentId(id), EntryId(entryId), ProjectId(projectId), startedAtUtcMillis, requireNotNull(durationMillis))
+
+enum class ActiveNoteResult { APPLIED, NOT_ACTIVE, STALE_REVISION, INVALID_INPUT }
+
+class ActiveEntryNoteRepository(private val database: AppDatabase, private val dispatcher: kotlinx.coroutines.CoroutineDispatcher) {
+    suspend fun update(entryId: EntryId, expectedRevision: Long, note: String): ActiveNoteResult = kotlinx.coroutines.withContext(dispatcher) {
+        val normalized = note.trim()
+        if (normalized.codePointCount(0, normalized.length) > 2_000) return@withContext ActiveNoteResult.INVALID_INPUT
+        val current = database.trackingDao().entry(entryId.value) ?: return@withContext ActiveNoteResult.NOT_ACTIVE
+        if (current.completed) return@withContext ActiveNoteResult.NOT_ACTIVE
+        if (current.revision != expectedRevision) return@withContext ActiveNoteResult.STALE_REVISION
+        if (database.trackingDao().updateActiveNote(entryId.value, expectedRevision, normalized) == 1) ActiveNoteResult.APPLIED
+        else ActiveNoteResult.STALE_REVISION
+    }
+}

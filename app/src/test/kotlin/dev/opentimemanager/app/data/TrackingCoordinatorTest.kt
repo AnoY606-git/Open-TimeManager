@@ -249,4 +249,46 @@ class TrackingCoordinatorTest {
         assertEquals(500L, report.single().durationMillis)
         assertFalse(snapshot().entries.single().completed)
     }
+
+    @Test fun activeTimerNoteIsValidatedAndPersistedWithoutChangingClockAnchor() = runBlocking {
+        start()
+        val running = snapshot()
+        val notes = ActiveEntryNoteRepository(db, Dispatchers.IO)
+        assertEquals(ActiveNoteResult.APPLIED, notes.update(running.session.entryId!!, running.session.revision, "  Focus  "))
+        assertEquals("Focus", snapshot().entries.single().note)
+        assertEquals(running.session.openSegment, snapshot().session.openSegment)
+        assertEquals(ActiveNoteResult.INVALID_INPUT, notes.update(running.session.entryId!!, running.session.revision, "x".repeat(2_001)))
+        assertEquals(ActiveNoteResult.STALE_REVISION, notes.update(running.session.entryId!!, running.session.revision - 1, "old"))
+    }
+
+    @Test fun reviewCanDiscardUnknownTailOrAcceptExplicitWallClockEnd() = runBlocking {
+        start()
+        now = ClockSnapshot(2_000, 600, 7)
+        tracker.execute(TrackingCommand.Pause(target(snapshot(), "pause")))
+        tracker.execute(TrackingCommand.Resume(target(snapshot(), "resume")))
+        now = ClockSnapshot(4_000, 50, 8)
+        val reviewWithCheckpoint = snapshot()
+        assertEquals(TrackingState.NEEDS_REVIEW, reviewWithCheckpoint.session.state)
+        val discard = TrackingCommand.ResolveReview(
+            target(reviewWithCheckpoint, "discard"),
+            ReviewResolution.CONFIRMED_CHECKPOINT,
+        )
+        assertTrue(tracker.execute(discard) is TrackingResult.Applied)
+        assertEquals(TrackingState.IDLE, snapshot().session.state)
+        assertEquals(500L, snapshot().segments.single().durationMillis)
+
+        now = ClockSnapshot(10_000, 100, 8)
+        val initial = snapshot()
+        tracker.execute(TrackingCommand.Start(CommandId("second-start"), defaultProject, initial.session.revision))
+        now = ClockSnapshot(70_000, 10, 9)
+        val reviewWithoutCheckpoint = snapshot()
+        val manual = TrackingCommand.ResolveReview(
+            target(reviewWithoutCheckpoint, "manual"),
+            ReviewResolution.ManualEnd(40_000),
+        )
+        assertTrue(tracker.execute(manual) is TrackingResult.Applied)
+        val resolved = snapshot()
+        assertEquals(TrackingState.IDLE, resolved.session.state)
+        assertEquals(30_000L, resolved.segments.last().durationMillis)
+    }
 }

@@ -24,6 +24,7 @@ import dev.opentimemanager.core.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.robolectric.Shadows.shadowOf
+import java.util.Locale
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -74,6 +75,27 @@ class SystemSurfaceContractTest {
         assertNull(channel.sound)
     }
 
+    @Test fun defaultProjectNameIsLocalizedOnNotificationAndWidget() {
+        val snapshot = fixture().copy(
+            projects = listOf(ProjectEntity(ProjectRepository.DEFAULT_PROJECT_ID.value, "Без проекта", 0, 0)),
+            session = TrackingSession.restore(
+                TrackingState.RUNNING,
+                1,
+                EntryId("entry"),
+                ProjectRepository.DEFAULT_PROJECT_ID,
+                OpenSegment(SegmentId("open"), ClockSnapshot(7_000, 2_000, 1)),
+                emptyList(),
+            ),
+        )
+        val englishTitle = TrackingNotification(context).build(snapshot, privacyMode = false)
+            .extras.getCharSequence(Notification.EXTRA_TITLE).toString()
+        assertEquals("No project", englishTitle)
+        val ruConfig = android.content.res.Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag("ru")) }
+        val russian = context.createConfigurationContext(ruConfig)
+        val russianWidget = TrackingWidgetProvider.views(russian, snapshot, privacyMode = false).apply(russian, null)
+        assertEquals("Без проекта", russianWidget.findViewById<TextView>(R.id.widget_status).text.toString())
+    }
+
     @Test fun widgetAndTileProjectIdleRunningPausedAndReviewWithoutPrivateText() {
         for ((state, label, action) in listOf(
             Triple(TrackingState.IDLE, "Ready", "Start"), Triple(TrackingState.RUNNING, "Tracking", "Pause"),
@@ -120,6 +142,12 @@ class SystemSurfaceContractTest {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(android.app.NotificationChannel(TrackingNotification.CHANNEL_ID, "Tracking", NotificationManager.IMPORTANCE_NONE))
         assertEquals(NotificationAvailability.BLOCKED, SystemSurfaceUpdater(context).refresh(fixture()))
+    }
+
+    @Test fun reviewTileRoutesToMainActivityInsteadOfSendingNoCommand() {
+        val intent = TrackingTileService.reviewIntent(context, fixture(TrackingState.NEEDS_REVIEW))
+        assertEquals("dev.opentimemanager.app.MainActivity", intent.component?.className)
+        assertEquals(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP, intent.flags)
     }
 
     @Test fun refreshPublishesCurrentNotificationAndIdleRemovesIt() {

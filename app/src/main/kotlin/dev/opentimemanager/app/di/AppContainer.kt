@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import dev.opentimemanager.app.data.*
 import dev.opentimemanager.app.tracking.*
+import dev.opentimemanager.app.settings.UserSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
@@ -13,4 +14,6 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val trackingCoordinator = TrackingCoordinator(RoomTrackingRepository(database, clock, dispatcher))
     val projects = ProjectRepository(database, dispatcher)
     val completedEntries = CompletedEntryRepository(database, dispatcher)
+    val activeNotes = ActiveEntryNoteRepository(database, dispatcher)
+    val settings = UserSettings(context)
 }

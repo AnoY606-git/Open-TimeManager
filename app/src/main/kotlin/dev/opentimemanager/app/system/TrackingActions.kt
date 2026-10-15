@@ -24,6 +24,7 @@ object TrackingActions {
             is TrackingCommand.Resume -> { intent.action = RESUME; revision = command.target.expectedRevision; id = command.target.entryId.value }
             is TrackingCommand.Stop -> { intent.action = STOP; revision = command.target.expectedRevision; id = command.target.entryId.value }
             is TrackingCommand.Switch -> error("Switch requires project selection in the app")
+            is TrackingCommand.ResolveReview -> error("Review resolution requires explicit confirmation in the app")
         }
         intent.data = Uri.Builder().scheme("otm").authority("tracking").appendPath(intent.action!!).appendPath(id).appendPath(revision.toString()).appendPath(command.commandId.value).build()
         intent.putExtra("id", id).putExtra("revision", revision).putExtra("commandId", command.commandId.value)

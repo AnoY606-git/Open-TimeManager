@@ -43,7 +43,7 @@ class TrackingWidgetProvider : AppWidgetProvider() {
         }
         fun views(context: Context, snapshot: AppSnapshot, privacyMode: Boolean = true, nowElapsedMillis: Long = SystemClock.elapsedRealtime()): RemoteViews {
             val state = snapshot.session.state
-            val title = if (privacyMode) context.getString(TrackingNotification.statusString(state)) else snapshot.projects.firstOrNull { it.id == snapshot.session.projectId?.value }?.name ?: context.getString(TrackingNotification.statusString(state))
+            val title = if (privacyMode) context.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(context, snapshot)
             return RemoteViews(context.packageName, R.layout.tracking_widget).apply {
                 setTextViewText(R.id.widget_status, title)
                 setTextViewText(R.id.widget_primary, context.getString(TrackingNotification.primaryString(state)))

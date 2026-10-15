@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.SystemClock
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.tracking.AppSnapshot
+import dev.opentimemanager.app.data.ProjectRepository
 import dev.opentimemanager.core.model.TrackingState
 
 class TrackingNotification(private val context: Context) {
@@ -18,7 +19,7 @@ class TrackingNotification(private val context: Context) {
 
     fun build(snapshot: AppSnapshot, privacyMode: Boolean = true, nowWallMillis: Long = System.currentTimeMillis(), nowElapsedMillis: Long = SystemClock.elapsedRealtime()): Notification {
         val state = snapshot.session.state
-        val title = if (privacyMode) context.getString(statusString(state)) else snapshot.projects.firstOrNull { it.id == snapshot.session.projectId?.value }?.name ?: context.getString(statusString(state))
+        val title = if (privacyMode) context.getString(statusString(state)) else projectTitle(context, snapshot)
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tracking).setContentTitle(title)
             .setContentText(context.getString(statusString(state)))
@@ -56,6 +57,11 @@ class TrackingNotification(private val context: Context) {
             val closed = snapshot.session.segments.sumOf { it.durationMillis }
             val open = if (snapshot.session.state == TrackingState.RUNNING) snapshot.session.openSegment?.let { (nowElapsedMillis - it.startedAt.elapsedRealtimeMillis).coerceAtLeast(0) } ?: 0 else 0
             return if (Long.MAX_VALUE - closed < open) Long.MAX_VALUE else closed + open
+        }
+        fun projectTitle(context: Context, snapshot: AppSnapshot): String {
+            val project = snapshot.projects.firstOrNull { it.id == snapshot.session.projectId?.value }
+                ?: return context.getString(statusString(snapshot.session.state))
+            return if (project.id == ProjectRepository.DEFAULT_PROJECT_ID.value) context.getString(R.string.default_project_name) else project.name
         }
     }
 }
