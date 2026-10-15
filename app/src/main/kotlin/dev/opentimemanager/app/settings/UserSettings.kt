@@ -48,6 +48,10 @@ fun interface PrivacyMirror {
     suspend fun write(value: Boolean): Boolean
 }
 
+fun interface StrictPreferencesReader {
+    suspend fun read(store: DataStore<Preferences>): Preferences
+}
+
 /** One process-wide serialization boundary for DataStore mutations and restore journals. */
 class SettingsMutationBoundary {
     private val mutex = Mutex()
@@ -84,6 +88,9 @@ class UserSettings(
     override val mutationBoundary: SettingsMutationBoundary = SettingsMutationBoundary.PROCESS,
     private val recoveryJournal: SettingsRecoveryJournal? = null,
     privacyMirror: PrivacyMirror? = null,
+    private val strictPreferencesReader: StrictPreferencesReader = StrictPreferencesReader { store ->
+        store.data.first()
+    },
 ) : RestorePreferenceTarget {
     private val appContext = context.applicationContext
     private val privacyMirror = privacyMirror ?: PrivacyMirror { value ->
@@ -100,23 +107,14 @@ class UserSettings(
         .catch { error ->
             if (error is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw error
         }
-        .map { preferences ->
-            UserPreferences(
-                theme = preferences[THEME]?.toEnumOrNull<ThemeMode>() ?: ThemeMode.SYSTEM,
-                dynamicColor = preferences[DYNAMIC_COLOR] ?: true,
-                privacyMode = preferences[PRIVACY]
-                    ?: appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
-                        .getBoolean(PRIVACY_KEY, true),
-                dailyGoalMinutes = (preferences[DAILY_GOAL] ?: 480).coerceIn(MIN_GOAL, MAX_GOAL),
-            )
-        }
+        .map(::decode)
 
-    suspend fun setTheme(value: ThemeMode) = mutate { it.copy(theme = value) }
-    suspend fun setDynamicColor(value: Boolean) = mutate { it.copy(dynamicColor = value) }
-    suspend fun setPrivacy(value: Boolean) = mutate { it.copy(privacyMode = value) }
+    suspend fun setTheme(value: ThemeMode) = mutatePartial { it.copy(theme = value) }
+    suspend fun setDynamicColor(value: Boolean) = mutatePartial { it.copy(dynamicColor = value) }
+    suspend fun setPrivacy(value: Boolean) = mutatePartial { it.copy(privacyMode = value) }
     suspend fun setDailyGoalMinutes(value: Int) {
         require(value in MIN_GOAL..MAX_GOAL)
-        mutate { it.copy(dailyGoalMinutes = value) }
+        mutatePartial { it.copy(dailyGoalMinutes = value) }
     }
 
     suspend fun current(): UserPreferences = values.first()
@@ -127,24 +125,47 @@ class UserSettings(
      * are intentionally not described as atomically committed together.
      */
     suspend fun replace(value: UserPreferences) {
-        mutate { value }
-    }
-
-    private suspend fun mutate(transform: (UserPreferences) -> UserPreferences) {
         mutationBoundary.serialized {
-            recoveryJournal?.let { reconcileSettingsJournalWithinMutationBoundary(it, this) }
-            val desired = transform(current())
-            val journal = recoveryJournal
-            if (journal == null) {
-                replaceWithinMutationBoundary(desired)
-            } else {
-                val pending = PendingUserPreferences(UUID.randomUUID().toString(), desired)
-                journal.save(pending)
-                replaceWithinMutationBoundary(desired)
-                journal.delete(pending.operationId)
-            }
+            drainRecoveryJournalWithinMutationBoundary()
+            persistWithinMutationBoundary(value)
         }
     }
+
+    private suspend fun mutatePartial(transform: (UserPreferences) -> UserPreferences) {
+        mutationBoundary.serialized {
+            drainRecoveryJournalWithinMutationBoundary()
+            val current = decode(strictPreferencesReader.read(store))
+            persistWithinMutationBoundary(transform(current))
+        }
+    }
+
+    private suspend fun drainRecoveryJournalWithinMutationBoundary() {
+        recoveryJournal?.let { reconcileSettingsJournalWithinMutationBoundary(it, this) }
+    }
+
+    private suspend fun persistWithinMutationBoundary(value: UserPreferences) {
+        val journal = recoveryJournal
+        if (journal == null) {
+            replaceWithinMutationBoundary(value)
+        } else {
+            val pending = PendingUserPreferences(UUID.randomUUID().toString(), value)
+            journal.save(pending)
+            replaceWithinMutationBoundary(value)
+            journal.delete(pending.operationId)
+        }
+    }
+
+    private fun decode(preferences: Preferences): UserPreferences = preferences.toUserPreferences(
+        defaultPrivacy = appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
+            .getBoolean(PRIVACY_KEY, true),
+    )
+
+    private fun Preferences.toUserPreferences(defaultPrivacy: Boolean) = UserPreferences(
+        theme = this[THEME]?.toEnumOrNull<ThemeMode>() ?: ThemeMode.SYSTEM,
+        dynamicColor = this[DYNAMIC_COLOR] ?: true,
+        privacyMode = this[PRIVACY] ?: defaultPrivacy,
+        dailyGoalMinutes = (this[DAILY_GOAL] ?: 480).coerceIn(MIN_GOAL, MAX_GOAL),
+    )
 
     override suspend fun replaceWithinMutationBoundary(value: UserPreferences) {
         require(value.dailyGoalMinutes in MIN_GOAL..MAX_GOAL)

@@ -19,6 +19,7 @@ import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.settings.PrivacyMirror
 import dev.opentimemanager.app.settings.RestorePreferenceTarget
 import dev.opentimemanager.app.settings.SettingsMutationBoundary
+import dev.opentimemanager.app.settings.StrictPreferencesReader
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
@@ -31,6 +32,7 @@ import dev.opentimemanager.core.model.ProjectId
 import dev.opentimemanager.core.model.Segment
 import dev.opentimemanager.core.model.SegmentId
 import dev.opentimemanager.core.model.TrackingState
+import java.io.IOException
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -539,6 +542,113 @@ class RestoreRepositoryTest {
         configured.reconcilePendingPreferences()
 
         assertEquals(UserPreferences(ThemeMode.DARK, false, false, 300), settings.current())
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun strictReadFailureCannotResetUnrelatedSettingsForAnyPartialMutation() = runBlocking {
+        data class Scenario(
+            val name: String,
+            val expected: UserPreferences,
+            val mutate: suspend (UserSettings) -> Unit,
+        )
+        val initial = UserPreferences(ThemeMode.DARK, false, false, 720)
+        val scenarios = listOf(
+            Scenario("theme", initial.copy(theme = ThemeMode.LIGHT)) { it.setTheme(ThemeMode.LIGHT) },
+            Scenario("dynamic", initial.copy(dynamicColor = true)) { it.setDynamicColor(true) },
+            Scenario("privacy", initial.copy(privacyMode = true)) { it.setPrivacy(true) },
+            Scenario("goal", initial.copy(dailyGoalMinutes = 900)) { it.setDailyGoalMinutes(900) },
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        scenarios.forEachIndexed { index, scenario ->
+            var failStrictRead = false
+            var strictReads = 0
+            var mirrorWrites = 0
+            var mirroredPrivacy = true
+            val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+            val settings = UserSettings(
+                context = context,
+                name = "strict-partial-$index-${System.nanoTime()}",
+                mutationBoundary = SettingsMutationBoundary(),
+                recoveryJournal = journal,
+                strictPreferencesReader = StrictPreferencesReader { store ->
+                    strictReads += 1
+                    if (failStrictRead) {
+                        failStrictRead = false
+                        throw IOException("transient strict read failure")
+                    }
+                    store.data.first()
+                },
+                privacyMirror = PrivacyMirror { value ->
+                    mirrorWrites += 1
+                    mirroredPrivacy = value
+                    true
+                },
+            )
+            settings.replace(initial)
+            assertEquals(scenario.name, 0, strictReads)
+            val writesBeforeFailure = mirrorWrites
+            failStrictRead = true
+
+            val failure = org.junit.Assert.assertThrows(IOException::class.java) {
+                runBlocking { scenario.mutate(settings) }
+            }
+
+            assertEquals("transient strict read failure", failure.message)
+            assertEquals(scenario.name, 1, strictReads)
+            assertEquals(scenario.name, initial, settings.current())
+            assertEquals(scenario.name, null, database.restoreDao().pendingPreferences())
+            assertEquals(scenario.name, writesBeforeFailure, mirrorWrites)
+            assertFalse(scenario.name, mirroredPrivacy)
+
+            scenario.mutate(settings)
+
+            assertEquals(scenario.name, 2, strictReads)
+            assertEquals(scenario.name, scenario.expected, settings.current())
+            assertEquals(scenario.name, scenario.expected.privacyMode, mirroredPrivacy)
+            assertEquals(scenario.name, null, database.restoreDao().pendingPreferences())
+        }
+    }
+
+    @Test
+    fun pendingRestoreIsDrainedBeforeStrictReadFailureWithoutCreatingManualIntent() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val restored = UserPreferences(ThemeMode.LIGHT, false, false, 300)
+        val pending = PendingPreferencesRestoreEntity(
+            1,
+            "restore-A",
+            restored.theme.name,
+            restored.dynamicColor,
+            restored.privacyMode,
+            restored.dailyGoalMinutes,
+        )
+        database.restoreDao().savePendingPreferences(pending)
+        var strictReads = 0
+        var mirroredPrivacy = true
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val settings = UserSettings(
+            context = context,
+            name = "drain-before-strict-${System.nanoTime()}",
+            mutationBoundary = SettingsMutationBoundary(),
+            recoveryJournal = journal,
+            strictPreferencesReader = StrictPreferencesReader { _ ->
+                strictReads += 1
+                throw IOException("read after drain")
+            },
+            privacyMirror = PrivacyMirror { value ->
+                mirroredPrivacy = value
+                true
+            },
+        )
+
+        org.junit.Assert.assertThrows(IOException::class.java) {
+            runBlocking { settings.setTheme(ThemeMode.DARK) }
+        }
+
+        assertEquals(1, strictReads)
+        assertEquals(restored, settings.current())
+        assertFalse(mirroredPrivacy)
         assertEquals(null, database.restoreDao().pendingPreferences())
     }
 

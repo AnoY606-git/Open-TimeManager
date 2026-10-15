@@ -23,6 +23,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - Portable backups use PBKDF2-HMAC-SHA256 and AES-256-GCM; CSV remains plaintext by design.
 - Cancellation during restore rolls back every Room table; a durable convergence journal applies portable settings after the database commit without claiming cross-store atomicity.
 - Manual portable-setting changes share the restore journal ordering boundary and retain a retryable full intent across DataStore or privacy-mirror failure, so an older restore cannot overwrite a newer user choice after restart.
+- Partial settings changes use a strict DataStore read: a transient read error reports failure before any journal, DataStore, or privacy-mirror write instead of replacing unrelated settings with defaults.
 - Restore reconciliation and ordinary preference mutations share one process-wide serialization boundary; failed preference convergence keeps its durable retry intent.
 - Active timers keep an exact checked duration summary for constant-cardinality system commands while retaining every original segment for reports, history, CSV, and backup. Commands write only the newly opened or closed segment.
 
