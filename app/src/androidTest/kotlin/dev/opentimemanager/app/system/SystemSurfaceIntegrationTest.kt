@@ -29,7 +29,10 @@ class SystemSurfaceIntegrationTest {
             while (android.os.SystemClock.elapsedRealtime() <= running.session.openSegment!!.startedAt.elapsedRealtimeMillis) yield()
             TrackingActions.pendingIntent(app, TrackingActions.primary(running)!!).send()
             val paused = awaitState(TrackingState.PAUSED)
-            assertTrue(paused.session.segments.single().durationMillis > 0)
+            // SystemSnapshot intentionally exposes the persisted O(1) duration baseline instead
+            // of hydrating the complete segment history for notifications, widgets, and tiles.
+            assertNull(paused.session.openSegment)
+            assertTrue(paused.session.confirmedDurationMillis > 0)
             TrackingActions.pendingIntent(app, TrackingActions.primary(paused)!!).send()
             val resumed = awaitState(TrackingState.RUNNING)
             assertEquals(running.session.entryId, resumed.session.entryId)
