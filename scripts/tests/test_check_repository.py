@@ -69,6 +69,41 @@ class RepositoryPolicyTest(unittest.TestCase):
         self._git("add", ".github/workflows/ci.yml")
         self.assert_rejected("full commit SHA")
 
+    def test_rejects_mutable_github_action_with_quoted_key(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text('steps:\n  - "uses": actions/checkout@v4\n', encoding="utf-8")
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("full commit SHA")
+
+    def test_rejects_mutable_github_action_with_spaced_separator(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text("steps:\n  - uses : actions/checkout@v4\n", encoding="utf-8")
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("full commit SHA")
+
+    def test_rejects_mutable_github_action_in_flow_mapping(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text("steps:\n  - { name: Checkout, uses: actions/checkout@v4 }\n", encoding="utf-8")
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("full commit SHA")
+
+    def test_accepts_full_sha_in_quoted_spaced_and_flow_action_references(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            f'steps:\n  - "uses" : "actions/checkout@{PINNED_SHA}"\n'
+            f"  - {{ uses: actions/setup-java@{PINNED_SHA}, name: JDK }}\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_multiline_action_reference_that_cannot_be_safely_parsed(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text("steps:\n  - uses: >\n      actions/checkout@v4\n", encoding="utf-8")
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("could not be parsed safely")
+
     def test_rejects_network_and_broad_android_permissions(self) -> None:
         manifest = self.root / "app/src/main/AndroidManifest.xml"
         manifest.write_text(
@@ -81,17 +116,78 @@ class RepositoryPolicyTest(unittest.TestCase):
         self._git("add", "app/src/main/AndroidManifest.xml")
         self.assert_rejected("forbidden Android permission")
 
-    def test_rejects_dynamic_dependency_versions(self) -> None:
+    def test_rejects_dynamic_catalog_version(self) -> None:
+        catalog = self.root / "gradle/libs.versions.toml"
+        catalog.write_text('[versions]\nkotlin = "+"\n', encoding="utf-8")
+        self._git("add", "gradle/libs.versions.toml")
+        self.assert_rejected("dynamic dependency version")
+
+    def test_rejects_dynamic_catalog_inline_library_version(self) -> None:
         catalog = self.root / "gradle/libs.versions.toml"
         catalog.write_text(
-            '[versions]\nkotlin = "+"\n[libraries]\nexample = { module = "x:y", version = "latest.release" }\n',
+            '[versions]\nkotlin = "2.2.21"\n'
+            '[libraries]\nexample = { module = "x:y", version = "+" }\n',
             encoding="utf-8",
         )
         self._git("add", "gradle/libs.versions.toml")
         self.assert_rejected("dynamic dependency version")
 
+    def test_rejects_dynamic_nested_versions_table(self) -> None:
+        catalog = self.root / "gradle/libs.versions.toml"
+        catalog.write_text(
+            '[versions]\nkotlin = "2.2.21"\n'
+            '[versions.release]\nchannel = "latest.integration"\n',
+            encoding="utf-8",
+        )
+        self._git("add", "gradle/libs.versions.toml")
+        self.assert_rejected("dynamic dependency version")
+
+    def test_rejects_dynamic_catalog_recursive_version_constraint(self) -> None:
+        catalog = self.root / "gradle/libs.versions.toml"
+        catalog.write_text(
+            '[versions]\nkotlin = "2.2.21"\n'
+            '[libraries.example]\nmodule = "x:y"\n'
+            'version = { strictly = "1.+", prefer = "1.2.3" }\n',
+            encoding="utf-8",
+        )
+        self._git("add", "gradle/libs.versions.toml")
+        self.assert_rejected("dynamic dependency version")
+
+    def test_rejects_dynamic_string_dependency_coordinate(self) -> None:
+        build = self.root / "app/build.gradle.kts"
+        build.parent.mkdir(parents=True, exist_ok=True)
+        build.write_text('dependencies { implementation("example:unsafe:+") }\n', encoding="utf-8")
+        self._git("add", "app/build.gradle.kts")
+        self.assert_rejected("dynamic dependency version")
+
+    def test_rejects_dynamic_quoted_gradle_plugin_version(self) -> None:
+        build = self.root / "app/build.gradle.kts"
+        build.parent.mkdir(parents=True, exist_ok=True)
+        build.write_text('plugins { id("example.plugin") version "latest.release" }\n', encoding="utf-8")
+        self._git("add", "app/build.gradle.kts")
+        self.assert_rejected("dynamic dependency version")
+
+    def test_accepts_dynamic_dependency_examples_inside_gradle_comments(self) -> None:
+        build = self.root / "app/build.gradle.kts"
+        build.parent.mkdir(parents=True, exist_ok=True)
+        build.write_text(
+            '// Do not use implementation("example:unsafe:+")\n'
+            '/* Do not set version = "latest.release". */\n'
+            'dependencies { implementation("example:safe:1.2.3") }\n',
+            encoding="utf-8",
+        )
+        self._git("add", "app/build.gradle.kts")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_rejects_missing_packaged_legal_asset(self) -> None:
         path = self.root / "app/src/main/assets/legal/LICENSE.txt"
+        path.unlink()
+        self._git("add", "-u")
+        self.assert_rejected("legal asset")
+
+    def test_rejects_missing_packaged_attribution_asset(self) -> None:
+        path = self.root / "app/src/main/assets/legal/ATTRIBUTION.md"
         path.unlink()
         self._git("add", "-u")
         self.assert_rejected("legal asset")
@@ -102,11 +198,25 @@ class RepositoryPolicyTest(unittest.TestCase):
         self._git("add", path.relative_to(self.root).as_posix())
         self.assert_rejected("does not match")
 
+    def test_rejects_incomplete_release_runtime_legal_inventory(self) -> None:
+        path = self.root / "THIRD_PARTY_NOTICES.md"
+        path.write_text("AndroidX only\n", encoding="utf-8")
+        packaged = self.root / "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md"
+        packaged.write_text("AndroidX only\n", encoding="utf-8")
+        self._git("add", "THIRD_PARTY_NOTICES.md", packaged.relative_to(self.root).as_posix())
+        self.assert_rejected("runtime legal notice")
+
     def test_rejects_untracked_room_schema(self) -> None:
         path = self.root / "app/schemas/example/2.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{}", encoding="utf-8")
         self.assert_rejected("untracked Room schema")
+
+    def test_rejects_repository_with_all_room_schemas_deleted(self) -> None:
+        path = self.root / "app/schemas/example/1.json"
+        path.unlink()
+        self._git("add", "-u")
+        self.assert_rejected("tracked Room schema")
 
     def _write_valid_fixture(self) -> None:
         files = {
@@ -129,10 +239,19 @@ class RepositoryPolicyTest(unittest.TestCase):
             "NOTICE": "Open TimeManager\n",
             "AUTHORS.md": "# Authors\n",
             "ATTRIBUTION.md": "# Attribution\n",
-            "THIRD_PARTY_NOTICES.md": "# Third-party notices\n",
+            "THIRD_PARTY_NOTICES.md": (
+                "# Third-party notices\n"
+                "AndroidX\nOkio\nGuava ListenableFuture\nJSpecify\n"
+                "datastore-preferences-external-protobuf\nBSD-3-Clause\n"
+            ),
             "app/src/main/assets/legal/LICENSE.txt": "GNU GENERAL PUBLIC LICENSE Version 3\n",
             "app/src/main/assets/legal/NOTICE.txt": "Open TimeManager\n",
-            "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md": "# Third-party notices\n",
+            "app/src/main/assets/legal/ATTRIBUTION.md": "# Attribution\n",
+            "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md": (
+                "# Third-party notices\n"
+                "AndroidX\nOkio\nGuava ListenableFuture\nJSpecify\n"
+                "datastore-preferences-external-protobuf\nBSD-3-Clause\n"
+            ),
             "app/schemas/example/1.json": "{}\n",
         }
         for relative, contents in files.items():

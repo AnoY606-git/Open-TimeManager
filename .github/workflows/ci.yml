@@ -48,10 +48,14 @@ jobs:
           :app:compileDebugAndroidTestKotlin
           :app:assembleDebug
           :app:assembleRelease
-      - name: Upload unsigned APKs
+      - name: Recheck policy and generated Room schemas
+        run: |
+          python3 scripts/check_repository.py
+          git diff --exit-code -- app/schemas
+      - name: Upload debug and unsigned release APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: open-timemanager-apks
+          name: open-timemanager-debug-and-unsigned-release-apks
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk

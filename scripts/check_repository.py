@@ -7,6 +7,7 @@ import argparse
 import re
 import subprocess
 import sys
+import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
@@ -21,12 +22,22 @@ REQUIRED_LEGAL_FILES = {
     "THIRD_PARTY_NOTICES.md",
     "app/src/main/assets/legal/LICENSE.txt",
     "app/src/main/assets/legal/NOTICE.txt",
+    "app/src/main/assets/legal/ATTRIBUTION.md",
     "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md",
 }
 PACKAGED_LEGAL_COPIES = {
     "app/src/main/assets/legal/LICENSE.txt": "LICENSE",
     "app/src/main/assets/legal/NOTICE.txt": "NOTICE",
+    "app/src/main/assets/legal/ATTRIBUTION.md": "ATTRIBUTION.md",
     "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+}
+REQUIRED_RUNTIME_NOTICES = {
+    "AndroidX",
+    "Okio",
+    "Guava ListenableFuture",
+    "JSpecify",
+    "datastore-preferences-external-protobuf",
+    "BSD-3-Clause",
 }
 FORBIDDEN_PERMISSIONS = {
     "android.permission.INTERNET",
@@ -54,10 +65,10 @@ SECRET_PATTERNS = (
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{30,}\b"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
 )
-DYNAMIC_VERSION = re.compile(
+DYNAMIC_ASSIGNMENT = re.compile(
     r"(?im)^\s*[A-Za-z0-9_.-]+\s*=\s*[\"'](?:\+|[^\"']*\+|latest\.(?:release|integration)|[^\"']*-SNAPSHOT)[\"']\s*$"
 )
-ACTION_USE = re.compile(r"(?m)^\s*-?\s*uses:\s*([^\s#]+)")
+QUOTED_GRADLE_VALUE = re.compile(r'''(?P<quote>["'])(?P<value>[^"'\r\n]+)(?P=quote)''')
 FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -138,10 +149,121 @@ def translation_errors(root: Path, tracked: set[str]) -> list[str]:
     return errors
 
 
+def _yaml_quoted_value(line: str, start: int) -> tuple[str | None, int]:
+    quote = line[start]
+    chars: list[str] = []
+    index = start + 1
+    while index < len(line):
+        char = line[index]
+        if char == quote:
+            if quote == "'" and index + 1 < len(line) and line[index + 1] == "'":
+                chars.append("'")
+                index += 2
+                continue
+            return "".join(chars), index + 1
+        if quote == '"' and char == "\\" and index + 1 < len(line):
+            chars.append(line[index + 1])
+            index += 2
+            continue
+        chars.append(char)
+        index += 1
+    return None, len(line)
+
+
+def _strip_yaml_comment(line: str) -> str:
+    index = 0
+    while index < len(line):
+        if line[index] in {'"', "'"}:
+            _, index = _yaml_quoted_value(line, index)
+            continue
+        if line[index] == "#" and (index == 0 or line[index - 1].isspace()):
+            return line[:index]
+        index += 1
+    return line
+
+
+def workflow_action_references(text: str) -> tuple[list[str], int]:
+    """Read action references from the safe YAML subset used by workflows.
+
+    The standard library has no YAML parser. This scanner recognizes block and
+    flow mapping keys, quoted keys/scalars, and fails closed when a ``uses``
+    value cannot be read as one scalar. It intentionally does not interpret
+    YAML aliases or multi-line scalars for action references.
+    """
+    references: list[str] = []
+    invalid = 0
+    for original_line in text.splitlines():
+        line = _strip_yaml_comment(original_line)
+        index = 0
+        at_mapping_key = True
+        while index < len(line):
+            char = line[index]
+            if char.isspace():
+                index += 1
+                continue
+            if at_mapping_key and char == "-":
+                index += 1
+                continue
+            if char in "{,":
+                at_mapping_key = True
+                index += 1
+                continue
+            if char in {'"', "'"}:
+                value, after = _yaml_quoted_value(line, index)
+                if at_mapping_key and value == "uses":
+                    index = after
+                else:
+                    index = after
+                    at_mapping_key = False
+                    continue
+            elif at_mapping_key and line.startswith("uses", index):
+                after = index + len("uses")
+                if after < len(line) and (line[after].isalnum() or line[after] in "_-"):
+                    at_mapping_key = False
+                    index += 1
+                    continue
+                index = after
+            else:
+                at_mapping_key = False
+                index += 1
+                continue
+
+            while index < len(line) and line[index].isspace():
+                index += 1
+            if index >= len(line) or line[index] != ":":
+                at_mapping_key = False
+                continue
+            index += 1
+            while index < len(line) and line[index].isspace():
+                index += 1
+            if index >= len(line) or line[index] in "|>":
+                invalid += 1
+                break
+            if line[index] in {'"', "'"}:
+                reference, index = _yaml_quoted_value(line, index)
+                if reference is None:
+                    invalid += 1
+                    break
+            else:
+                start = index
+                while index < len(line) and not line[index].isspace() and line[index] not in ",}":
+                    index += 1
+                reference = line[start:index]
+            if not reference:
+                invalid += 1
+            else:
+                references.append(reference)
+            at_mapping_key = False
+    return references, invalid
+
+
 def workflow_errors(root: Path, tracked: set[str]) -> list[str]:
     errors: list[str] = []
     for relative in sorted(path for path in tracked if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))):
-        for reference in ACTION_USE.findall(read_text(root, relative)):
+        references, invalid = workflow_action_references(read_text(root, relative))
+        if invalid:
+            errors.append(f"GitHub action reference could not be parsed safely: {relative}")
+        for reference in references:
             if reference.startswith(("./", "docker://")):
                 continue
             if "@" not in reference or not FULL_SHA.fullmatch(reference.rsplit("@", 1)[1]):
@@ -164,6 +286,89 @@ def android_permission_errors(root: Path, tracked: set[str]) -> list[str]:
     return [f"forbidden Android permission: {permission}" for permission in sorted(declared & FORBIDDEN_PERMISSIONS)]
 
 
+def is_dynamic_version(value: str) -> bool:
+    normalized = value.strip().lower()
+    return (
+        "+" in normalized
+        or normalized in {"latest.release", "latest.integration"}
+        or normalized.endswith("-snapshot")
+    )
+
+
+def nested_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [item for child in value.values() for item in nested_strings(child)]
+    if isinstance(value, list):
+        return [item for child in value for item in nested_strings(child)]
+    return []
+
+
+def catalog_version_values(document: dict[str, object]) -> list[str]:
+    values = nested_strings(document.get("versions", {}))
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key.lower() in {"version", "strictly", "prefer", "require", "requiredversion"}:
+                    values.extend(nested_strings(child))
+                else:
+                    visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    for section in ("libraries", "plugins"):
+        visit(document.get(section, {}))
+    return values
+
+
+def strip_gradle_comments(text: str) -> str:
+    """Remove Gradle comments while preserving strings and line boundaries."""
+    result: list[str] = []
+    index = 0
+    quote: str | None = None
+    while index < len(text):
+        if quote is not None:
+            if text.startswith(quote, index):
+                result.append(quote)
+                index += len(quote)
+                quote = None
+            elif len(quote) == 1 and text[index] == "\\" and index + 1 < len(text):
+                result.append(text[index:index + 2])
+                index += 2
+            else:
+                result.append(text[index])
+                index += 1
+            continue
+        if text.startswith("//", index):
+            while index < len(text) and text[index] != "\n":
+                result.append(" ")
+                index += 1
+            continue
+        if text.startswith("/*", index):
+            result.extend("  ")
+            index += 2
+            while index < len(text) and not text.startswith("*/", index):
+                result.append("\n" if text[index] == "\n" else " ")
+                index += 1
+            if index < len(text):
+                result.extend("  ")
+                index += 2
+            continue
+        if text.startswith(('"""', "'''"), index):
+            quote = text[index:index + 3]
+            result.append(quote)
+            index += 3
+            continue
+        if text[index] in {'"', "'"}:
+            quote = text[index]
+        result.append(text[index])
+        index += 1
+    return "".join(result)
+
+
 def dependency_errors(root: Path, tracked: set[str]) -> list[str]:
     errors: list[str] = []
     candidates = [
@@ -172,7 +377,25 @@ def dependency_errors(root: Path, tracked: set[str]) -> list[str]:
         if relative.endswith((".gradle", ".gradle.kts", "libs.versions.toml"))
     ]
     for relative in sorted(candidates):
-        if DYNAMIC_VERSION.search(read_text(root, relative)):
+        text = read_text(root, relative)
+        dynamic = False
+        if relative.endswith("libs.versions.toml"):
+            try:
+                document = tomllib.loads(text)
+            except tomllib.TOMLDecodeError as error:
+                errors.append(f"dependency catalog could not be parsed: {relative}: {error}")
+                continue
+            dynamic = any(is_dynamic_version(value) for value in catalog_version_values(document))
+        else:
+            text = strip_gradle_comments(text)
+            dynamic = DYNAMIC_ASSIGNMENT.search(text) is not None
+            for match in QUOTED_GRADLE_VALUE.finditer(text):
+                value = match.group("value")
+                parts = value.split(":")
+                if is_dynamic_version(value) or (len(parts) >= 3 and is_dynamic_version(parts[2])):
+                    dynamic = True
+                    break
+        if dynamic:
             errors.append(f"dynamic dependency version: {relative}")
     return errors
 
@@ -183,14 +406,27 @@ def legal_errors(root: Path, tracked: set[str]) -> list[str]:
         if packaged in tracked and source in tracked:
             if (root / packaged).read_bytes() != (root / source).read_bytes():
                 errors.append(f"packaged legal asset does not match {source}: {packaged}")
+    notice = "THIRD_PARTY_NOTICES.md"
+    if notice in tracked:
+        contents = read_text(root, notice)
+        for component in sorted(REQUIRED_RUNTIME_NOTICES):
+            if component not in contents:
+                errors.append(f"missing runtime legal notice for {component}: {notice}")
     return errors
 
 
 def schema_errors(root: Path, tracked: set[str]) -> list[str]:
     schema_root = root / "app/schemas"
-    if not schema_root.exists():
-        return []
     errors: list[str] = []
+    tracked_schemas = {
+        relative
+        for relative in tracked
+        if relative.startswith("app/schemas/") and relative.endswith(".json")
+    }
+    if not tracked_schemas:
+        errors.append("at least one tracked Room schema is required under app/schemas")
+    if not schema_root.exists():
+        return errors
     for path in schema_root.rglob("*.json"):
         relative = path.relative_to(root).as_posix()
         if relative not in tracked:

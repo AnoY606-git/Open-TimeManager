@@ -34,7 +34,16 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
 
 Bootstrap проверяет SHA-256 закреплённых JDK 17, Android command-line tools и Gradle Wrapper. Можно не использовать bootstrap: установите JDK 17 и Android SDK API 36, задайте `ANDROID_HOME`/`JAVA_HOME` и запускайте `./gradlew` напрямую.
 
-Отладочный APK появится в `app/build/outputs/apk/debug/`. Для полной проверки репозитория:
+Для установки нужен Android 12+ эмулятор или подключённое устройство с включённой USB-отладкой; подтвердите RSA-запрос на экране устройства. После сборки проверьте, что `adb devices` показывает его в состоянии `device`, и установите точный debug-артефакт:
+
+```bash
+adb devices
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Debug APK подписан автоматически созданным Android debug/test-ключом и предназначен только для тестирования. `app/build/outputs/apk/release/app-release-unsigned.apk` не установится, пока владелец не подпишет его своим release-ключом.
+
+Для полной проверки репозитория:
 
 ```bash
 python3 scripts/check_repository.py

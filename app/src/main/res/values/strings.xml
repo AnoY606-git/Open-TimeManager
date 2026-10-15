@@ -114,6 +114,7 @@
     <string name="legal_information">Legal information</string>
     <string name="source_license">Open-source license</string>
     <string name="project_notice">Project notice</string>
+    <string name="project_attribution">Project attribution</string>
     <string name="third_party_notices">Third-party notices</string>
     <string name="close">Close</string>
     <string name="error_invalid_entry">Check the project, date, time, duration and note.</string>

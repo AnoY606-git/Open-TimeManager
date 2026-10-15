@@ -115,6 +115,7 @@
     <string name="legal_information">Правовая информация</string>
     <string name="source_license">Лицензия открытого кода</string>
     <string name="project_notice">Уведомление проекта</string>
+    <string name="project_attribution">Атрибуция проекта</string>
     <string name="third_party_notices">Уведомления сторонних компонентов</string>
     <string name="close">Закрыть</string>
     <string name="error_invalid_entry">Проверьте проект, дату, время, длительность и заметку.</string>

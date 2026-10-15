@@ -34,7 +34,16 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
 
 The bootstrap verifies SHA-256 checksums for the pinned JDK 17, Android command-line tools, and Gradle Wrapper. You may instead provide JDK 17 and Android SDK API 36, set `ANDROID_HOME`/`JAVA_HOME`, and invoke `./gradlew` directly.
 
-The debug APK is written to `app/build/outputs/apk/debug/`. To run the repository's complete static and JVM build gate:
+Installation requires an Android 12+ emulator or a connected device with USB debugging enabled; accept the RSA authorization prompt on the device. After building, confirm that `adb devices` reports it in the `device` state, then install the exact debug artifact:
+
+```bash
+adb devices
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+The debug APK is signed with an automatically generated Android debug/test key and is for testing only. `app/build/outputs/apk/release/app-release-unsigned.apk` cannot be installed until its owner signs it with a release key.
+
+To run the repository's complete static and JVM build gate:
 
 ```bash
 python3 scripts/check_repository.py

@@ -10,6 +10,7 @@ enum class LegalDocument(
 ) {
     LICENSE("legal/LICENSE.txt", R.string.source_license),
     NOTICE("legal/NOTICE.txt", R.string.project_notice),
+    ATTRIBUTION("legal/ATTRIBUTION.md", R.string.project_attribution),
     THIRD_PARTY_NOTICES("legal/THIRD_PARTY_NOTICES.md", R.string.third_party_notices),
 }
 
