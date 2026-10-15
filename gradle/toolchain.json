@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "host": "linux-x86_64",
+  "jdkVersion": "17.0.20.1+1",
+  "jdk": {
+    "filename": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+    "sha256": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e"
+  },
+  "androidCommandLineTools": {
+    "filename": "commandlinetools-linux-13114758_latest.zip",
+    "url": "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip",
+    "sha256": "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee"
+  },
+  "commandLineToolsVersion": "19.0",
+  "gradleVersion": "8.13",
+  "wrapperJarSha256": "81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f",
+  "sdkPackages": [
+    "platform-tools",
+    "platforms;android-36",
+    "build-tools;36.0.0"
+  ],
+  "attribution": {
+    "source": "https://github.com/AnoY606-git/SplitBox/blob/main/gradle/toolchain.json",
+    "copyright": "Copyright (C) 2026 AnoY606-git and SplitBox contributors",
+    "license": "GPL-3.0-only"
+  },
+  "commandLineToolsDirectory": "latest"
+}

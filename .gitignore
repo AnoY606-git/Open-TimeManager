@@ -8,6 +8,8 @@ docs/superpowers/
 .toolchain/
 local.properties
 **/build/
+__pycache__/
+*.pyc
 
 # IDE and signing material
 .idea/
