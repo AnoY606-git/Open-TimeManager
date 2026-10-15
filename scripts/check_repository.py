@@ -286,6 +286,24 @@ def setup_android_package_errors(text: str, relative: str) -> list[str]:
     return errors
 
 
+def emulator_kvm_errors(text: str, relative: str) -> list[str]:
+    """Require hardware acceleration to be enabled before Linux emulator jobs."""
+    errors: list[str] = []
+    lines = text.splitlines()
+    for index, original_line in enumerate(lines):
+        line = _strip_yaml_comment(original_line)
+        if "reactivecircus/android-emulator-runner@" not in line:
+            continue
+        # Keep the permission setup in the same local step sequence. A marker
+        # in another job must not make an emulator job appear accelerated.
+        preceding_steps = "\n".join(lines[max(0, index - 12) : index])
+        if "static_node=kvm" not in preceding_steps or "udevadm trigger --name-match=kvm" not in preceding_steps:
+            errors.append(
+                f"GitHub workflow must enable KVM before android-emulator-runner: {relative}"
+            )
+    return errors
+
+
 def workflow_errors(root: Path, tracked: set[str]) -> list[str]:
     errors: list[str] = []
     for relative in sorted(path for path in tracked if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))):
@@ -299,6 +317,7 @@ def workflow_errors(root: Path, tracked: set[str]) -> list[str]:
             if "@" not in reference or not FULL_SHA.fullmatch(reference.rsplit("@", 1)[1]):
                 errors.append(f"GitHub action must use a full commit SHA: {relative}: {reference}")
         errors.extend(setup_android_package_errors(text, relative))
+        errors.extend(emulator_kvm_errors(text, relative))
     return errors
 
 

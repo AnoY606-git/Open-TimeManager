@@ -125,6 +125,32 @@ class RepositoryPolicyTest(unittest.TestCase):
         result = self.run_checker()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_rejects_emulator_runner_without_kvm_permissions(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            f"steps:\n  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("enable KVM before android-emulator-runner")
+
+    def test_accepts_emulator_runner_after_kvm_permissions(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            "steps:\n"
+            "  - name: Enable KVM group permissions\n"
+            "    run: |\n"
+            "      echo 'KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", "
+            "OPTIONS+=\"static_node=kvm\"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules\n"
+            "      sudo udevadm control --reload-rules\n"
+            "      sudo udevadm trigger --name-match=kvm\n"
+            f"  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_rejects_network_and_broad_android_permissions(self) -> None:
         manifest = self.root / "app/src/main/AndroidManifest.xml"
         manifest.write_text(
