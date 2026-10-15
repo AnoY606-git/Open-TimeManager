@@ -275,6 +275,96 @@ class BackupFileCoordinatorTest {
     }
 
     @Test
+    fun authenticatedImportEnforcesEveryOperationalObjectLimitAndClearsPasswords() = runBlocking {
+        val firstProject = PortableProject(
+            ProjectId("21000000-0000-4000-8000-000000000001"),
+            "A",
+        )
+        val secondProject = PortableProject(
+            ProjectId("21000000-0000-4000-8000-000000000002"),
+            "B",
+        )
+        val firstEntry = PortableEntry(
+            EntryId("31000000-0000-4000-8000-000000000001"),
+            firstProject.id,
+            "",
+            ZoneId.of("UTC"),
+            EntrySource.MANUAL,
+        )
+        val secondEntry = PortableEntry(
+            EntryId("31000000-0000-4000-8000-000000000002"),
+            firstProject.id,
+            "",
+            ZoneId.of("UTC"),
+            EntrySource.MANUAL,
+        )
+        val cases = listOf(
+            PortableSnapshot(projects = listOf(firstProject, secondProject)) to BackupOperationalLimits(maxProjects = 1),
+            PortableSnapshot(
+                projects = listOf(firstProject),
+                entries = listOf(firstEntry, secondEntry),
+            ) to BackupOperationalLimits(maxEntries = 1),
+            portableSnapshot(segmentCount = 2) to BackupOperationalLimits(maxSegments = 1),
+        )
+
+        cases.forEach { (snapshot, policy) ->
+            documents.bytes[backupUri] = BackupCodec.encrypt(
+                snapshot,
+                "secret".toCharArray(),
+                SecureRandom(),
+                BackupFileCoordinator.APP_LIMITS,
+            )
+            val password = "secret".toCharArray()
+
+            val result = coordinator(operationalLimits = policy).inspectBackup(backupUri, password)
+
+            assertEquals(BackupInspection.Failed(BackupReadFailure.LIMIT), result)
+            assertArrayEquals(CharArray(password.size), password)
+        }
+    }
+
+    @Test
+    fun authenticatedImportEnforcesUtf8TextBytesAndAcceptsTheExactBoundary() = runBlocking {
+        val project = PortableProject(ProjectId("22000000-0000-4000-8000-000000000001"), "ab")
+        val entry = PortableEntry(
+            EntryId("32000000-0000-4000-8000-000000000001"),
+            project.id,
+            "é",
+            ZoneId.of("UTC"),
+            EntrySource.MANUAL,
+        )
+        val snapshot = PortableSnapshot(projects = listOf(project), entries = listOf(entry))
+        documents.bytes[backupUri] = BackupCodec.encrypt(
+            snapshot,
+            "secret".toCharArray(),
+            SecureRandom(),
+            BackupFileCoordinator.APP_LIMITS,
+        )
+        val exactPassword = "secret".toCharArray()
+
+        val exact = coordinator(
+            operationalLimits = BackupOperationalLimits(
+                maxProjects = 1,
+                maxEntries = 1,
+                maxSegments = 0,
+                maxUserTextBytes = 4,
+            ),
+        ).inspectBackup(backupUri, exactPassword)
+
+        assertTrue(exact is BackupInspection.Ready)
+        (exact as BackupInspection.Ready).preview.discard()
+        assertArrayEquals(CharArray(exactPassword.size), exactPassword)
+
+        val overLimitPassword = "secret".toCharArray()
+        val overLimit = coordinator(
+            operationalLimits = BackupOperationalLimits(maxUserTextBytes = 3),
+        ).inspectBackup(backupUri, overLimitPassword)
+
+        assertEquals(BackupInspection.Failed(BackupReadFailure.LIMIT), overLimit)
+        assertArrayEquals(CharArray(overLimitPassword.size), overLimitPassword)
+    }
+
+    @Test
     fun cancelledAndFailedBackupWritesDoNotRetainEncryptedPayload() = runBlocking {
         val coordinator = coordinator()
         val cancelled = coordinator.prepareBackup("secret".toCharArray())

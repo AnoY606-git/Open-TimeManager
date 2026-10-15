@@ -77,8 +77,8 @@ class BackupFileCoordinator(
     private val documents: DocumentStore,
     private val restoreRepository: RestoreRepository,
     private val dispatcher: CoroutineDispatcher,
-    private val limits: BackupLimits = APP_LIMITS,
-    private val operationalLimits: BackupOperationalLimits = BackupOperationalLimits(),
+    private val limits: BackupLimits = MobileBackupPolicy.codecLimits,
+    private val operationalLimits: BackupOperationalLimits = MobileBackupPolicy.operationalLimits,
     private val random: SecureRandom = SecureRandom(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -173,6 +173,7 @@ class BackupFileCoordinator(
                 }
                 try {
                     val snapshot = BackupCodec.decrypt(bytes, password, limits)
+                    operationalLimits.requireWithin(snapshot)
                     BackupInspection.Ready(restoreRepository.preview(snapshot))
                 } catch (_: BackupError.IntegrityError) {
                     BackupInspection.Failed(BackupReadFailure.INTEGRITY)
@@ -205,14 +206,12 @@ class BackupFileCoordinator(
         } catch (_: ArithmeticException) {
             throw BackupError.LimitError()
         }
-        if (
-            dao.projectCount() > operationalLimits.maxProjects ||
-            dao.entryCount() > operationalLimits.maxEntries ||
-            dao.closedSegmentCount() > operationalLimits.maxSegments ||
-            userTextBytes > operationalLimits.maxUserTextBytes
-        ) {
-            throw BackupError.LimitError()
-        }
+        operationalLimits.requireWithin(
+            projects = dao.projectCount(),
+            entries = dao.entryCount(),
+            segments = dao.closedSegmentCount(),
+            userTextBytes = userTextBytes,
+        )
         val projects = dao.projects().map { PortableProject(ProjectId(it.id), it.name) }
         val entries = dao.entries().map {
             PortableEntry(
@@ -263,23 +262,100 @@ class BackupFileCoordinator(
 
     companion object {
         const val MIME_TYPE = "application/octet-stream"
-        const val APP_MAX_BYTES = 4 * 1024 * 1024
-        const val APP_MAX_SEGMENTS = 20_000
+        const val APP_MAX_BYTES = MobileBackupPolicy.MAX_CONTAINER_BYTES
+        const val APP_MAX_SEGMENTS = MobileBackupPolicy.MAX_SEGMENTS
         private const val IO_CHUNK_SIZE = 32 * 1024
-        val APP_LIMITS = BackupLimits(maxBytes = APP_MAX_BYTES, maxSegments = APP_MAX_SEGMENTS)
+        val APP_LIMITS = MobileBackupPolicy.codecLimits
         private val BACKUP_DATE = DateTimeFormatter.ISO_LOCAL_DATE
     }
 }
 
 data class BackupOperationalLimits(
-    val maxProjects: Long = 20_000,
-    val maxEntries: Long = 20_000,
-    val maxSegments: Long = 20_000,
-    val maxUserTextBytes: Long = 3L * 1024 * 1024,
+    val maxProjects: Long = MobileBackupPolicy.MAX_PROJECTS,
+    val maxEntries: Long = MobileBackupPolicy.MAX_ENTRIES,
+    val maxSegments: Long = MobileBackupPolicy.MAX_SEGMENTS.toLong(),
+    val maxUserTextBytes: Long = MobileBackupPolicy.MAX_USER_TEXT_BYTES,
 ) {
     init {
         require(maxProjects >= 0 && maxEntries >= 0 && maxSegments >= 0 && maxUserTextBytes >= 0)
     }
+
+    internal fun requireWithin(snapshot: PortableSnapshot) {
+        var textBytes = 0L
+        snapshot.projects.forEach { project ->
+            textBytes = addTextBytes(textBytes, project.name)
+        }
+        snapshot.entries.forEach { entry ->
+            textBytes = addTextBytes(textBytes, entry.note)
+        }
+        requireWithin(
+            projects = snapshot.projects.size.toLong(),
+            entries = snapshot.entries.size.toLong(),
+            segments = snapshot.segments.size.toLong(),
+            userTextBytes = textBytes,
+        )
+    }
+
+    internal fun requireWithin(
+        projects: Long,
+        entries: Long,
+        segments: Long,
+        userTextBytes: Long,
+    ) {
+        if (
+            projects > maxProjects ||
+            entries > maxEntries ||
+            segments > maxSegments ||
+            userTextBytes > maxUserTextBytes
+        ) {
+            throw BackupError.LimitError()
+        }
+    }
+
+    private fun addTextBytes(total: Long, value: String): Long = try {
+        Math.addExact(total, value.utf8Bytes())
+    } catch (_: ArithmeticException) {
+        throw BackupError.LimitError()
+    }
+}
+
+internal object MobileBackupPolicy {
+    const val MAX_CONTAINER_BYTES = 4 * 1024 * 1024
+    const val MAX_PROJECTS = 20_000L
+    const val MAX_ENTRIES = 20_000L
+    const val MAX_SEGMENTS = 20_000
+    const val MAX_USER_TEXT_BYTES = 3L * 1024 * 1024
+
+    val codecLimits = BackupLimits(maxBytes = MAX_CONTAINER_BYTES, maxSegments = MAX_SEGMENTS)
+    val operationalLimits = BackupOperationalLimits(
+        maxProjects = MAX_PROJECTS,
+        maxEntries = MAX_ENTRIES,
+        maxSegments = MAX_SEGMENTS.toLong(),
+        maxUserTextBytes = MAX_USER_TEXT_BYTES,
+    )
+}
+
+/** Exact UTF-8 encoded size without allocating one temporary byte array per imported string. */
+private fun String.utf8Bytes(): Long {
+    var bytes = 0L
+    var index = 0
+    while (index < length) {
+        val character = this[index]
+        bytes += when {
+            character.code <= 0x7f -> 1
+            character.code <= 0x7ff -> 2
+            Character.isHighSurrogate(character) &&
+                index + 1 < length &&
+                Character.isLowSurrogate(this[index + 1]) -> {
+                index++
+                4
+            }
+            Character.isSurrogate(character) -> 1 // Matches the JDK UTF-8 encoder's '?' replacement.
+            else -> 3
+        }
+        index++
+    }
+    return bytes
 }
 
 private class ReadLimitExceeded : Exception()

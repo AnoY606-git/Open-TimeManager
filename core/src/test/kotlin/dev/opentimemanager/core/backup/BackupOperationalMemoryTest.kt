@@ -54,6 +54,28 @@ class BackupOperationalMemoryTest {
         password.fill('\u0000')
     }
 
+    @Test
+    fun twentyThousandObjectMobileBoundaryRoundTripsWithinConstrainedHeap() {
+        val projects = (1..20_000).map { index ->
+            PortableProject(
+                id = ProjectId(uuid(0x40000000, index)),
+                name = "p",
+            )
+        }
+        val snapshot = PortableSnapshot(projects = projects)
+        val limits = BackupLimits(maxBytes = 4 * 1024 * 1024, maxSegments = 20_000)
+        val password = "object-count-boundary".toCharArray()
+
+        val encrypted = BackupCodec.encrypt(snapshot, password, SecureRandom(), limits)
+        assertTrue("fixture must stay below the byte-heavy scenario", encrypted.size < 3 * 1024 * 1024)
+        val restored = BackupCodec.decrypt(encrypted, password, limits)
+
+        assertEquals(20_000, restored.projects.size)
+        assertEquals("p", restored.projects.last().name)
+        encrypted.fill(0)
+        password.fill('\u0000')
+    }
+
     private fun uuid(prefix: Int, suffix: Int): String = String.format(
         Locale.ROOT,
         "%08x-0000-4000-8000-%012x",

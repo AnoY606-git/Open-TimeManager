@@ -53,6 +53,7 @@ import dev.opentimemanager.app.backup.BackupReadFailure
 import dev.opentimemanager.app.ui.launchOwnedSecret
 import dev.opentimemanager.app.backup.RestoreMode
 import dev.opentimemanager.app.backup.RestoreResult
+import dev.opentimemanager.core.backup.BackupError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -66,7 +67,7 @@ class BackupActions(
     val restore: suspend (BackupPreview, RestoreMode) -> RestoreResult,
 )
 
-private enum class TransferUiStatus {
+internal enum class TransferUiStatus {
     BACKUP_RESTORED,
     INVALID_PASSWORD_OR_FILE,
     LIMIT_EXCEEDED,
@@ -264,9 +265,9 @@ fun SettingsScreen(
                     } catch (cancelled: CancellationException) {
                         actions.cancelPrepare()
                         throw cancelled
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
                         actions.cancelPrepare()
-                        status = TransferUiStatus.IO_ERROR
+                        status = backupCreateFailureStatus(error)
                     }
                 }
             }
@@ -446,6 +447,11 @@ private fun BackupReadFailure.status(): TransferUiStatus = when (this) {
     BackupReadFailure.LIMIT -> TransferUiStatus.LIMIT_EXCEEDED
     BackupReadFailure.UNSUPPORTED_VERSION -> TransferUiStatus.UNSUPPORTED_VERSION
     BackupReadFailure.IO -> TransferUiStatus.IO_ERROR
+}
+
+internal fun backupCreateFailureStatus(error: Throwable): TransferUiStatus = when (error) {
+    is BackupError.LimitError -> TransferUiStatus.LIMIT_EXCEEDED
+    else -> TransferUiStatus.IO_ERROR
 }
 
 private fun TransferUiStatus.resource(): Int = when (this) {
