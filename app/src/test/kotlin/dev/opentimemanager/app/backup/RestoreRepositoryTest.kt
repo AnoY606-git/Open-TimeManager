@@ -33,13 +33,13 @@ import dev.opentimemanager.core.model.TrackingState
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -316,9 +316,10 @@ class RestoreRepositoryTest {
             preferences = PortablePreferences(PortableTheme.DARK, true, true, 600),
         )
         val previewB = configured.preview(sourceB)
-        val replaceB = async { configured.restore(previewB, RestoreMode.REPLACE) }
+        val replaceB = async(start = CoroutineStart.UNDISPATCHED) {
+            configured.restore(previewB, RestoreMode.REPLACE)
+        }
 
-        delay(50)
         assertFalse(replaceB.isCompleted)
         releaseA.complete(Unit)
         startup.await()

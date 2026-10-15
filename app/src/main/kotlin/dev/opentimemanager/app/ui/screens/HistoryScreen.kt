@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -136,14 +137,14 @@ fun HistoryScreen(
         EntryDialog(
             entry = edited,
             state = state,
-            onDismiss = { onCloseProjectPicker(); addEntry = false; edited = null },
+            onDismiss = { addEntry = false; edited = null },
             onOpenProjectPicker = onOpenProjectPicker,
             onSearchProjects = onSearchProjects,
             onLoadMoreProjects = onLoadMoreProjects,
+            onCloseProjectPicker = onCloseProjectPicker,
             onSave = { draft ->
                 val item = edited
                 onSave(item?.id, item?.revision, draft)
-                onCloseProjectPicker()
                 addEntry = false
                 edited = null
             },
@@ -170,6 +171,7 @@ private fun EntryDialog(
     onOpenProjectPicker: (String?) -> Unit,
     onSearchProjects: (String) -> Unit,
     onLoadMoreProjects: () -> Unit,
+    onCloseProjectPicker: () -> Unit,
     onSave: (ManualEntryDraft) -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -189,6 +191,9 @@ private fun EntryDialog(
     var invalid by remember(entry?.id, entry?.revision) { mutableStateOf(false) }
     LaunchedEffect(entry?.id, entry?.revision) {
         onOpenProjectPicker(entry?.projectId ?: form.projectId.ifBlank { null })
+    }
+    DisposableEffect(Unit) {
+        onDispose(onCloseProjectPicker)
     }
     fun submit() {
         val validation = validateEntryForm(form, zone)
