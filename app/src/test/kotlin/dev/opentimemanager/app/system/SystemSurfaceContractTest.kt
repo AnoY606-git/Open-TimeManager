@@ -31,7 +31,7 @@ import java.util.Locale
 class SystemSurfaceContractTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
 
-    private fun fixture(state: TrackingState = TrackingState.RUNNING, revision: Long = 1): AppSnapshot {
+    private fun fixture(state: TrackingState = TrackingState.RUNNING, revision: Long = 1): SystemSnapshot {
         val segment = Segment(SegmentId("closed"), EntryId("entry"), ProjectId("project"), 1000, 5000)
         val session = when (state) {
             TrackingState.IDLE -> TrackingSession.idle()
@@ -39,7 +39,8 @@ class SystemSurfaceContractTest {
             TrackingState.PAUSED -> TrackingSession.restore(state, revision, EntryId("entry"), ProjectId("project"), null, listOf(segment))
             TrackingState.NEEDS_REVIEW -> TrackingSession.restore(state, revision, EntryId("entry"), ProjectId("project"), null, listOf(segment))
         }
-        return AppSnapshot(session, listOf(ProjectEntity("project", "Secret project", 0, 0)), listOf(EntryEntity("entry", "project", "Secret note", 1000, null, "TIMER", 0, false, 1)), listOf(segment))
+        val project = ProjectEntity("project", "Secret project", 0, 0)
+        return SystemSnapshot(session, LEGACY_COMMAND_GENERATION, project, project)
     }
 
     @Test fun immutableExplicitActionsKeepDistinctTargetsAndDeduplicateRepeatedRenders() {
@@ -77,7 +78,7 @@ class SystemSurfaceContractTest {
 
     @Test fun defaultProjectNameIsLocalizedOnNotificationAndWidget() {
         val snapshot = fixture().copy(
-            projects = listOf(ProjectEntity(ProjectRepository.DEFAULT_PROJECT_ID.value, "Без проекта", 0, 0)),
+            activeProject = ProjectEntity(ProjectRepository.DEFAULT_PROJECT_ID.value, "@default", 0, 0),
             session = TrackingSession.restore(
                 TrackingState.RUNNING,
                 1,
@@ -94,6 +95,18 @@ class SystemSurfaceContractTest {
         val russian = context.createConfigurationContext(ruConfig)
         val russianWidget = TrackingWidgetProvider.views(russian, snapshot, privacyMode = false).apply(russian, null)
         assertEquals("Без проекта", russianWidget.findViewById<TextView>(R.id.widget_status).text.toString())
+    }
+
+    @Test fun idleQuickActionStartsOnlyWithExactlyOneEligibleProject() {
+        val idle = fixture(TrackingState.IDLE).copy(activeProject = null)
+        assertNull(TrackingActions.primary(idle.copy(quickStartProject = null)))
+        val only = ProjectEntity("only", "Only", 0, 0)
+        assertEquals(
+            ProjectId("only"),
+            (TrackingActions.primary(idle.copy(quickStartProject = only)) as TrackingCommand.Start).projectId,
+        )
+        // Null also represents 2+ eligible projects: the app must ask for a selection.
+        assertNull(TrackingActions.primary(idle.copy(quickStartProject = null)))
     }
 
     @Test fun widgetAndTileProjectIdleRunningPausedAndReviewWithoutPrivateText() {
@@ -130,7 +143,7 @@ class SystemSurfaceContractTest {
             val updater = SystemSurfaceUpdater(context)
             val result = TrackingCommandReceiver.dispatch(encoded, coordinator, updater)
             assertEquals(TrackingResult.Rejected(TrackingFailure.STALE_REVISION), result)
-            val current = coordinator.observeSnapshot().first()
+            val current = coordinator.observeSystemSnapshot().first()
             assertEquals(TrackingState.PAUSED, current.session.state)
             shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
             assertEquals(NotificationAvailability.BLOCKED, updater.refresh(current))
@@ -183,6 +196,31 @@ class SystemSurfaceContractTest {
         assertEquals(TrackingState.RUNNING, after.session.state)
         assertEquals(before.session.entryId, after.session.entryId)
         assertEquals(before.session.revision, after.session.revision)
+    }
+
+    @Test
+    @Config(application = dev.opentimemanager.app.OpenTimeManagerApplication::class)
+    fun foregroundServiceRequestsStickyRestartForPersistedSessionReconciliation() {
+        val service = org.robolectric.Robolectric.buildService(TrackingService::class.java).create().get()
+        assertEquals(android.app.Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        service.onDestroy()
+    }
+
+    @Test
+    @Config(application = dev.opentimemanager.app.OpenTimeManagerApplication::class)
+    fun recreatedForegroundServiceStopsItselfWhenPersistedStateIsIdle() {
+        runBlocking {
+            val app = ApplicationProvider.getApplicationContext<dev.opentimemanager.app.OpenTimeManagerApplication>()
+            assertEquals(TrackingState.IDLE, app.container.trackingCoordinator.observeSystemSnapshot().first().session.state)
+            val controller = org.robolectric.Robolectric.buildService(TrackingService::class.java).create()
+            withTimeout(5_000) {
+                while (!shadowOf(controller.get()).isStoppedBySelf) {
+                    shadowOf(android.os.Looper.getMainLooper()).idle()
+                    yield()
+                }
+            }
+            controller.destroy()
+        }
     }
 
     @Test fun systemComponentsHaveOnlyTheirRequiredExposureAndPermissions() {

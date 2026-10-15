@@ -29,15 +29,21 @@ import dev.opentimemanager.core.model.CommandId
 import dev.opentimemanager.core.model.EntryId
 import dev.opentimemanager.core.model.ProjectId
 import dev.opentimemanager.core.model.TrackingState
+import dev.opentimemanager.core.report.ReportAggregator
+import dev.opentimemanager.core.report.ReportTotals
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -52,6 +58,7 @@ enum class UiMessage {
     BACKUP_CREATED,
     DATA_IO_ERROR,
     PARTIAL_FILE_CLEANUP_REQUIRED,
+    SYSTEM_CONTROLS_UNAVAILABLE,
 }
 
 data class AppControls(
@@ -59,6 +66,7 @@ data class AppControls(
     val selectedProjectId: String? = null,
     val historySearch: String = "",
     val reportPeriod: ReportPeriod = ReportPeriod.WEEK,
+    val historyLimit: Int = INITIAL_HISTORY_LIMIT,
     val message: UiMessage? = null,
     val dataTransferBusy: Boolean = false,
     val pendingRestoreUri: String? = null,
@@ -68,6 +76,7 @@ data class AppUiState(
     val snapshot: AppSnapshot? = null,
     val preferences: UserPreferences = UserPreferences(),
     val controls: AppControls = AppControls(),
+    val reportTotals: ReportTotals = ReportAggregator.aggregateTotals(emptyList(), 0, 0),
 ) {
     val availableProjects get() = snapshot?.projects.orEmpty().filter { it.archivedAtUtcMillis == null }
     val selectedProjectId: String? get() {
@@ -108,18 +117,35 @@ fun filterCompletedEntries(
         .toList()
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(
     private val application: Application,
     private val container: AppContainer,
 ) : ViewModel() {
     private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
+    private val snapshots = controls
+        .map { current -> current.historyLimit }
+        .distinctUntilChanged()
+        .flatMapLatest { limit -> container.trackingCoordinator.observeSnapshot(limit) }
+    private val reportTotals = controls
+        .map { current ->
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            current.reportPeriod.validatedBounds(today, zone).value
+                ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
+        }
+        .distinctUntilChanged()
+        .flatMapLatest { bounds ->
+            container.completedEntries.observeReportTotals(bounds.fromUtcMillis, bounds.toUtcMillis)
+        }
     val state: StateFlow<AppUiState> = combine(
-        container.trackingCoordinator.observeSnapshot(),
+        snapshots,
         container.settings.values,
         controls,
-    ) { snapshot, preferences, current ->
-        AppUiState(snapshot, preferences, current)
+        reportTotals,
+    ) { snapshot, preferences, current, totals ->
+        AppUiState(snapshot, preferences, current, totals)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
     fun navigate(destination: AppDestination) = updateControls { copy(destination = destination) }
@@ -130,6 +156,7 @@ class AppViewModel(
         if (switch != null) execute(switch)
     }
     fun searchHistory(query: String) = updateControls { copy(historySearch = query) }
+    fun loadMoreHistory() = updateControls { copy(historyLimit = nextHistoryLimit(historyLimit)) }
     fun selectReportPeriod(period: ReportPeriod) = updateControls { copy(reportPeriod = period) }
     fun clearMessage() = updateControls { copy(message = null) }
 
@@ -161,6 +188,7 @@ class AppViewModel(
         execute(TrackingCommand.ResolveReview(
             dev.opentimemanager.core.model.CommandTarget(entryId, snapshot.session.revision, newCommandId()),
             resolution,
+            snapshot.generation,
         ))
     }
 
@@ -303,7 +331,7 @@ class AppViewModel(
             transfers.consumePreview(preview)
             val result = container.restore.restore(preview, mode)
             if (result is RestoreResult.Applied) {
-                val snapshot = container.trackingCoordinator.observeSnapshot().first()
+                val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
                 SystemSurfaceUpdater(application).refresh(snapshot)
             }
             return result
@@ -317,24 +345,48 @@ class AppViewModel(
         super.onCleared()
     }
 
-    private fun execute(command: TrackingCommand) = launchWrite {
-        when (val result = container.trackingCoordinator.execute(command)) {
+    private fun execute(command: TrackingCommand) = viewModelScope.launch {
+        val result = try {
+            container.trackingCoordinator.execute(command)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            show(UiMessage.ACTION_FAILED)
+            return@launch
+        }
+        when (result) {
             is TrackingResult.Applied -> {
                 val updater = SystemSurfaceUpdater(application)
-                updater.refresh(result.snapshot)
-                updater.ensureForegroundControls(result.snapshot)
-                null
+                systemSurfaceWarning {
+                    updater.refresh(result.snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE &&
+                        updater.ensureForegroundControls(result.snapshot)
+                }?.let(::show)
             }
-            is TrackingResult.Duplicate -> null
-            is TrackingResult.Rejected -> UiMessage.ACTION_FAILED
+            is TrackingResult.Duplicate -> Unit
+            is TrackingResult.Rejected -> show(UiMessage.ACTION_FAILED)
         }
     }
 
-    private fun changeSettings(block: suspend () -> Unit) = launchWrite {
-        block()
-        val snapshot = container.trackingCoordinator.observeSnapshot().first()
-        SystemSurfaceUpdater(application).refresh(snapshot)
-        null
+    private fun changeSettings(block: suspend () -> Unit) = viewModelScope.launch {
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            show(UiMessage.ACTION_FAILED)
+            return@launch
+        }
+        systemSurfaceWarning {
+            val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
+            SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
+        }?.let(::show)
+    }
+
+    fun reconcileSystemControls() = viewModelScope.launch {
+        systemSurfaceWarning {
+            val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
+            SystemSurfaceUpdater(application).ensureForegroundControls(snapshot)
+        }?.let(::show)
     }
 
     private fun launchWrite(block: suspend () -> UiMessage?) = viewModelScope.launch {
@@ -362,6 +414,14 @@ internal suspend fun cancellationAwareUiWrite(block: suspend () -> UiMessage?): 
     UiMessage.ACTION_FAILED
 }
 
+internal suspend fun systemSurfaceWarning(operation: suspend () -> Boolean): UiMessage? = try {
+    if (operation()) null else UiMessage.SYSTEM_CONTROLS_UNAVAILABLE
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    UiMessage.SYSTEM_CONTROLS_UNAVAILABLE
+}
+
 internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage =
     if (partialDocumentDeleted) UiMessage.DATA_IO_ERROR else UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED
 
@@ -374,3 +434,8 @@ private fun EditResult.toMessage(): UiMessage = when (this) {
 
 fun defaultCustomReport(today: LocalDate = LocalDate.now(ZoneId.systemDefault())): ReportPeriod.Custom =
     ReportPeriod.Custom(today.minusDays(6), today)
+
+internal const val INITIAL_HISTORY_LIMIT = 100
+internal const val MAX_HISTORY_LIMIT = 2_000
+internal fun nextHistoryLimit(current: Int): Int =
+    (current + INITIAL_HISTORY_LIMIT).coerceAtMost(MAX_HISTORY_LIMIT)

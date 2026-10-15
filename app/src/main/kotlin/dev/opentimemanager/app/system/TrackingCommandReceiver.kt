@@ -13,22 +13,21 @@ class TrackingCommandReceiver : BroadcastReceiver() {
         if (TrackingActions.decode(intent) == null) return
         val pending = goAsync()
         val app = context.applicationContext as OpenTimeManagerApplication
-        app.applicationScope.launch {
-            try {
-                containSystemSurfaceFailure {
-                    dispatch(intent, app.container.trackingCoordinator, SystemSurfaceUpdater(context.applicationContext))
-                }
+        val work = app.applicationScope.launch {
+            containSystemSurfaceFailure {
+                dispatch(intent, app.container.trackingCoordinator, SystemSurfaceUpdater(context.applicationContext))
             }
-            finally { pending.finish() }
         }
+        PendingResultLifetime(app.applicationScope, PENDING_RESULT_BUDGET_MILLIS, pending::finish).bind(work)
     }
 
     companion object {
+        internal const val PENDING_RESULT_BUDGET_MILLIS = 8_000L
         suspend fun dispatch(intent: Intent, coordinator: TrackingCoordinator, updater: SystemSurfaceUpdater): TrackingResult? {
             val command = TrackingActions.decode(intent) ?: return null
             val result = coordinator.execute(command)
-            // Даже при stale/duplicate интерфейс получает свежий факт, а не оптимистический переход.
-            val snapshot = coordinator.observeSnapshot().first()
+            val snapshot = (result as? TrackingResult.Applied)?.snapshot
+                ?: coordinator.observeSystemSnapshot().first()
             updater.refresh(snapshot)
             if (result is TrackingResult.Applied) updater.ensureForegroundControls(snapshot)
             return result

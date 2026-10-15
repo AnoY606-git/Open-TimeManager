@@ -90,7 +90,10 @@ class MainActivity : AppCompatActivity() {
             }
             DisposableEffect(lifecycle) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) notificationStatus.value = currentNotificationStatus()
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        notificationStatus.value = currentNotificationStatus()
+                        model.reconcileSystemControls()
+                    }
                 }
                 lifecycle.addObserver(observer)
                 onDispose { lifecycle.removeObserver(observer) }
@@ -135,7 +138,7 @@ class MainActivity : AppCompatActivity() {
                             application.applicationScope.launch {
                                 containSystemSurfaceFailure {
                                     val latestSnapshot = application.container.trackingCoordinator
-                                        .observeSnapshot()
+                                        .observeSystemSnapshot()
                                         .first()
                                     SystemSurfaceUpdater(application).refresh(latestSnapshot)
                                 }

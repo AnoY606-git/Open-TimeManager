@@ -17,8 +17,10 @@ class SystemSurfaceIntegrationTest {
     @Test fun systemPendingIntentsPersistStartPauseResumeAndStop() = runBlocking {
         val app = ApplicationProvider.getApplicationContext<OpenTimeManagerApplication>()
         val coordinator = app.container.trackingCoordinator
-        suspend fun awaitState(state: TrackingState) = withTimeout(10_000) { coordinator.observeSnapshot().first { it.session.state == state } }
-        val initial = coordinator.observeSnapshot().first()
+        suspend fun awaitState(state: TrackingState) = withTimeout(10_000) {
+            coordinator.observeSystemSnapshot().first { it.session.state == state }
+        }
+        val initial = coordinator.observeSystemSnapshot().first()
         assertEquals("Run on a clean test installation", TrackingState.IDLE, initial.session.state)
         try {
             TrackingActions.pendingIntent(app, TrackingActions.primary(initial)!!).send()
@@ -32,10 +34,11 @@ class SystemSurfaceIntegrationTest {
             val resumed = awaitState(TrackingState.RUNNING)
             assertEquals(running.session.entryId, resumed.session.entryId)
             TrackingActions.pendingIntent(app, TrackingActions.stop(resumed)).send()
-            val stopped = awaitState(TrackingState.IDLE)
+            awaitState(TrackingState.IDLE)
+            val stopped = coordinator.observeSnapshot().first()
             assertTrue(stopped.entries.single { it.id == running.session.entryId!!.value }.completed)
         } finally {
-            val current = coordinator.observeSnapshot().first()
+            val current = coordinator.observeSystemSnapshot().first()
             if (current.session.state == TrackingState.RUNNING || current.session.state == TrackingState.PAUSED) coordinator.execute(TrackingActions.stop(current))
         }
     }

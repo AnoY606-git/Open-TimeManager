@@ -106,4 +106,15 @@ class ReportAggregatorTest {
             ReportAggregator.aggregate(listOf(segment(Long.MIN_VALUE, Long.MAX_VALUE), segment(Long.MIN_VALUE, Long.MAX_VALUE, "other")), Long.MIN_VALUE, -1, utc)
         }
     }
+
+    @Test fun `totals only aggregation never creates daily buckets for a giant segment`() {
+        val longSegment = segment(Long.MIN_VALUE, Long.MAX_VALUE)
+        val result = ReportAggregator.aggregateTotals(
+            listOf(longSegment),
+            Long.MIN_VALUE,
+            -1,
+        )
+        assertEquals(Long.MAX_VALUE, result.totalMillis)
+        assertEquals(mapOf(project to Long.MAX_VALUE), result.projectTotals)
+    }
 }

@@ -51,6 +51,7 @@ fun HistoryScreen(
     onSearch: (String) -> Unit,
     onSave: (String?, Long?, ManualEntryDraft) -> Unit,
     onDelete: (String, Long) -> Unit,
+    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snapshot = state.snapshot ?: return
@@ -114,6 +115,13 @@ fun HistoryScreen(
                             TextButton(onClick = { deleteCandidate = entry }) { Text(stringResource(R.string.delete_entry)) }
                         }
                     }
+                }
+            }
+        }
+        if (snapshot.hasMoreHistory && state.controls.historyLimit < dev.opentimemanager.app.ui.MAX_HISTORY_LIMIT) {
+            item("load-more") {
+                Button(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.load_more_history))
                 }
             }
         }

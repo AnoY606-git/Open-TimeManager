@@ -106,7 +106,7 @@ fun TimerScreen(
             }
         }
     }
-    val elapsed = TrackingNotification.elapsedMillis(snapshot, nowElapsed)
+    val elapsed = TrackingNotification.elapsedMillis(snapshot.session, nowElapsed)
     val zone = ZoneId.systemDefault()
     val today = rememberCurrentDate(zone)
     val dayProjection = remember(snapshot.segments, today, zone) {

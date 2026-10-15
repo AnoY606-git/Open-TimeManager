@@ -33,6 +33,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -241,6 +242,21 @@ class AppViewModelTest {
             ReportPeriod.Custom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 15)),
             validateCustomReportInput("2026-10-01", "2026-10-15", utc).value,
         )
+    }
+
+    @Test fun customReportRangeIsBoundedToTenYears() {
+        val utc = ZoneId.of("UTC")
+        assertNotNull(validateCustomReportInput("2020-01-01", "2029-12-31", utc).value)
+        assertEquals(
+            DateInputError.RANGE_TOO_LARGE,
+            validateCustomReportInput("2020-01-01", "2030-01-02", utc).error,
+        )
+    }
+
+    @Test fun historyLoadMoreRemainsExplicitlyBounded() {
+        assertEquals(200, nextHistoryLimit(100))
+        assertEquals(2_000, nextHistoryLimit(1_950))
+        assertEquals(2_000, nextHistoryLimit(2_000))
     }
 
     @Test fun appCompatLocalesAreTheSingleSourceOfTruthForTheSettingsSelection() {

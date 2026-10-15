@@ -176,6 +176,7 @@ private fun DestinationContent(
             onSearch = { viewModel?.searchHistory(it) },
             onSave = { id, revision, draft -> viewModel?.saveManualEntry(id, revision, draft) },
             onDelete = { id, revision -> viewModel?.deleteEntry(id, revision) },
+            onLoadMore = { viewModel?.loadMoreHistory() },
             modifier = modifier,
         )
         AppDestination.REPORTS -> ReportsScreen(
@@ -273,4 +274,5 @@ private fun UiMessage.resource(): Int = when (this) {
     UiMessage.BACKUP_CREATED -> R.string.backup_created_success
     UiMessage.DATA_IO_ERROR -> R.string.data_io_error
     UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED -> R.string.partial_file_cleanup_required
+    UiMessage.SYSTEM_CONTROLS_UNAVAILABLE -> R.string.system_controls_unavailable
 }

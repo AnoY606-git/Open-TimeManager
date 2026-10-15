@@ -11,7 +11,7 @@ import android.widget.RemoteViews
 import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.system.*
-import dev.opentimemanager.app.tracking.AppSnapshot
+import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.core.model.TrackingState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -26,22 +26,20 @@ class TrackingWidgetProvider : AppWidgetProvider() {
     private fun readAndUpdate(context: Context) {
         val pending = goAsync()
         val app = context.applicationContext as OpenTimeManagerApplication
-        app.applicationScope.launch {
-            try {
-                containSystemSurfaceFailure {
-                    update(context, app.container.trackingCoordinator.observeSnapshot().first())
-                }
+        val work = app.applicationScope.launch {
+            containSystemSurfaceFailure {
+                update(context, app.container.trackingCoordinator.observeSystemSnapshot().first())
             }
-            finally { pending.finish() }
         }
+        PendingResultLifetime(app.applicationScope, 8_000L, pending::finish).bind(work)
     }
     companion object {
-        fun update(context: Context, snapshot: AppSnapshot) {
+        fun update(context: Context, snapshot: SystemSnapshot) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, TrackingWidgetProvider::class.java))
             if (ids.isNotEmpty()) manager.updateAppWidget(ids, views(context, snapshot, SystemSurfaceUpdater.privacyMode(context)))
         }
-        fun views(context: Context, snapshot: AppSnapshot, privacyMode: Boolean = true, nowElapsedMillis: Long = SystemClock.elapsedRealtime()): RemoteViews {
+        fun views(context: Context, snapshot: SystemSnapshot, privacyMode: Boolean = true, nowElapsedMillis: Long = SystemClock.elapsedRealtime()): RemoteViews {
             val state = snapshot.session.state
             val title = if (privacyMode) context.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(context, snapshot)
             return RemoteViews(context.packageName, R.layout.tracking_widget).apply {

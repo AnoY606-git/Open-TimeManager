@@ -10,8 +10,16 @@ class RoomTrackingRepository(private val database: AppDatabase, private val cloc
     suspend fun execute(command: TrackingCommand): TrackingResult = withContext(dispatcher) {
         database.trackingDao().execute(command, clock)
     }
-    /** Перед публикацией транзакционно сохраняет NEEDS_REVIEW при утрате достоверной boot-опоры. */
-    fun observeSnapshot(): Flow<AppSnapshot> = database.invalidationTracker.createFlow("projects", "entries", "segments", "tracking_slot").map {
-        withContext(dispatcher) { database.trackingDao().snapshot(clock) }
+    /** Малая проекция не зависит от размера архива. */
+    fun observeSystemSnapshot(): Flow<SystemSnapshot> = database.invalidationTracker
+        .createFlow("projects", "entries", "segments", "tracking_slot")
+        .map { withContext(dispatcher) { database.trackingDao().systemSnapshot(clock) } }
+
+    /** UI-история читает только явно ограниченное число последних entries. */
+    fun observeSnapshot(historyLimit: Int): Flow<AppSnapshot> {
+        require(historyLimit in 1..20_000)
+        return database.invalidationTracker.createFlow("projects", "entries", "segments", "tracking_slot").map {
+            withContext(dispatcher) { database.trackingDao().snapshot(clock, historyLimit) }
+        }
     }
 }

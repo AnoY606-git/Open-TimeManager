@@ -5,7 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.service.quicksettings.TileService
-import dev.opentimemanager.app.tracking.AppSnapshot
+import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.app.widget.TrackingWidgetProvider
 import dev.opentimemanager.core.model.TrackingState
 
@@ -13,7 +13,7 @@ enum class NotificationAvailability { AVAILABLE, BLOCKED }
 
 /** Обновляет проекции только по фактам из Room; не владеет состоянием таймера. */
 class SystemSurfaceUpdater(private val context: Context) {
-    fun refresh(snapshot: AppSnapshot): NotificationAvailability {
+    fun refresh(snapshot: SystemSnapshot): NotificationAvailability {
         val notification = TrackingNotification(context)
         val manager = context.getSystemService(NotificationManager::class.java)
         val available = manager.areNotificationsEnabled() && manager.getNotificationChannel(TrackingNotification.CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
@@ -29,7 +29,7 @@ class SystemSurfaceUpdater(private val context: Context) {
     }
 
     /** Вызывается только после команды пользователя; запрет FGS не откатывает сохранённую запись. */
-    fun ensureForegroundControls(snapshot: AppSnapshot): Boolean {
+    fun ensureForegroundControls(snapshot: SystemSnapshot): Boolean {
         if (snapshot.session.state == TrackingState.IDLE) return true
         return try {
             context.startForegroundService(Intent(context, TrackingService::class.java))

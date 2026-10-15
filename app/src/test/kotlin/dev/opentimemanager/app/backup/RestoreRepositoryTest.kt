@@ -237,7 +237,7 @@ class RestoreRepositoryTest {
     }
 
     @Test
-    fun migrationOneToTwoPreservesGraphAndAddsUtcZone() {
+    fun migrationOneToThreePreservesGraphAndAddsHardeningState() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${System.nanoTime()}.db"
         context.deleteDatabase(name)
@@ -279,7 +279,7 @@ class RestoreRepositoryTest {
             }
 
             val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -289,8 +289,12 @@ class RestoreRepositoryTest {
                 assertTrue(entries.all { it.zoneId == "UTC" })
                 assertEquals(2, migrated.trackingDao().segments().size)
                 assertEquals("RUNNING", migrated.trackingDao().slot()?.state)
+                assertEquals("legacy", migrated.trackingDao().slot()?.generation)
                 assertEquals("RUNNING", migrated.trackingDao().command("legacy-command")?.state)
                 assertEquals(900L, migrated.trackingDao().project("a0000000-0000-4000-8000-000000000001")?.archivedAtUtcMillis)
+                migrated.openHelper.writableDatabase.query(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'pending_preferences_restore'",
+                ).use { cursor -> assertTrue(cursor.moveToFirst()) }
             } finally {
                 migrated.close()
             }

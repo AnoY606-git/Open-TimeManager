@@ -21,17 +21,36 @@ class ReportTotals internal constructor(
 }
 
 object ReportAggregator {
+    /** Totals-only projection used by UI reports; it never walks local-day boundaries. */
+    fun aggregateTotals(
+        segments: List<Segment>,
+        fromInclusive: Long,
+        toExclusive: Long,
+    ): ReportTotals {
+        require(fromInclusive <= toExclusive) { "Начало диапазона позже конца" }
+        Math.subtractExact(toExclusive, fromInclusive)
+        require(segments.map { it.id }.toSet().size == segments.size) { "Повтор идентификатора сегмента" }
+        var total = 0L
+        val projects = mutableMapOf<ProjectId, Long>()
+        for (segment in segments) {
+            val start = maxOf(segment.startUtcMillis, fromInclusive)
+            val end = minOf(segment.endUtcMillis, toExclusive)
+            if (start < end) {
+                val duration = Math.subtractExact(end, start)
+                total = Math.addExact(total, duration)
+                projects.add(segment.projectId, duration)
+            }
+        }
+        return ReportTotals(total, emptyMap(), projects, emptyMap())
+    }
+
     /** Интервалы полуоткрытые. Некорректный диапазон и переполнение отклоняются явно. */
     fun aggregate(segments: List<Segment>, fromInclusive: Long, toExclusive: Long, zoneId: ZoneId): ReportTotals {
         require(fromInclusive <= toExclusive) { "Начало диапазона позже конца" }
         Math.subtractExact(toExclusive, fromInclusive)
         require(segments.map { it.id }.toSet().size == segments.size) { "Повтор идентификатора сегмента" }
         // Сначала проверяем сумму, чтобы не обходить миллионы суток при заведомом переполнении.
-        val total = segments.fold(0L) { sum, segment ->
-            val start = maxOf(segment.startUtcMillis, fromInclusive)
-            val end = minOf(segment.endUtcMillis, toExclusive)
-            if (start < end) Math.addExact(sum, Math.subtractExact(end, start)) else sum
-        }
+        val total = aggregateTotals(segments, fromInclusive, toExclusive).totalMillis
         val days = mutableMapOf<LocalDate, Long>()
         val projects = mutableMapOf<ProjectId, Long>()
         val dayProjects = mutableMapOf<DayProject, Long>()

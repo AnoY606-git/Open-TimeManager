@@ -37,7 +37,6 @@ import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
 import dev.opentimemanager.app.ui.validateCustomReportInput
 import dev.opentimemanager.app.ui.UtcBounds
-import dev.opentimemanager.core.report.ReportAggregator
 import java.time.ZoneId
 
 @Composable
@@ -56,9 +55,7 @@ fun ReportsScreen(
     val today = rememberCurrentDate(zone)
     val bounds = state.controls.reportPeriod.validatedBounds(today, zone).value
         ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
-    val totals = remember(snapshot.segments, bounds, zone) {
-        ReportAggregator.aggregate(snapshot.segments, bounds.fromUtcMillis, bounds.toUtcMillis, zone)
-    }
+    val totals = state.reportTotals
     var showCustom by remember { mutableStateOf(false) }
     var exportLaunchFailed by remember { mutableStateOf(false) }
     val exportBusy = state.controls.dataTransferBusy

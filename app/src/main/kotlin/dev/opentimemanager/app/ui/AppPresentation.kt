@@ -109,7 +109,7 @@ fun millisUntilNextLocalDay(now: Instant, zoneId: ZoneId): Long {
 private val MinUserDate: LocalDate = LocalDate.of(1900, 1, 1)
 private val MaxUserDate: LocalDate = LocalDate.of(9999, 12, 30)
 
-enum class DateInputError { MALFORMED, OUT_OF_SUPPORTED_RANGE, REVERSED_RANGE, OVERFLOW }
+enum class DateInputError { MALFORMED, OUT_OF_SUPPORTED_RANGE, REVERSED_RANGE, RANGE_TOO_LARGE, OVERFLOW }
 
 sealed interface ValidatedInput<out T> {
     val value: T?
@@ -244,12 +244,12 @@ fun primaryCommand(
     selectedProjectId: ProjectId,
     commandId: CommandId,
 ): TrackingCommand? = when (snapshot.session.state) {
-    TrackingState.IDLE -> TrackingCommand.Start(commandId, selectedProjectId, snapshot.session.revision)
+    TrackingState.IDLE -> TrackingCommand.Start(commandId, selectedProjectId, snapshot.session.revision, snapshot.generation)
     TrackingState.RUNNING -> TrackingCommand.Pause(
-        CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId),
+        CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId), snapshot.generation,
     )
     TrackingState.PAUSED -> TrackingCommand.Resume(
-        CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId),
+        CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId), snapshot.generation,
     )
     TrackingState.NEEDS_REVIEW -> null
 }
@@ -257,7 +257,7 @@ fun primaryCommand(
 fun stopCommand(snapshot: AppSnapshot, commandId: CommandId): TrackingCommand.Stop? =
     if (snapshot.session.state == TrackingState.RUNNING || snapshot.session.state == TrackingState.PAUSED) {
         TrackingCommand.Stop(
-            CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId),
+            CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId), snapshot.generation,
         )
     } else null
 
@@ -271,6 +271,7 @@ fun switchCommand(
     return TrackingCommand.Switch(
         CommandTarget(requireNotNull(snapshot.session.entryId), snapshot.session.revision, commandId),
         projectId,
+        snapshot.generation,
     )
 }
 
@@ -402,6 +403,9 @@ sealed interface ReportPeriod {
             return ValidatedInput.Invalid(DateInputError.OUT_OF_SUPPORTED_RANGE)
         }
         if (through.isBefore(from)) return ValidatedInput.Invalid(DateInputError.REVERSED_RANGE)
+        if (!through.isBefore(from.plusYears(MAX_REPORT_RANGE_YEARS))) {
+            return ValidatedInput.Invalid(DateInputError.RANGE_TOO_LARGE)
+        }
         return try {
             val fromUtcMillis = from.atStartOfDay(zoneId).toInstant().toEpochMilli()
             val toUtcMillis = through.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
@@ -416,4 +420,8 @@ sealed interface ReportPeriod {
 
     fun bounds(today: LocalDate, zoneId: ZoneId): UtcBounds =
         requireNotNull(validatedBounds(today, zoneId).value) { "Report period is outside the supported date range" }
+
+    private companion object {
+        const val MAX_REPORT_RANGE_YEARS = 10L
+    }
 }

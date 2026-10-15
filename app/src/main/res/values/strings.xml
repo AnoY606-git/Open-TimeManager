@@ -28,6 +28,7 @@
     <string name="review_required_message">The device restarted or the monotonic clock changed. Confirm or correct the entry in History before continuing.</string>
     <string name="history_heading">Work history</string>
     <string name="search_history">Search projects and notes</string>
+    <string name="load_more_history">Load more</string>
     <string name="add_manual_entry">Add entry</string>
     <string name="edit_entry">Edit entry</string>
     <string name="delete_entry">Delete entry</string>
@@ -142,4 +143,5 @@
         <item quantity="one">%d day</item>
         <item quantity="other">%d days</item>
     </plurals>
+    <string name="system_controls_unavailable">Time was saved, but Android system controls are unavailable. Open the app to continue.</string>
 </resources>

@@ -29,6 +29,7 @@
     <string name="review_required_message">Устройство перезагрузилось или изменились монотонные часы. Проверьте или исправьте запись в Истории.</string>
     <string name="history_heading">История работы</string>
     <string name="search_history">Поиск по проектам и заметкам</string>
+    <string name="load_more_history">Загрузить ещё</string>
     <string name="add_manual_entry">Добавить запись</string>
     <string name="edit_entry">Изменить запись</string>
     <string name="delete_entry">Удалить запись</string>
@@ -149,4 +150,5 @@
         <item quantity="many">%d дней</item>
         <item quantity="other">%d дня</item>
     </plurals>
+    <string name="system_controls_unavailable">Время сохранено, но системное управление Android недоступно. Откройте приложение.</string>
 </resources>

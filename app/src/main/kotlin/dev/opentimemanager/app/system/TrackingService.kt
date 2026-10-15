@@ -25,17 +25,24 @@ class TrackingService : Service() {
         else startForeground(TrackingNotification.ID, initial)
         val coordinator = (application as OpenTimeManagerApplication).container.trackingCoordinator
         scope.launch {
-            coordinator.observeSnapshot().collect { snapshot ->
-                if (snapshot.session.state == TrackingState.IDLE) {
+            containSystemSurfaceFailure(
+                onFailure = {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
-                } else {
-                    getSystemService(android.app.NotificationManager::class.java).notify(TrackingNotification.ID, notification.build(snapshot, SystemSurfaceUpdater.privacyMode(this@TrackingService)))
+                },
+            ) {
+                coordinator.observeSystemSnapshot().collect { snapshot ->
+                    if (snapshot.session.state == TrackingState.IDLE) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    } else {
+                        getSystemService(android.app.NotificationManager::class.java).notify(TrackingNotification.ID, notification.build(snapshot, SystemSurfaceUpdater.privacyMode(this@TrackingService)))
+                    }
                 }
             }
         }
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
 }

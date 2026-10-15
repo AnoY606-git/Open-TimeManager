@@ -21,6 +21,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = OpenTimeManagerApplication::class)
@@ -158,5 +159,35 @@ class SystemSurfaceFailureTest {
         catch (caught: AssertionError) { escaped = caught }
         assertSame("Errors must reach the owner", error, escaped)
         assertTrue(ShadowLog.getLogsForTag("SystemSurfaces").isEmpty())
+    }
+
+    @Test fun pendingResultLifetimeFinishesOnceAtBudgetWithoutCancellingDurableWork() = runBlocking {
+        val owner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val finishCount = AtomicInteger()
+        val durable = owner.launch { delay(100); finishCount.addAndGet(10) }
+        val lifetime = PendingResultLifetime(owner, 20, finishCount::incrementAndGet)
+        lifetime.bind(durable)
+
+        delay(50)
+        assertEquals(1, finishCount.get())
+        durable.join()
+        assertEquals(11, finishCount.get())
+        lifetime.finishOnce()
+        assertEquals(11, finishCount.get())
+        owner.cancel()
+    }
+
+    @Test fun serviceBoundaryRunsCleanupAndStillRethrowsCancellation() = runBlocking {
+        var cleaned = false
+        containSystemSurfaceFailure(onFailure = { cleaned = true }) { error("projection failed") }
+        assertTrue(cleaned)
+        val cancellation = CancellationException("cancel")
+        try {
+            containSystemSurfaceFailure(onFailure = { cleaned = false }) { throw cancellation }
+            fail("Cancellation must escape")
+        } catch (caught: CancellationException) {
+            assertSame(cancellation, caught)
+        }
+        assertTrue(cleaned)
     }
 }

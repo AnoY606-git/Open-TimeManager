@@ -12,6 +12,10 @@ abstract class TrackingDao {
     @Query("SELECT * FROM projects ORDER BY createdAtUtcMillis, id") abstract fun projects(): List<ProjectEntity>
     @Query("SELECT * FROM entries ORDER BY startedAtUtcMillis, id") abstract fun entries(): List<EntryEntity>
     @Query("SELECT * FROM segments ORDER BY startedAtUtcMillis, id") abstract fun segments(): List<SegmentEntity>
+    @Query("SELECT * FROM projects WHERE archivedAtUtcMillis IS NULL ORDER BY createdAtUtcMillis, id LIMIT 2") abstract fun eligibleProjects(): List<ProjectEntity>
+    @Query("SELECT * FROM entries WHERE completed = 1 ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :limit") abstract fun recentCompletedEntries(limit: Int): List<EntryEntity>
+    @Query("SELECT COUNT(*) FROM entries WHERE completed = 1") abstract fun completedEntryCount(): Long
+    @Query("SELECT * FROM segments WHERE entryId IN (:entryIds) AND durationMillis IS NOT NULL ORDER BY startedAtUtcMillis, id") abstract fun closedSegmentsForEntries(entryIds: List<String>): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE entryId = :entryId ORDER BY startedElapsedRealtimeMillis, id") abstract fun entrySegments(entryId: String): List<SegmentEntity>
     @Query("SELECT * FROM tracking_slot WHERE id = 1") abstract fun slot(): TrackingSlotEntity?
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
@@ -30,6 +34,7 @@ abstract class TrackingDao {
     @Upsert abstract fun saveSegment(segment: SegmentEntity)
     @Insert abstract fun insertCommand(command: AppliedCommandEntity)
     @Query("DELETE FROM applied_commands WHERE commandId NOT IN (SELECT commandId FROM applied_commands ORDER BY revision DESC LIMIT 1024)") abstract fun pruneCommands()
+    @Query("DELETE FROM applied_commands") abstract fun clearCommands()
     @Query("DELETE FROM segments WHERE entryId = :entryId AND durationMillis IS NULL") abstract fun deleteOpenSegment(entryId: String)
     @Query("DELETE FROM segments WHERE entryId = :entryId") abstract fun deleteAllSegments(entryId: String)
     @Query("DELETE FROM entries WHERE id = :entryId") abstract fun deleteEntryById(entryId: String)
@@ -39,7 +44,7 @@ abstract class TrackingDao {
     open fun initialize(nowUtcMillis: Long) {
         // Маркер слота создаётся в той же транзакции: удалённый пустой default не воскресает.
         if (slot() == null) {
-            insertDefault(ProjectEntity(ProjectRepository.DEFAULT_PROJECT_ID.value, "Без проекта", 0xff607d8b.toInt(), nowUtcMillis))
+            insertDefault(ProjectEntity(ProjectRepository.DEFAULT_PROJECT_ID.value, ProjectRepository.DEFAULT_PROJECT_STORAGE_NAME, 0xff607d8b.toInt(), nowUtcMillis))
             insertSlot(TrackingSlotEntity())
         }
     }
@@ -56,27 +61,83 @@ abstract class TrackingDao {
     }
 
     @Transaction
-    open fun snapshot(clock: ClockSnapshotSource): AppSnapshot {
+    open fun snapshot(clock: ClockSnapshotSource, historyLimit: Int): AppSnapshot {
         val now = clock.now()
         initialize(now.wallUtcMillis)
         recover(now)
-        return snapshotWithoutRecovery()
+        return uiSnapshotWithoutRecovery(historyLimit)
     }
 
-    private fun snapshotWithoutRecovery(): AppSnapshot {
+    @Transaction
+    open fun systemSnapshot(clock: ClockSnapshotSource): SystemSnapshot {
+        val now = clock.now()
+        initialize(now.wallUtcMillis)
+        recover(now)
+        return systemSnapshotWithoutRecovery()
+    }
+
+    private fun systemSnapshotWithoutRecovery(): SystemSnapshot {
+        val currentSlot = requireNotNull(slot())
+        val session = restored()
+        val eligible = eligibleProjects()
+        return SystemSnapshot(
+            session = session,
+            generation = currentSlot.generation,
+            activeProject = session.projectId?.let { project(it.value) },
+            quickStartProject = eligible.singleOrNull(),
+        )
+    }
+
+    private fun uiSnapshotWithoutRecovery(historyLimit: Int): AppSnapshot {
+        require(historyLimit in 1..20_000)
         val projects = projects()
-        val entries = entries()
+        val session = restored()
+        val completed = recentCompletedEntries(historyLimit)
+        val active = session.entryId?.value?.let(::entry)?.takeUnless(EntryEntity::completed)
+        val entries = buildList {
+            active?.let(::add)
+            addAll(completed)
+        }
         val projectByEntry = entries.associate { it.id to it.projectId }
-        return AppSnapshot(restored(), projects, entries, segments().filter { it.durationMillis != null }.map { it.closed(projectByEntry.getValue(it.entryId)) })
+        val closed = if (entries.isEmpty()) emptyList() else closedSegmentsForEntries(entries.map(EntryEntity::id))
+        return AppSnapshot(
+            session = session,
+            projects = projects,
+            entries = entries,
+            segments = closed.map { it.closed(projectByEntry.getValue(it.entryId)) },
+            generation = requireNotNull(slot()).generation,
+            hasMoreHistory = completedEntryCount() > completed.size,
+        )
     }
 
     private fun recover(now: ClockSnapshot) {
         val session = restored()
         val start = session.openSegment?.startedAt ?: return
         if (session.state == TrackingState.RUNNING && (start.bootCount == null || now.bootCount == null || start.bootCount != now.bootCount || now.elapsedRealtimeMillis < start.elapsedRealtimeMillis)) {
-            val result = TrackingReducer.recoverAfterBoot(session, CommandTarget(session.entryId!!, session.revision, CommandId(UUID.randomUUID().toString())), now) as TransitionResult.Applied
-            persist(result.session, null)
+            when (val result = TrackingReducer.recoverAfterBoot(session, CommandTarget(session.entryId!!, session.revision, CommandId(UUID.randomUUID().toString())), now)) {
+                is TransitionResult.Applied -> persist(result.session, null)
+                is TransitionResult.Rejected -> {
+                    check(result.reason == RejectionReason.OVERFLOW)
+                    rebaseOverflowedSession(session)
+                }
+                is TransitionResult.Duplicate -> error("Recovery command cannot be a duplicate")
+            }
         }
+    }
+
+    private fun rebaseOverflowedSession(session: TrackingSession) {
+        val entryId = requireNotNull(session.entryId).value
+        val current = requireNotNull(entry(entryId))
+        clearCommands()
+        updateEntry(current.copy(revision = 0L))
+        updateSlot(
+            TrackingSlotEntity(
+                state = TrackingState.NEEDS_REVIEW.name,
+                entryId = entryId,
+                revision = 0L,
+                generation = UUID.randomUUID().toString(),
+            ),
+        )
     }
 
     @Transaction
@@ -84,8 +145,11 @@ abstract class TrackingDao {
         // Снимаем опору после writer lock, иначе очередь команд может создать ложный reboot.
         val now = clock.now()
         initialize(now.wallUtcMillis)
-        command(command.commandId.value)?.let { return TrackingResult.Duplicate(CommandReceipt(it.revision, it.entryId, TrackingState.valueOf(it.state))) }
         recover(now)
+        if (command.expectedGeneration != requireNotNull(slot()).generation) {
+            return TrackingResult.Rejected(TrackingFailure.STALE_GENERATION)
+        }
+        command(command.commandId.value)?.let { return TrackingResult.Duplicate(CommandReceipt(it.revision, it.entryId, TrackingState.valueOf(it.state))) }
         val session = restored()
         if (command is TrackingCommand.ResolveReview) return resolveReview(session, command)
         val destination = when(command) { is TrackingCommand.Start -> command.projectId; is TrackingCommand.Switch -> command.projectId; else -> null }
@@ -116,7 +180,7 @@ abstract class TrackingDao {
         } else persist(next, result.completedEntry)
         insertCommand(AppliedCommandEntity(command.commandId.value, next.revision, next.entryId?.value, next.state.name))
         pruneCommands()
-        return TrackingResult.Applied(snapshotWithoutRecovery())
+        return TrackingResult.Applied(systemSnapshotWithoutRecovery())
     }
 
     private fun resolveReview(session: TrackingSession, command: TrackingCommand.ResolveReview): TrackingResult {
@@ -140,7 +204,7 @@ abstract class TrackingDao {
             }
         }
         val closed = entrySegments(entryId).filter { it.durationMillis != null }
-        updateSlot(TrackingSlotEntity(state = TrackingState.IDLE.name, entryId = null, revision = nextRevision))
+        updateSlot(requireNotNull(slot()).copy(state = TrackingState.IDLE.name, entryId = null, revision = nextRevision))
         if (closed.isEmpty()) {
             deleteAllSegments(entryId)
             deleteEntryById(entryId)
@@ -154,7 +218,7 @@ abstract class TrackingDao {
         }
         insertCommand(AppliedCommandEntity(command.commandId.value, nextRevision, null, TrackingState.IDLE.name))
         pruneCommands()
-        return TrackingResult.Applied(snapshotWithoutRecovery())
+        return TrackingResult.Applied(systemSnapshotWithoutRecovery())
     }
 
     private fun persist(session: TrackingSession, completed: CompletedEntry?) {
@@ -185,7 +249,7 @@ abstract class TrackingDao {
                 saveSegment(SegmentEntity(open.id.value, id, open.startedAt.wallUtcMillis, open.startedAt.elapsedRealtimeMillis, open.startedAt.bootCount, null, null, 1))
             }
         }
-        updateSlot(TrackingSlotEntity(state = session.state.name, entryId = session.entryId?.value, revision = session.revision))
+        updateSlot(oldSlot.copy(state = session.state.name, entryId = session.entryId?.value, revision = session.revision))
     }
 
     private fun saveClosed(segment: Segment) {

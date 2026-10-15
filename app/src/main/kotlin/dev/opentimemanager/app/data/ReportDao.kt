@@ -2,10 +2,14 @@ package dev.opentimemanager.app.data
 
 import androidx.room.*
 import dev.opentimemanager.core.model.*
+import dev.opentimemanager.core.report.ReportAggregator
+import dev.opentimemanager.core.report.ReportTotals
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import java.time.ZoneId
+import java.util.UUID
 
 sealed interface EditResult {
     data object Applied : EditResult
@@ -19,8 +23,13 @@ sealed interface EditResult {
 
 @Dao
 abstract class ReportDao {
-    @Query("SELECT segments.* FROM segments WHERE segments.durationMillis IS NOT NULL AND segments.startedAtUtcMillis < :to AND segments.endUtcMillis > :from ORDER BY segments.startedAtUtcMillis, segments.id")
-    abstract fun range(from: Long, to: Long): List<SegmentEntity>
+    @Query("""SELECT segments.id, segments.entryId, entries.projectId,
+        segments.startedAtUtcMillis, segments.durationMillis
+        FROM segments JOIN entries ON entries.id = segments.entryId
+        WHERE segments.durationMillis IS NOT NULL
+          AND segments.startedAtUtcMillis < :to AND segments.endUtcMillis > :from
+        ORDER BY segments.startedAtUtcMillis, segments.id""")
+    abstract fun range(from: Long, to: Long): List<ReportSegmentRow>
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
     @Query("DELETE FROM segments WHERE entryId = :id") abstract fun deleteSegments(id: String)
@@ -83,8 +92,24 @@ abstract class ReportDao {
     @Transaction
     open fun report(from: Long, to: Long): List<Segment> {
         require(from < to)
-        return range(from, to).map { it.closed(requireNotNull(entry(it.entryId)).projectId) }
+        return range(from, to).map(ReportSegmentRow::toDomain)
     }
+}
+
+data class ReportSegmentRow(
+    val id: String,
+    val entryId: String,
+    val projectId: String,
+    val startedAtUtcMillis: Long,
+    val durationMillis: Long,
+) {
+    fun toDomain() = Segment(
+        SegmentId(id),
+        EntryId(entryId),
+        ProjectId(projectId),
+        startedAtUtcMillis,
+        durationMillis,
+    )
 }
 
 class CompletedEntryRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
@@ -96,4 +121,14 @@ class CompletedEntryRepository(private val database: AppDatabase, private val di
     }
     suspend fun delete(id: EntryId, expectedRevision: Long): EditResult = withContext(dispatcher) { database.reportDao().delete(id.value, expectedRevision) }
     suspend fun report(fromUtcMillis: Long, toUtcMillis: Long): List<Segment> = withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }
+    fun observeReportTotals(fromUtcMillis: Long, toUtcMillis: Long): Flow<ReportTotals> =
+        database.invalidationTracker.createFlow("entries", "segments").map {
+            withContext(dispatcher) {
+                ReportAggregator.aggregateTotals(
+                    database.reportDao().report(fromUtcMillis, toUtcMillis),
+                    fromUtcMillis,
+                    toUtcMillis,
+                )
+            }
+        }
 }

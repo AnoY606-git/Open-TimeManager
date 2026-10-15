@@ -18,7 +18,7 @@ class OpenTimeManagerApplication : Application() {
         applicationScope.launch {
             containSystemSurfaceFailure {
                 val surfaces = SystemSurfaceUpdater(this@OpenTimeManagerApplication)
-                container.trackingCoordinator.observeSnapshot().collect { snapshot ->
+                container.trackingCoordinator.observeSystemSnapshot().collect { snapshot ->
                     containSystemSurfaceFailure { surfaces.refresh(snapshot) }
                 }
             }
@@ -29,7 +29,7 @@ class OpenTimeManagerApplication : Application() {
         super.onConfigurationChanged(newConfig)
         applicationScope.launch {
             containSystemSurfaceFailure {
-                val snapshot = container.trackingCoordinator.observeSnapshot().first()
+                val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
                 SystemSurfaceUpdater(this@OpenTimeManagerApplication).refresh(snapshot)
             }
         }

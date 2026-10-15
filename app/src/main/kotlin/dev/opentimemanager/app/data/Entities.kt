@@ -2,7 +2,7 @@ package dev.opentimemanager.app.data
 
 import androidx.room.*
 
-@Entity(tableName = "projects")
+@Entity(tableName = "projects", indices = [Index("archivedAtUtcMillis")])
 data class ProjectEntity(@PrimaryKey val id: String, val name: String, val colorArgb: Int, val createdAtUtcMillis: Long, val archivedAtUtcMillis: Long? = null)
 
 @Entity(tableName = "entries", foreignKeys = [ForeignKey(entity = ProjectEntity::class, parentColumns = ["id"], childColumns = ["projectId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("projectId"), Index("startedAtUtcMillis"), Index(value = ["currentSlot"], unique = true)])
@@ -21,8 +21,25 @@ data class SegmentEntity(
 )
 
 @Entity(tableName = "tracking_slot", foreignKeys = [ForeignKey(entity = EntryEntity::class, parentColumns = ["id"], childColumns = ["entryId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("entryId")])
-data class TrackingSlotEntity(@PrimaryKey val id: Int = 1, val state: String = "IDLE", val entryId: String? = null, val revision: Long = 0)
+data class TrackingSlotEntity(
+    @PrimaryKey val id: Int = 1,
+    val state: String = "IDLE",
+    val entryId: String? = null,
+    val revision: Long = 0,
+    val generation: String = dev.opentimemanager.app.tracking.LEGACY_COMMAND_GENERATION,
+)
 
 /** Последние 1024 успешные команды; более старые повторы отвергаются монотонной revision. */
 @Entity(tableName = "applied_commands", indices = [Index(value = ["revision"], unique = true)])
 data class AppliedCommandEntity(@PrimaryKey val commandId: String, val revision: Long, val entryId: String?, val state: String)
+
+/** Durable intent to reconcile DataStore after a Room restore commit. */
+@Entity(tableName = "pending_preferences_restore")
+data class PendingPreferencesRestoreEntity(
+    @PrimaryKey val id: Int = 1,
+    val operationId: String,
+    val theme: String,
+    val dynamicColor: Boolean,
+    val privacyMode: Boolean,
+    val dailyGoalMinutes: Int,
+)

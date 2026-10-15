@@ -21,6 +21,7 @@ abstract class ProjectDao {
 class ProjectRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
     companion object {
         val DEFAULT_PROJECT_ID = ProjectId("00000000-0000-4000-8000-000000000001")
+        const val DEFAULT_PROJECT_STORAGE_NAME = "@default"
     }
     suspend fun create(id: ProjectId, name: String, colorArgb: Int, nowUtcMillis: Long): ProjectEditResult = withContext(dispatcher) {
         val normalized = normalizedName(name) ?: return@withContext ProjectEditResult.INVALID_NAME

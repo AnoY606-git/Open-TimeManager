@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 
 class UiWriteBoundaryTest {
     @Test
@@ -41,5 +42,18 @@ class UiWriteBoundaryTest {
         } catch (_: CancellationException) {
             Unit
         }
+    }
+
+
+    @Test fun postCommitSurfaceFailureUsesWarningInsteadOfActionFailed() = runBlocking {
+        assertEquals(
+            UiMessage.SYSTEM_CONTROLS_UNAVAILABLE,
+            systemSurfaceWarning { error("notification manager failed") },
+        )
+        assertEquals(
+            UiMessage.SYSTEM_CONTROLS_UNAVAILABLE,
+            systemSurfaceWarning { false },
+        )
+        assertNull(systemSurfaceWarning { true })
     }
 }
