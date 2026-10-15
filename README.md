@@ -32,7 +32,7 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
   :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-Bootstrap проверяет SHA-256 закреплённых JDK 17, Android command-line tools и Gradle Wrapper. Можно не использовать bootstrap: установите JDK 17 и Android SDK API 36, задайте `ANDROID_HOME`/`JAVA_HOME` и запускайте `./gradlew` напрямую.
+Bootstrap проверяет SHA-256 закреплённых JDK 17, Android command-line tools и Gradle Wrapper. Можно не использовать bootstrap: установите JDK 17 и Android SDK API 36 с platform-tools, задайте `JAVA_HOME` и `ANDROID_HOME` или `ANDROID_SDK_ROOT`. Обёртка ниже распознаёт эти стандартные переменные; явные `OTM_JAVA_HOME`/`OTM_ANDROID_HOME` имеют приоритет.
 
 Для установки нужен Android 12+ эмулятор или подключённое устройство с включённой USB-отладкой; подтвердите RSA-запрос на экране устройства. После сборки проверьте, что обёрнутая команда `adb devices` показывает его в состоянии `device`, и установите точный debug-артефакт:
 

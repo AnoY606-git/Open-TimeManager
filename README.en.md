@@ -32,7 +32,7 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
   :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-The bootstrap verifies SHA-256 checksums for the pinned JDK 17, Android command-line tools, and Gradle Wrapper. You may instead provide JDK 17 and Android SDK API 36, set `ANDROID_HOME`/`JAVA_HOME`, and invoke `./gradlew` directly.
+The bootstrap verifies SHA-256 checksums for the pinned JDK 17, Android command-line tools, and Gradle Wrapper. You may instead provide JDK 17 and Android SDK API 36 with platform-tools, then set `JAVA_HOME` and either `ANDROID_HOME` or `ANDROID_SDK_ROOT`. The wrapper below recognizes those standard variables; explicit `OTM_JAVA_HOME`/`OTM_ANDROID_HOME` values take precedence.
 
 Installation requires an Android 12+ emulator or a connected device with USB debugging enabled; accept the RSA authorization prompt on the device. After building, confirm that the wrapped `adb devices` command reports it in the `device` state, then install the exact debug artifact:
 
