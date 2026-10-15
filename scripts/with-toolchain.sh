@@ -13,7 +13,7 @@ export ANDROID_HOME="${OTM_ANDROID_HOME:-$OTM_ROOT/.toolchain/android-sdk}"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_USER_HOME="${OTM_ANDROID_USER_HOME:-$OTM_ROOT/.toolchain/android-user}"
 export GRADLE_USER_HOME="${OTM_GRADLE_USER_HOME:-$OTM_ROOT/.toolchain/gradle-home}"
-export PATH="$JAVA_HOME/bin:$PATH"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 mkdir -p -- "$ANDROID_USER_HOME" "$GRADLE_USER_HOME"
 cd -- "$OTM_ROOT"
 if [[ $# -eq 0 ]]; then
