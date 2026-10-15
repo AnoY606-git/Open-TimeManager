@@ -144,12 +144,28 @@ class RepositoryPolicyTest(unittest.TestCase):
             "OPTIONS+=\"static_node=kvm\"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules\n"
             "      sudo udevadm control --reload-rules\n"
             "      sudo udevadm trigger --name-match=kvm\n"
-            f"  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n",
+            f"  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n"
+            "    with:\n"
+            "      disk-size: 2G\n",
             encoding="utf-8",
         )
         self._git("add", ".github/workflows/ci.yml")
         result = self.run_checker()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_emulator_runner_without_bounded_disk_size(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            "steps:\n"
+            "  - name: Enable KVM group permissions\n"
+            "    run: |\n"
+            "      echo OPTIONS+=\"static_node=kvm\"\n"
+            "      sudo udevadm trigger --name-match=kvm\n"
+            f"  - uses: reactivecircus/android-emulator-runner@{PINNED_SHA}\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("bounded emulator disk size")
 
     def test_rejects_network_and_broad_android_permissions(self) -> None:
         manifest = self.root / "app/src/main/AndroidManifest.xml"

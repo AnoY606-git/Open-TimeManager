@@ -287,7 +287,7 @@ def setup_android_package_errors(text: str, relative: str) -> list[str]:
 
 
 def emulator_kvm_errors(text: str, relative: str) -> list[str]:
-    """Require hardware acceleration to be enabled before Linux emulator jobs."""
+    """Require stable, resource-bounded Linux emulator jobs."""
     errors: list[str] = []
     lines = text.splitlines()
     for index, original_line in enumerate(lines):
@@ -300,6 +300,29 @@ def emulator_kvm_errors(text: str, relative: str) -> list[str]:
         if "static_node=kvm" not in preceding_steps or "udevadm trigger --name-match=kvm" not in preceding_steps:
             errors.append(
                 f"GitHub workflow must enable KVM before android-emulator-runner: {relative}"
+            )
+        uses_indent = len(line) - len(line.lstrip())
+        disk_size: str | None = None
+        for candidate in lines[index + 1 :]:
+            candidate_line = _strip_yaml_comment(candidate)
+            stripped = candidate_line.strip()
+            indent = len(candidate_line) - len(candidate_line.lstrip())
+            if stripped.startswith("-") and indent <= uses_indent:
+                break
+            match = re.fullmatch(r'''["']?disk-size["']?\s*:\s*(.*?)\s*''', stripped)
+            if match:
+                disk_size = match.group(1)
+                if len(disk_size) >= 2 and disk_size[0] == disk_size[-1] and disk_size[0] in {"'", '"'}:
+                    disk_size = disk_size[1:-1]
+                break
+        size_match = re.fullmatch(r"([1-9][0-9]*)([KMG]?)", disk_size or "", re.IGNORECASE)
+        size_in_bytes = None
+        if size_match:
+            multiplier = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3}[size_match.group(2).upper()]
+            size_in_bytes = int(size_match.group(1)) * multiplier
+        if size_in_bytes is None or not 512 * 1024**2 <= size_in_bytes <= 4 * 1024**3:
+            errors.append(
+                f"GitHub workflow must set a bounded emulator disk size from 512M to 4G: {relative}"
             )
     return errors
 
