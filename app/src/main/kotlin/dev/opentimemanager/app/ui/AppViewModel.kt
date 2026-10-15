@@ -10,6 +10,7 @@ import dev.opentimemanager.app.data.EditResult
 import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.data.ProjectEditResult
 import dev.opentimemanager.app.data.ProjectEntity
+import dev.opentimemanager.app.data.ProjectPageCursor
 import dev.opentimemanager.app.di.AppContainer
 import dev.opentimemanager.app.backup.BackupInspection
 import dev.opentimemanager.app.backup.BackupWriteResult
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 enum class AppDestination { TIMER, HISTORY, REPORTS, SETTINGS }
 enum class UiMessage {
@@ -79,7 +81,19 @@ data class AppControls(
     val dataTransferBusy: Boolean = false,
     val pendingRestoreUri: String? = null,
     val lastRestoreResult: RestoreResult? = null,
+    val manualProjectPicker: ManualProjectPickerState = ManualProjectPickerState(),
 )
+
+data class ManualProjectPickerState(
+    val query: String = "",
+    val projects: List<ProjectEntity> = emptyList(),
+    val pinnedProject: ProjectEntity? = null,
+    val nextCursor: ProjectPageCursor? = null,
+    val pinnedProjectId: String? = null,
+    val loading: Boolean = false,
+) {
+    val hasMore: Boolean get() = nextCursor != null
+}
 
 data class AppUiState(
     val snapshot: AppSnapshot? = null,
@@ -137,6 +151,7 @@ class AppViewModel(
 ) : ViewModel() {
     private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
+    private var manualProjectPickerJob: Job? = null
     private val snapshots = controls
         .map { current ->
             SnapshotRequest(
@@ -207,6 +222,39 @@ class AppViewModel(
     fun searchHistory(query: String) = updateControls { copy(historySearch = query) }
     fun loadMoreHistory() = updateControls { copy(historyLimit = nextHistoryLimit(historyLimit)) }
     fun loadMoreProjects() = updateControls { copy(projectLimit = nextProjectLimit(projectLimit)) }
+    fun openManualProjectPicker(pinnedProjectId: String?) {
+        manualProjectPickerJob?.cancel()
+        updateControls {
+            copy(manualProjectPicker = ManualProjectPickerState(pinnedProjectId = pinnedProjectId, loading = true))
+        }
+        loadManualProjectPage(append = false)
+    }
+
+    fun searchManualProjects(query: String) {
+        manualProjectPickerJob?.cancel()
+        updateControls {
+            copy(
+                manualProjectPicker = manualProjectPicker.copy(
+                    query = query,
+                    projects = emptyList(),
+                    nextCursor = null,
+                    loading = true,
+                ),
+            )
+        }
+        loadManualProjectPage(append = false)
+    }
+
+    fun loadMoreManualProjects() {
+        if (controls.value.manualProjectPicker.loading || !controls.value.manualProjectPicker.hasMore) return
+        updateControls { copy(manualProjectPicker = manualProjectPicker.copy(loading = true)) }
+        loadManualProjectPage(append = true)
+    }
+
+    fun closeManualProjectPicker() {
+        manualProjectPickerJob?.cancel()
+        updateControls { copy(manualProjectPicker = ManualProjectPickerState()) }
+    }
     fun selectReportPeriod(period: ReportPeriod) = updateControls { copy(reportPeriod = period) }
     fun clearMessage() = updateControls { copy(message = null) }
 
@@ -394,6 +442,7 @@ class AppViewModel(
     }.await()
 
     override fun onCleared() {
+        manualProjectPickerJob?.cancel()
         transfers.clear()
         super.onCleared()
     }
@@ -452,6 +501,44 @@ class AppViewModel(
     }
 
     private fun show(message: UiMessage) = updateControls { copy(message = message) }
+    private fun loadManualProjectPage(append: Boolean) {
+        val request = controls.value.manualProjectPicker
+        manualProjectPickerJob = viewModelScope.launch {
+            try {
+                val page = container.projects.manualEntryPage(
+                    query = request.query,
+                    cursor = if (append) request.nextCursor else null,
+                    pinnedProjectId = request.pinnedProjectId,
+                    pageSize = MANUAL_PROJECT_PAGE_SIZE,
+                    displayName = { application.projectName(it) },
+                )
+                updateControls {
+                    val current = manualProjectPicker
+                    if (current.query != request.query || current.pinnedProjectId != request.pinnedProjectId) return@updateControls this
+                    copy(
+                        manualProjectPicker = current.copy(
+                            projects = if (append) {
+                                (current.projects + page.projects).distinctBy(ProjectEntity::id)
+                            } else {
+                                page.projects
+                            },
+                            pinnedProject = page.pinnedProject ?: current.pinnedProject,
+                            nextCursor = page.nextCursor,
+                            loading = false,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                updateControls {
+                    val current = manualProjectPicker
+                    if (current.query != request.query || current.pinnedProjectId != request.pinnedProjectId) return@updateControls this
+                    copy(manualProjectPicker = current.copy(loading = false), message = UiMessage.ACTION_FAILED)
+                }
+            }
+        }
+    }
     private fun updateControls(block: AppControls.() -> AppControls) { controls.value = controls.value.block() }
     private fun newCommandId() = CommandId(UUID.randomUUID().toString())
 
@@ -555,6 +642,7 @@ internal const val MAX_HISTORY_LIMIT = 2_000
 internal fun nextHistoryLimit(current: Int): Int =
     (current + INITIAL_HISTORY_LIMIT).coerceAtMost(MAX_HISTORY_LIMIT)
 internal const val INITIAL_PROJECT_LIMIT = 100
+internal const val MANUAL_PROJECT_PAGE_SIZE = 50
 internal const val MAX_PROJECT_LIMIT = dev.opentimemanager.app.data.ProjectRepository.MAX_PROJECTS
 internal fun nextProjectLimit(current: Int): Int =
     (current + INITIAL_PROJECT_LIMIT).coerceAtMost(MAX_PROJECT_LIMIT)

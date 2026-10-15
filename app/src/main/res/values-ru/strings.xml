@@ -29,6 +29,7 @@
     <string name="review_required_message">Устройство перезагрузилось или изменились монотонные часы. Проверьте или исправьте запись в Истории.</string>
     <string name="history_heading">История работы</string>
     <string name="search_history">Поиск по проектам и заметкам</string>
+    <string name="search_projects">Поиск проектов</string>
     <string name="load_more_history">Загрузить ещё</string>
     <string name="load_more_projects">Загрузить ещё проекты</string>
     <string name="add_manual_entry">Добавить запись</string>

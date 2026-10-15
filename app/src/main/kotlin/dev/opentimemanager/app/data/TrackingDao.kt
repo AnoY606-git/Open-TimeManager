@@ -45,6 +45,9 @@ abstract class TrackingDao {
         ORDER BY startedAtUtcMillis, id LIMIT :segmentLimit""")
     abstract fun recentCompletedSegments(historyLimit: Int, segmentLimit: Int): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE entryId = :entryId ORDER BY startedElapsedRealtimeMillis, id") abstract fun entrySegments(entryId: String): List<SegmentEntity>
+    @Query("SELECT * FROM segments WHERE id = :id") abstract fun segment(id: String): SegmentEntity?
+    @Query("SELECT * FROM segments WHERE openSlot = 1 AND entryId = :entryId LIMIT 2")
+    abstract fun openSegments(entryId: String): List<SegmentEntity>
     @Query("SELECT * FROM tracking_slot WHERE id = 1") abstract fun slot(): TrackingSlotEntity?
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
@@ -61,10 +64,14 @@ abstract class TrackingDao {
     @Insert abstract fun insertEntry(entry: EntryEntity)
     @Update abstract fun updateEntry(entry: EntryEntity)
     @Upsert abstract fun saveSegment(segment: SegmentEntity)
+    @Insert abstract fun insertSegment(segment: SegmentEntity)
+    @Query("""UPDATE segments SET durationMillis = :durationMillis, endUtcMillis = :endUtcMillis, openSlot = NULL
+        WHERE id = :segmentId AND entryId = :entryId AND durationMillis IS NULL""")
+    abstract fun closeOpenSegment(segmentId: String, entryId: String, durationMillis: Long, endUtcMillis: Long): Int
     @Insert abstract fun insertCommand(command: AppliedCommandEntity)
     @Query("DELETE FROM applied_commands WHERE commandId NOT IN (SELECT commandId FROM applied_commands ORDER BY revision DESC LIMIT 1024)") abstract fun pruneCommands()
     @Query("DELETE FROM applied_commands") abstract fun clearCommands()
-    @Query("DELETE FROM segments WHERE entryId = :entryId AND durationMillis IS NULL") abstract fun deleteOpenSegment(entryId: String)
+    @Query("DELETE FROM segments WHERE openSlot = 1 AND entryId = :entryId") abstract fun deleteOpenSegment(entryId: String)
     @Query("DELETE FROM segments WHERE entryId = :entryId") abstract fun deleteAllSegments(entryId: String)
     @Query("DELETE FROM entries WHERE id = :entryId") abstract fun deleteEntryById(entryId: String)
     @Query("UPDATE entries SET note = :note WHERE id = :entryId AND completed = 0 AND revision = :revision") abstract fun updateActiveNote(entryId: String, revision: Long, note: String): Int
@@ -81,12 +88,21 @@ abstract class TrackingDao {
     private fun restored(): TrackingSession {
         val slot = requireNotNull(slot())
         val entry = slot.entryId?.let { requireNotNull(entry(it)) }
-        val rows = entry?.let { entrySegments(it.id) }.orEmpty()
-        val open = rows.singleOrNull { it.durationMillis == null }?.let {
+        val openRows = entry?.let { openSegments(it.id) }.orEmpty()
+        check(openRows.size <= 1) { "Multiple open segments" }
+        val open = openRows.singleOrNull()?.let {
             OpenSegment(SegmentId(it.id), ClockSnapshot(it.startedAtUtcMillis, requireNotNull(it.startedElapsedRealtimeMillis), it.bootCount))
         }
-        return TrackingSession.restore(TrackingState.valueOf(slot.state), slot.revision, entry?.let { EntryId(it.id) }, entry?.let { ProjectId(it.projectId) }, open,
-            rows.filter { it.durationMillis != null }.map { it.closed(entry!!.projectId) })
+        return TrackingSession.restore(
+            TrackingState.valueOf(slot.state),
+            slot.revision,
+            entry?.let { EntryId(it.id) },
+            entry?.let { ProjectId(it.projectId) },
+            open,
+            emptyList(),
+            confirmedDurationMillis = entry?.confirmedDurationMillis ?: 0,
+            lastConfirmedEndUtcMillis = entry?.lastConfirmedEndUtcMillis,
+        )
     }
 
     @Transaction
@@ -149,7 +165,7 @@ abstract class TrackingDao {
             session = session,
             projects = projects,
             entries = entries,
-            segments = completedSegments + session.segments,
+            segments = completedSegments,
             generation = requireNotNull(slot()).generation,
             hasMoreHistory = completedEntryCount() > completed.size,
             entryDurations = durations,
@@ -205,9 +221,9 @@ abstract class TrackingDao {
             if (project.archivedAtUtcMillis != null) return TrackingResult.Rejected(TrackingFailure.ARCHIVED_PROJECT)
         }
         val result = when(command) {
-            is TrackingCommand.Start -> TrackingReducer.start(session, command.projectId, EntryId(UUID.randomUUID().toString()), SegmentId(UUID.randomUUID().toString()), now, command.commandId, command.expectedRevision)
+            is TrackingCommand.Start -> TrackingReducer.start(session, command.projectId, EntryId(UUID.randomUUID().toString()), freshSegmentId(), now, command.commandId, command.expectedRevision)
             is TrackingCommand.Pause -> TrackingReducer.pause(session, command.target, now)
-            is TrackingCommand.Resume -> TrackingReducer.resume(session, command.target, SegmentId(UUID.randomUUID().toString()), now)
+            is TrackingCommand.Resume -> TrackingReducer.resume(session, command.target, freshSegmentId(), now)
             is TrackingCommand.Stop -> TrackingReducer.stop(session, command.target, now)
             is TrackingCommand.Switch -> TrackingReducer.stop(session, command.target, now)
             is TrackingCommand.ResolveReview -> error("Handled before reducer")
@@ -218,7 +234,7 @@ abstract class TrackingDao {
         if (command is TrackingCommand.Switch && result.completedEntry != null) {
             // Switch — один commit; два проверенных перехода core увеличивают revision дважды.
             val idle = TrackingSession.restore(TrackingState.IDLE, next.revision, null, null, null, emptyList())
-            val started = TrackingReducer.start(idle, command.projectId, EntryId(UUID.randomUUID().toString()), SegmentId(UUID.randomUUID().toString()), now, command.commandId, idle.revision)
+            val started = TrackingReducer.start(idle, command.projectId, EntryId(UUID.randomUUID().toString()), freshSegmentId(), now, command.commandId, idle.revision)
             if (started is TransitionResult.Rejected) return TrackingResult.Rejected(TrackingFailure.valueOf(started.reason.name))
             check(started is TransitionResult.Applied)
             persist(next, result.completedEntry)
@@ -239,28 +255,33 @@ abstract class TrackingDao {
         }
         val entryId = requireNotNull(session.entryId).value
         val current = requireNotNull(entry(entryId))
-        val open = entrySegments(entryId).singleOrNull { it.durationMillis == null }
+        val open = openSegments(entryId).singleOrNull()
             ?: return TrackingResult.Rejected(TrackingFailure.INVALID_STATE)
+        var confirmedDuration = current.confirmedDurationMillis
+        var lastConfirmedEnd = current.lastConfirmedEndUtcMillis
         when (val resolution = command.resolution) {
             ReviewResolution.CONFIRMED_CHECKPOINT -> deleteOpenSegment(entryId)
             is ReviewResolution.ManualEnd -> {
                 val duration = try { Math.subtractExact(resolution.endUtcMillis, open.startedAtUtcMillis) }
                 catch (_: ArithmeticException) { return TrackingResult.Rejected(TrackingFailure.INVALID_DURATION) }
                 if (duration <= 0) return TrackingResult.Rejected(TrackingFailure.INVALID_DURATION)
-                saveSegment(open.copy(durationMillis = duration, endUtcMillis = resolution.endUtcMillis, openSlot = null))
+                confirmedDuration = try { Math.addExact(confirmedDuration, duration) }
+                catch (_: ArithmeticException) { return TrackingResult.Rejected(TrackingFailure.OVERFLOW) }
+                lastConfirmedEnd = maxOf(lastConfirmedEnd ?: resolution.endUtcMillis, resolution.endUtcMillis)
+                check(closeOpenSegment(open.id, entryId, duration, resolution.endUtcMillis) == 1)
             }
         }
-        val closed = entrySegments(entryId).filter { it.durationMillis != null }
         updateSlot(requireNotNull(slot()).copy(state = TrackingState.IDLE.name, entryId = null, revision = nextRevision))
-        if (closed.isEmpty()) {
-            deleteAllSegments(entryId)
+        if (confirmedDuration == 0L) {
             deleteEntryById(entryId)
         } else {
             updateEntry(current.copy(
                 completed = true,
                 currentSlot = null,
                 revision = nextRevision,
-                endedAtUtcMillis = closed.maxOf { requireNotNull(it.endUtcMillis) },
+                endedAtUtcMillis = requireNotNull(lastConfirmedEnd),
+                confirmedDurationMillis = confirmedDuration,
+                lastConfirmedEndUtcMillis = lastConfirmedEnd,
             ))
         }
         insertCommand(AppliedCommandEntity(command.commandId.value, nextRevision, null, TrackingState.IDLE.name))
@@ -272,9 +293,15 @@ abstract class TrackingDao {
         val oldSlot = requireNotNull(slot())
         val current = oldSlot.entryId?.let { requireNotNull(entry(it)) }
         if (completed != null) {
-            for (segment in completed.segments) saveClosed(segment)
-            updateEntry(requireNotNull(current).copy(completed = true, currentSlot = null, revision = session.revision,
-                endedAtUtcMillis = completed.segments.maxOfOrNull { it.endUtcMillis }))
+            for (segment in completed.segments) persistClosedDelta(segment)
+            updateEntry(requireNotNull(current).copy(
+                completed = true,
+                currentSlot = null,
+                revision = session.revision,
+                endedAtUtcMillis = completed.endedAtUtcMillis,
+                confirmedDurationMillis = completed.durationMillis,
+                lastConfirmedEndUtcMillis = completed.endedAtUtcMillis,
+            ))
         } else if (session.entryId != null) {
             val id = requireNotNull(session.entryId).value
             if (current == null || current.id != id) {
@@ -289,19 +316,47 @@ abstract class TrackingDao {
                     false,
                     1,
                     ZoneId.systemDefault().id,
+                    session.confirmedDurationMillis,
+                    session.lastConfirmedEndUtcMillis,
                 ))
-            } else updateEntry(current.copy(revision = session.revision))
-            for (segment in session.segments) saveClosed(segment)
+            }
+            for (segment in session.segments) persistClosedDelta(segment)
+            if (current != null && current.id == id) {
+                updateEntry(current.copy(
+                    revision = session.revision,
+                    confirmedDurationMillis = session.confirmedDurationMillis,
+                    lastConfirmedEndUtcMillis = session.lastConfirmedEndUtcMillis,
+                ))
+            }
             session.openSegment?.let { open ->
-                saveSegment(SegmentEntity(open.id.value, id, open.startedAt.wallUtcMillis, open.startedAt.elapsedRealtimeMillis, open.startedAt.bootCount, null, null, 1))
+                val persisted = segment(open.id.value)
+                if (persisted == null) {
+                    insertSegment(SegmentEntity(open.id.value, id, open.startedAt.wallUtcMillis, open.startedAt.elapsedRealtimeMillis, open.startedAt.bootCount, null, null, 1))
+                } else {
+                    check(persisted.entryId == id && persisted.durationMillis == null)
+                }
             }
         }
         updateSlot(oldSlot.copy(state = session.state.name, entryId = session.entryId?.value, revision = session.revision))
     }
 
-    private fun saveClosed(segment: Segment) {
-        val old = entrySegments(segment.entryId.value).firstOrNull { it.id == segment.id.value }
-        saveSegment(SegmentEntity(segment.id.value, segment.entryId.value, segment.startUtcMillis, old?.startedElapsedRealtimeMillis, old?.bootCount, segment.durationMillis, segment.endUtcMillis))
+    private fun persistClosedDelta(segment: Segment) {
+        check(
+            closeOpenSegment(
+                segment.id.value,
+                segment.entryId.value,
+                segment.durationMillis,
+                segment.endUtcMillis,
+            ) == 1,
+        ) { "Open segment delta is missing" }
+    }
+
+    private fun freshSegmentId(): SegmentId {
+        repeat(8) {
+            val candidate = SegmentId(UUID.randomUUID().toString())
+            if (segment(candidate.value) == null) return candidate
+        }
+        error("Unable to allocate a unique segment id")
     }
 }
 

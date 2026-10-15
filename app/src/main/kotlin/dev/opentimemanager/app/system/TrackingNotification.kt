@@ -57,7 +57,7 @@ class TrackingNotification(private val context: Context) {
             return elapsedMillis(snapshot.session, nowElapsedMillis)
         }
         fun elapsedMillis(session: dev.opentimemanager.core.model.TrackingSession, nowElapsedMillis: Long): Long {
-            val closed = session.segments.sumOf { it.durationMillis }
+            val closed = session.confirmedDurationMillis
             val open = if (session.state == TrackingState.RUNNING) session.openSegment?.let { (nowElapsedMillis - it.startedAt.elapsedRealtimeMillis).coerceAtLeast(0) } ?: 0 else 0
             return if (Long.MAX_VALUE - closed < open) Long.MAX_VALUE else closed + open
         }

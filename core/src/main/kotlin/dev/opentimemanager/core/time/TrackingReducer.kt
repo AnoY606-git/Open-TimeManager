@@ -18,7 +18,7 @@ object TrackingReducer {
         return checked {
             TransitionResult.Applied(TrackingSession(
                 TrackingState.RUNNING, Math.incrementExact(session.revision), entryId, projectId,
-                OpenSegment(segmentId, now), emptyList(), session.processedCommands + commandId,
+                OpenSegment(segmentId, now), 0, null, emptyList(), session.processedCommands + commandId,
             ))
         }
     }
@@ -71,10 +71,16 @@ object TrackingReducer {
                 session.segments + Segment(open.id, session.entryId!!, session.projectId!!, open.startedAt.wallUtcMillis, duration)
             }
             // Проверка суммы нужна уже при pause, до записи переполненного состояния.
-            val completed = CompletedEntry(session.entryId!!, session.projectId!!, segments)
+            val completed = CompletedEntry(
+                session.entryId!!,
+                session.projectId!!,
+                segments,
+                session.confirmedDurationBaselineMillis,
+                session.lastConfirmedEndBaselineUtcMillis,
+            )
             if (stop) {
                 TransitionResult.Applied(TrackingSession(
-                    TrackingState.IDLE, Math.incrementExact(session.revision), null, null, null, emptyList(),
+                    TrackingState.IDLE, Math.incrementExact(session.revision), null, null, null, 0, null, emptyList(),
                     session.processedCommands + target.commandId,
                 ), completed)
             } else {
@@ -103,7 +109,8 @@ object TrackingReducer {
         open: OpenSegment?,
         segments: List<Segment> = session.segments,
     ) = TrackingSession(state, Math.incrementExact(session.revision), session.entryId, session.projectId,
-        open, segments, session.processedCommands + commandId)
+        open, session.confirmedDurationBaselineMillis, session.lastConfirmedEndBaselineUtcMillis,
+        segments, session.processedCommands + commandId)
 
     private fun checked(block: () -> TransitionResult): TransitionResult = try {
         block()

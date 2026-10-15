@@ -16,7 +16,7 @@
 
 ### История, отчёты и системные кнопки
 
-- В «Истории» есть поиск, ручная запись, редактирование, необратимое удаление и постраничная загрузка старых записей.
+- В «Истории» есть поиск, ручная запись, редактирование, необратимое удаление и постраничная загрузка старых записей. В форме ручной записи поиск проектов и кнопка «Загрузить ещё проекты» доступны независимо от списка «Таймера»; при редактировании текущий проект остаётся доступен, даже если он уже архивирован.
 - «Отчёты» агрегируют подтверждённые отрезки за неделю, месяц или свой период длительностью не более 10 лет. CSV сохраняется через системный выбор файла и не подходит для восстановления.
 - Разрешение уведомлений включает foreground-уведомление. Плитка Quick Settings и виджет отражают состояние. При отказе учёт внутри приложения остаётся доступен. Privacy mode скрывает имя проекта на системных поверхностях.
 
@@ -43,7 +43,7 @@ After a reboot or an untrustworthy monotonic-time reference, the entry changes t
 
 ### History, reports, and system controls
 
-- History supports search, manual entries, editing, deletion, and bounded loading of older records. Deletion has no Undo.
+- History supports search, manual entries, editing, deletion, and bounded loading of older records. The manual-entry form has its own searchable, paged project picker; an entry's current project remains available while editing even if it has since been archived. Deletion has no Undo.
 - Reports aggregate confirmed segments for a week, month, or a custom range of at most 10 years. CSV is saved through the system document picker and is for analysis, not restore.
 - Notification permission enables foreground controls. The Quick Settings tile and widget reflect timer state. If notifications are denied, in-app tracking remains available. Privacy mode hides project names on system surfaces.
 

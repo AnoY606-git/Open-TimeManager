@@ -17,7 +17,7 @@ import java.time.ZoneId
 /** Владелец process-scoped БД; зависимости передаются потребителям явно. */
 class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatchers.IO, clock: ClockSnapshotSource = AndroidClockSnapshotSource(context)) {
     val database: AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "open-time-manager.db")
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .build()
     val trackingCoordinator = TrackingCoordinator(RoomTrackingRepository(database, clock, dispatcher))
     val projects = ProjectRepository(database, dispatcher)

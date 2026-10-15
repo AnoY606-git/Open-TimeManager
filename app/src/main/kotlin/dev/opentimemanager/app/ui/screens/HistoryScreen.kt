@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.EntryEntity
+import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.ui.AppUiState
 import dev.opentimemanager.app.ui.EntryFormState
 import dev.opentimemanager.app.ui.ManualEntryDraft
@@ -52,6 +54,10 @@ fun HistoryScreen(
     onSave: (String?, Long?, ManualEntryDraft) -> Unit,
     onDelete: (String, Long) -> Unit,
     onLoadMore: () -> Unit,
+    onOpenProjectPicker: (String?) -> Unit,
+    onSearchProjects: (String) -> Unit,
+    onLoadMoreProjects: () -> Unit,
+    onCloseProjectPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snapshot = state.snapshot ?: return
@@ -130,10 +136,14 @@ fun HistoryScreen(
         EntryDialog(
             entry = edited,
             state = state,
-            onDismiss = { addEntry = false; edited = null },
+            onDismiss = { onCloseProjectPicker(); addEntry = false; edited = null },
+            onOpenProjectPicker = onOpenProjectPicker,
+            onSearchProjects = onSearchProjects,
+            onLoadMoreProjects = onLoadMoreProjects,
             onSave = { draft ->
                 val item = edited
                 onSave(item?.id, item?.revision, draft)
+                onCloseProjectPicker()
                 addEntry = false
                 edited = null
             },
@@ -157,6 +167,9 @@ private fun EntryDialog(
     entry: EntryEntity?,
     state: AppUiState,
     onDismiss: () -> Unit,
+    onOpenProjectPicker: (String?) -> Unit,
+    onSearchProjects: (String) -> Unit,
+    onLoadMoreProjects: () -> Unit,
     onSave: (ManualEntryDraft) -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -174,6 +187,9 @@ private fun EntryDialog(
     }
     var form by remember(entry?.id, entry?.revision) { mutableStateOf(initialForm) }
     var invalid by remember(entry?.id, entry?.revision) { mutableStateOf(false) }
+    LaunchedEffect(entry?.id, entry?.revision) {
+        onOpenProjectPicker(entry?.projectId ?: form.projectId.ifBlank { null })
+    }
     fun submit() {
         val validation = validateEntryForm(form, zone)
         validation.value?.let(onSave) ?: run { invalid = true }
@@ -185,13 +201,42 @@ private fun EntryDialog(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
                     Text(stringResource(R.string.selected_project), style = MaterialTheme.typography.labelLarge)
-                    state.availableProjects.forEach { project ->
-                        FilterChip(
-                            selected = project.id == form.projectId,
-                            onClick = { form = form.copy(projectId = project.id); invalid = false },
-                            label = { Text(LocalContext.current.projectName(project)) },
-                            modifier = Modifier.padding(end = 6.dp),
-                        )
+                }
+                item("project-search") {
+                    OutlinedTextField(
+                        value = state.controls.manualProjectPicker.query,
+                        onValueChange = onSearchProjects,
+                        label = { Text(stringResource(R.string.search_projects)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                state.controls.manualProjectPicker.pinnedProject?.let { project ->
+                    item(key = "pinned-${project.id}") {
+                        ProjectChoice(project, form.projectId) {
+                            form = form.copy(projectId = project.id)
+                            invalid = false
+                        }
+                    }
+                }
+                items(
+                    items = state.controls.manualProjectPicker.projects.filterNot {
+                        it.id == state.controls.manualProjectPicker.pinnedProject?.id
+                    },
+                    key = ProjectEntity::id,
+                ) { project ->
+                    ProjectChoice(project, form.projectId) {
+                        form = form.copy(projectId = project.id)
+                        invalid = false
+                    }
+                }
+                if (state.controls.manualProjectPicker.hasMore) {
+                    item("load-more-projects") {
+                        Button(
+                            onClick = onLoadMoreProjects,
+                            enabled = !state.controls.manualProjectPicker.loading,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.load_more_projects)) }
                     }
                 }
                 item {
@@ -245,5 +290,15 @@ private fun EntryDialog(
         },
         confirmButton = { TextButton(onClick = ::submit) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun ProjectChoice(project: ProjectEntity, selectedProjectId: String, onClick: () -> Unit) {
+    FilterChip(
+        selected = project.id == selectedProjectId,
+        onClick = onClick,
+        label = { Text(LocalContext.current.projectName(project)) },
+        modifier = Modifier.fillMaxWidth(),
     )
 }

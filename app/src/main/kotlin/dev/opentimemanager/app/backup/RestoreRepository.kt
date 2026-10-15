@@ -16,7 +16,8 @@ import dev.opentimemanager.app.data.SegmentEntity
 import dev.opentimemanager.app.data.TrackingSlotEntity
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
-import dev.opentimemanager.app.settings.UserSettings
+import dev.opentimemanager.app.settings.RestorePreferenceTarget
+import dev.opentimemanager.app.settings.SettingsMutationBoundary
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_COLOR_ARGB
 import dev.opentimemanager.core.backup.PortablePreferences
@@ -35,9 +36,10 @@ class RestoreRepository(
     private val database: AppDatabase,
     private val dispatcher: CoroutineDispatcher,
     private val nowUtcMillis: () -> Long = System::currentTimeMillis,
-    private val settings: UserSettings? = null,
+    private val settings: RestorePreferenceTarget? = null,
     private val afterReplaceDelete: suspend () -> Unit = {},
 ) {
+    private val settingsMutationBoundary = settings?.mutationBoundary ?: SettingsMutationBoundary.PROCESS
     suspend fun preview(snapshot: PortableSnapshot): BackupPreview = withContext(dispatcher) {
         val payload = snapshot.toRestorePayload(nowUtcMillis())
         BackupPreview(
@@ -50,29 +52,40 @@ class RestoreRepository(
     }
 
     suspend fun restore(preview: BackupPreview, mode: RestoreMode): RestoreResult = preview.usePayload { payload ->
-        val result = withContext(dispatcher) {
-            database.withTransaction { applyPayload(payload, mode) }
-        }
-        if (result is RestoreResult.Applied && mode == RestoreMode.REPLACE && settings != null) {
-            // The Room graph is already durable. A DataStore/mirror failure leaves
-            // the journal for startup retry and must not turn success into failure.
-            try {
-                withContext(NonCancellable) { reconcilePendingPreferences() }
-            } catch (_: Exception) {
-                // Durable recovery intent remains in Room.
+        suspend fun restoreAndReconcile(): RestoreResult {
+            val result = withContext(dispatcher) {
+                database.withTransaction { applyPayload(payload, mode) }
             }
+            if (result is RestoreResult.Applied && mode == RestoreMode.REPLACE && settings != null) {
+                // Room is durable first. Preference convergence is retryable, not cross-store atomic.
+                try {
+                    withContext(NonCancellable + dispatcher) { reconcilePendingPreferencesWithinBoundary() }
+                } catch (_: Exception) {
+                    // Durable recovery intent remains in Room for startup retry.
+                }
+            }
+            return result
         }
-        result
+        if (settings == null) restoreAndReconcile()
+        else settingsMutationBoundary.serialized { restoreAndReconcile() }
     }
 
-    suspend fun reconcilePendingPreferences() = withContext(dispatcher) {
-        val target = settings ?: return@withContext
-        val pending = database.restoreDao().pendingPreferences() ?: return@withContext
-        target.replace(pending.toUserPreferences())
-        database.withTransaction {
-            if (database.restoreDao().pendingPreferences()?.operationId == pending.operationId) {
+    suspend fun reconcilePendingPreferences() {
+        if (settings == null) return
+        settingsMutationBoundary.serialized {
+            withContext(dispatcher) { reconcilePendingPreferencesWithinBoundary() }
+        }
+    }
+
+    private suspend fun reconcilePendingPreferencesWithinBoundary() {
+        val target = settings ?: return
+        while (true) {
+            val pending = database.restoreDao().pendingPreferences() ?: return
+            target.replaceWithinMutationBoundary(pending.toUserPreferences())
+            val deleted = database.withTransaction {
                 database.restoreDao().deletePendingPreferences(pending.operationId)
             }
+            check(deleted in 0..1)
         }
     }
 
@@ -166,7 +179,7 @@ abstract class RestoreDao {
     abstract fun savePendingPreferences(value: PendingPreferencesRestoreEntity)
 
     @Query("DELETE FROM pending_preferences_restore WHERE id = 1 AND operationId = :operationId")
-    abstract fun deletePendingPreferences(operationId: String)
+    abstract fun deletePendingPreferences(operationId: String): Int
 
     @Query("DELETE FROM applied_commands")
     abstract fun deleteCommands()
@@ -297,6 +310,9 @@ private fun PortableSnapshot.toRestorePayload(nowUtcMillis: Long): RestorePayloa
     }
     val entryEntities = importableEntries.map { entry ->
         val entrySegments = requireNotNull(segmentsByEntry[entry.id])
+        val confirmedDuration = entrySegments.fold(0L) { total, segment ->
+            Math.addExact(total, segment.durationMillis)
+        }
         EntryEntity(
             id = entry.id.value,
             projectId = entry.projectId.value,
@@ -308,6 +324,8 @@ private fun PortableSnapshot.toRestorePayload(nowUtcMillis: Long): RestorePayloa
             completed = true,
             currentSlot = null,
             zoneId = entry.zoneId.id,
+            confirmedDurationMillis = confirmedDuration,
+            lastConfirmedEndUtcMillis = entrySegments.maxOf { it.endUtcMillis },
         )
     }
     val importedEntryIds = entryEntities.mapTo(hashSetOf(), EntryEntity::id)

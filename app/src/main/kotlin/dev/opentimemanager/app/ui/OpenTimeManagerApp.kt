@@ -177,6 +177,10 @@ private fun DestinationContent(
             onSave = { id, revision, draft -> viewModel?.saveManualEntry(id, revision, draft) },
             onDelete = { id, revision -> viewModel?.deleteEntry(id, revision) },
             onLoadMore = { viewModel?.loadMoreHistory() },
+            onOpenProjectPicker = { viewModel?.openManualProjectPicker(it) },
+            onSearchProjects = { viewModel?.searchManualProjects(it) },
+            onLoadMoreProjects = { viewModel?.loadMoreManualProjects() },
+            onCloseProjectPicker = { viewModel?.closeManualProjectPicker() },
             modifier = modifier,
         )
         AppDestination.REPORTS -> ReportsScreen(

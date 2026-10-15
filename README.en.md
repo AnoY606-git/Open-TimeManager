@@ -10,7 +10,7 @@ The app does not request the `INTERNET` permission. Projects, notes, settings, a
 
 - one durable timer with start, pause, resume, stop, and safe project switching;
 - colored projects, active-entry notes, and project archiving without deleting history;
-- manual entries, search, editing, confirmed deletion, and bounded loading of older history;
+- manual entries, search, editing, confirmed deletion, a paged project picker, and bounded loading of older history;
 - week, month, and custom reports up to 10 years, per-project totals, and UTF-8 CSV export;
 - encrypted `.otmbackup` files with project metadata and preferences, retryable verified preview, Merge, and Replace modes;
 - foreground-service notification, Quick Settings tile, and widget with stale-action protection;

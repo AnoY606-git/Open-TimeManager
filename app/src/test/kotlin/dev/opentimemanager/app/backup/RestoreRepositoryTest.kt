@@ -16,6 +16,8 @@ import dev.opentimemanager.app.data.PendingPreferencesRestoreEntity
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.UserSettings
+import dev.opentimemanager.app.settings.RestorePreferenceTarget
+import dev.opentimemanager.app.settings.SettingsMutationBoundary
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
@@ -37,6 +39,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -288,6 +291,97 @@ class RestoreRepositoryTest {
     }
 
     @Test
+    fun startupReconcileCannotOverwriteNewerReplacePreferencesOrDeleteItsJournal() = runBlocking {
+        val enteredA = CompletableDeferred<Unit>()
+        val releaseA = CompletableDeferred<Unit>()
+        val boundary = SettingsMutationBoundary()
+        val target = RecordingRestoreSettings(boundary) { value ->
+            if (value.theme == ThemeMode.LIGHT) {
+                enteredA.complete(Unit)
+                releaseA.await()
+            }
+        }
+        database.restoreDao().savePendingPreferences(
+            PendingPreferencesRestoreEntity(1, "A", ThemeMode.LIGHT.name, false, false, 300),
+        )
+        val configured = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = target,
+        )
+        val startup = async { configured.reconcilePendingPreferences() }
+        enteredA.await()
+        val sourceB = PortableSnapshot(
+            projects = listOf(PortableProject(projectId, "B")),
+            preferences = PortablePreferences(PortableTheme.DARK, true, true, 600),
+        )
+        val previewB = configured.preview(sourceB)
+        val replaceB = async { configured.restore(previewB, RestoreMode.REPLACE) }
+
+        delay(50)
+        assertFalse(replaceB.isCompleted)
+        releaseA.complete(Unit)
+        startup.await()
+        assertTrue(replaceB.await() is RestoreResult.Applied)
+
+        assertEquals("B", database.trackingDao().project(projectId.value)?.name)
+        assertEquals(UserPreferences(ThemeMode.DARK, true, true, 600), target.current)
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun reconcileCompareDeleteLoopsWhenAWasReplacedByBWhileApplying() = runBlocking {
+        val preferencesB = PendingPreferencesRestoreEntity(
+            1, "B", ThemeMode.DARK.name, true, false, 700,
+        )
+        database.restoreDao().savePendingPreferences(
+            PendingPreferencesRestoreEntity(1, "A", ThemeMode.LIGHT.name, false, true, 300),
+        )
+        val target = RecordingRestoreSettings(SettingsMutationBoundary()) { value ->
+            if (value.theme == ThemeMode.LIGHT) database.restoreDao().savePendingPreferences(preferencesB)
+        }
+        val configured = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = target,
+        )
+
+        configured.reconcilePendingPreferences()
+
+        assertEquals(listOf(ThemeMode.LIGHT, ThemeMode.DARK), target.applied.map(UserPreferences::theme))
+        assertEquals(preferencesB.toExpectedPreferences(), target.current)
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun failedPreferenceApplicationRetainsJournalAndCanBeRetried() = runBlocking {
+        val pending = PendingPreferencesRestoreEntity(
+            1, "retry", ThemeMode.DARK.name, false, false, 720,
+        )
+        database.restoreDao().savePendingPreferences(pending)
+        val boundary = SettingsMutationBoundary()
+        val failing = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = RecordingRestoreSettings(boundary) { throw IllegalStateException("DataStore unavailable") },
+        )
+
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            runBlocking { failing.reconcilePendingPreferences() }
+        }
+        assertEquals(pending, database.restoreDao().pendingPreferences())
+
+        val succeedingTarget = RecordingRestoreSettings(boundary)
+        RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = succeedingTarget,
+        ).reconcilePendingPreferences()
+        assertEquals(pending.toExpectedPreferences(), succeedingTarget.current)
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
     fun cancellationAfterReplaceDeletesRollsBackEveryRoomTableAndKeepsPreviewRetryable() = runBlocking {
         val local = ProjectEntity("85000000-0000-4000-8000-000000000001", "Local", 7, 77)
         database.projectDao().insert(local)
@@ -444,7 +538,7 @@ class RestoreRepositoryTest {
     }
 
     @Test
-    fun migrationOneToThreePreservesGraphAndAddsHardeningState() {
+    fun migrationOneToFourPreservesGraphBackfillsSummariesAndAddsHardeningState() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${System.nanoTime()}.db"
         context.deleteDatabase(name)
@@ -490,7 +584,7 @@ class RestoreRepositoryTest {
             }
 
             val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -498,6 +592,10 @@ class RestoreRepositoryTest {
                 val entries = migrated.trackingDao().entries()
                 assertEquals(2, entries.size)
                 assertTrue(entries.all { it.zoneId == "UTC" })
+                assertEquals(500L, entries.single { it.completed }.confirmedDurationMillis)
+                assertEquals(1_500L, entries.single { it.completed }.lastConfirmedEndUtcMillis)
+                assertEquals(0L, entries.single { !it.completed }.confirmedDurationMillis)
+                assertEquals(null, entries.single { !it.completed }.lastConfirmedEndUtcMillis)
                 assertEquals(2, migrated.trackingDao().segments().size)
                 assertEquals("RUNNING", migrated.trackingDao().slot()?.state)
                 assertEquals("legacy", migrated.trackingDao().slot()?.generation)
@@ -585,5 +683,26 @@ class RestoreRepositoryTest {
         "%08x-0000-4000-8000-%012x",
         prefix,
         suffix,
+    )
+
+    private class RecordingRestoreSettings(
+        override val mutationBoundary: SettingsMutationBoundary = SettingsMutationBoundary(),
+        private val action: suspend (UserPreferences) -> Unit = {},
+    ) : RestorePreferenceTarget {
+        val applied = mutableListOf<UserPreferences>()
+        var current: UserPreferences? = null
+
+        override suspend fun replaceWithinMutationBoundary(value: UserPreferences) {
+            action(value)
+            applied += value
+            current = value
+        }
+    }
+
+    private fun PendingPreferencesRestoreEntity.toExpectedPreferences() = UserPreferences(
+        theme = ThemeMode.valueOf(theme),
+        dynamicColor = dynamicColor,
+        privacyMode = privacyMode,
+        dailyGoalMinutes = dailyGoalMinutes,
     )
 }

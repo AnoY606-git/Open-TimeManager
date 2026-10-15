@@ -54,14 +54,25 @@ class TrackingSession internal constructor(
     val entryId: EntryId?,
     val projectId: ProjectId?,
     val openSegment: OpenSegment?,
+    internal val confirmedDurationBaselineMillis: Long,
+    internal val lastConfirmedEndBaselineUtcMillis: Long?,
     segments: List<Segment>,
     processedCommands: Set<CommandId>,
 ) {
     val segments: List<Segment> = Collections.unmodifiableList(segments.toList())
     val processedCommands: Set<CommandId> = Collections.unmodifiableSet(processedCommands.toSet())
+    val confirmedDurationMillis: Long = segments.fold(confirmedDurationBaselineMillis) { total, segment ->
+        Math.addExact(total, segment.durationMillis)
+    }
+    val lastConfirmedEndUtcMillis: Long? = listOfNotNull(
+        lastConfirmedEndBaselineUtcMillis,
+        segments.maxOfOrNull(Segment::endUtcMillis),
+    ).maxOrNull()
 
     companion object {
-        fun idle(): TrackingSession = TrackingSession(TrackingState.IDLE, 0, null, null, null, emptyList(), emptySet())
+        fun idle(): TrackingSession = TrackingSession(
+            TrackingState.IDLE, 0, null, null, null, 0, null, emptyList(), emptySet(),
+        )
 
         /** Восстановление доверяет только проверенным значениям, не открывая изменяемый конструктор. */
         fun restore(
@@ -71,27 +82,56 @@ class TrackingSession internal constructor(
             projectId: ProjectId?,
             openSegment: OpenSegment?,
             segments: List<Segment>,
+            confirmedDurationMillis: Long = 0,
+            lastConfirmedEndUtcMillis: Long? = null,
         ): TrackingSession {
             require(revision >= 0)
+            require(confirmedDurationMillis >= 0)
+            require((confirmedDurationMillis == 0L) == (lastConfirmedEndUtcMillis == null))
             if (state == TrackingState.IDLE) {
-                require(entryId == null && projectId == null && openSegment == null && segments.isEmpty())
+                require(
+                    entryId == null && projectId == null && openSegment == null && segments.isEmpty() &&
+                        confirmedDurationMillis == 0L,
+                )
             } else {
                 require(entryId != null && projectId != null)
                 require(state != TrackingState.RUNNING || openSegment != null)
-                require(state != TrackingState.PAUSED || (openSegment == null && segments.isNotEmpty()))
+                require(
+                    state != TrackingState.PAUSED ||
+                        (openSegment == null && (confirmedDurationMillis > 0 || segments.isNotEmpty())),
+                )
                 require(segments.all { it.entryId == entryId && it.projectId == projectId })
                 require(segments.map { it.id }.distinct().size == segments.size)
                 require(openSegment == null || segments.none { it.id == openSegment.id })
-                segments.fold(0L) { sum, segment -> Math.addExact(sum, segment.durationMillis) }
+                segments.fold(confirmedDurationMillis) { sum, segment -> Math.addExact(sum, segment.durationMillis) }
             }
-            return TrackingSession(state, revision, entryId, projectId, openSegment, segments, emptySet())
+            return TrackingSession(
+                state,
+                revision,
+                entryId,
+                projectId,
+                openSegment,
+                confirmedDurationMillis,
+                lastConfirmedEndUtcMillis,
+                segments,
+                emptySet(),
+            )
         }
     }
 }
 
-class CompletedEntry internal constructor(val id: EntryId, val projectId: ProjectId, segments: List<Segment>) {
+class CompletedEntry internal constructor(
+    val id: EntryId,
+    val projectId: ProjectId,
+    segments: List<Segment>,
+    confirmedDurationBaselineMillis: Long = 0,
+    lastConfirmedEndBaselineUtcMillis: Long? = null,
+) {
     val segments: List<Segment> = Collections.unmodifiableList(segments.toList())
-    val durationMillis: Long = segments.fold(0L) { total, segment -> Math.addExact(total, segment.durationMillis) }
+    val durationMillis: Long = segments.fold(confirmedDurationBaselineMillis) { total, segment -> Math.addExact(total, segment.durationMillis) }
+    val endedAtUtcMillis: Long = requireNotNull(
+        listOfNotNull(lastConfirmedEndBaselineUtcMillis, segments.maxOfOrNull(Segment::endUtcMillis)).maxOrNull(),
+    )
 }
 
 enum class RejectionReason {

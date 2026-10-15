@@ -5,6 +5,8 @@ import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_UUID
 import dev.opentimemanager.core.model.ProjectId
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
 
@@ -18,11 +20,37 @@ abstract class ProjectDao {
     @Query("UPDATE projects SET archivedAtUtcMillis = :at WHERE id = :id") abstract fun archive(id: String, at: Long): Int
     @Query("SELECT COUNT(*) FROM entries WHERE projectId = :id") abstract fun entryCount(id: String): Int
     @Query("DELETE FROM projects WHERE id = :id") abstract fun deleteEmpty(id: String): Int
+    @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
+    @Query("""
+        SELECT * FROM projects
+        WHERE archivedAtUtcMillis IS NULL
+        ORDER BY createdAtUtcMillis DESC, id DESC
+        LIMIT :limit
+    """)
+    abstract fun firstActivePage(limit: Int): List<ProjectEntity>
+    @Query("""
+        SELECT * FROM projects
+        WHERE archivedAtUtcMillis IS NULL
+          AND (createdAtUtcMillis < :createdAt OR (createdAtUtcMillis = :createdAt AND id < :id))
+        ORDER BY createdAtUtcMillis DESC, id DESC
+        LIMIT :limit
+    """)
+    abstract fun activePageAfter(createdAt: Long, id: String, limit: Int): List<ProjectEntity>
     @Transaction open fun insertBounded(project: ProjectEntity, maximum: Long): ProjectEditResult {
         if (projectCount() >= maximum) return ProjectEditResult.LIMIT_REACHED
         return if (insert(project) == -1L) ProjectEditResult.DUPLICATE_ID else ProjectEditResult.APPLIED
     }
     @Transaction open fun deleteOrArchive(id: String, now: Long): Int = if (entryCount(id) > 0) archive(id, now) else deleteEmpty(id)
+}
+
+data class ProjectPageCursor(val createdAtUtcMillis: Long, val id: String)
+
+data class ManualEntryProjectPage(
+    val projects: List<ProjectEntity>,
+    val pinnedProject: ProjectEntity?,
+    val nextCursor: ProjectPageCursor?,
+) {
+    val hasMore: Boolean get() = nextCursor != null
 }
 
 class ProjectRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
@@ -44,6 +72,50 @@ class ProjectRepository(private val database: AppDatabase, private val dispatche
     }
     suspend fun archive(id: ProjectId, atUtcMillis: Long): ProjectEditResult = withContext(dispatcher) { changed(database.projectDao().archive(id.value, atUtcMillis)) }
     suspend fun delete(id: ProjectId, nowUtcMillis: Long): ProjectEditResult = withContext(dispatcher) { changed(database.projectDao().deleteOrArchive(id.value, nowUtcMillis)) }
+    suspend fun manualEntryPage(
+        query: String,
+        cursor: ProjectPageCursor?,
+        pinnedProjectId: String?,
+        pageSize: Int,
+        displayName: (ProjectEntity) -> String,
+    ): ManualEntryProjectPage = withContext(dispatcher) {
+        require(pageSize in 1..MAX_MANUAL_PICKER_PAGE_SIZE)
+        val dao = database.projectDao()
+        val normalizedQuery = query.trim()
+        val matches = ArrayList<ProjectEntity>(pageSize + 1)
+        var scanCursor = cursor
+        while (matches.size <= pageSize) {
+            currentCoroutineContext().ensureActive()
+            val batch = if (scanCursor == null) {
+                dao.firstActivePage(MANUAL_PICKER_SCAN_SIZE)
+            } else {
+                dao.activePageAfter(scanCursor.createdAtUtcMillis, scanCursor.id, MANUAL_PICKER_SCAN_SIZE)
+            }
+            if (batch.isEmpty()) break
+            for (project in batch) {
+                scanCursor = project.cursor()
+                if (normalizedQuery.isBlank() || displayName(project).contains(normalizedQuery, ignoreCase = true)) {
+                    matches += project
+                    if (matches.size > pageSize) break
+                }
+            }
+            if (matches.size > pageSize || batch.size < MANUAL_PICKER_SCAN_SIZE) break
+        }
+        val projects = matches.take(pageSize)
+        val pinned = pinnedProjectId
+            ?.takeUnless { pinnedId -> projects.any { it.id == pinnedId } }
+            ?.let(dao::project)
+        ManualEntryProjectPage(
+            projects = projects,
+            pinnedProject = pinned,
+            nextCursor = projects.lastOrNull()?.cursor().takeIf { matches.size > pageSize },
+        )
+    }
     private fun changed(rows: Int) = if (rows == 0) ProjectEditResult.NOT_FOUND else ProjectEditResult.APPLIED
     private fun normalizedName(name: String): String? = Normalizer.normalize(name.trim(), Normalizer.Form.NFC).takeIf { it.isNotBlank() && it.codePointCount(0, it.length) <= 80 }
 }
+
+private fun ProjectEntity.cursor() = ProjectPageCursor(createdAtUtcMillis, id)
+
+internal const val MAX_MANUAL_PICKER_PAGE_SIZE = 100
+private const val MANUAL_PICKER_SCAN_SIZE = 100

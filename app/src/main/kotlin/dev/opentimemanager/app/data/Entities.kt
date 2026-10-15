@@ -2,7 +2,13 @@ package dev.opentimemanager.app.data
 
 import androidx.room.*
 
-@Entity(tableName = "projects", indices = [Index("archivedAtUtcMillis")])
+@Entity(
+    tableName = "projects",
+    indices = [
+        Index("archivedAtUtcMillis"),
+        Index(value = ["archivedAtUtcMillis", "createdAtUtcMillis", "id"]),
+    ],
+)
 data class ProjectEntity(@PrimaryKey val id: String, val name: String, val colorArgb: Int, val createdAtUtcMillis: Long, val archivedAtUtcMillis: Long? = null)
 
 @Entity(tableName = "entries", foreignKeys = [ForeignKey(entity = ProjectEntity::class, parentColumns = ["id"], childColumns = ["projectId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("projectId"), Index("startedAtUtcMillis"), Index(value = ["currentSlot"], unique = true)])
@@ -11,6 +17,8 @@ data class EntryEntity(
     val startedAtUtcMillis: Long, val endedAtUtcMillis: Long?, val source: String,
     val revision: Long, val completed: Boolean, val currentSlot: Int? = null,
     @ColumnInfo(defaultValue = "'UTC'") val zoneId: String = "UTC",
+    @ColumnInfo(defaultValue = "0") val confirmedDurationMillis: Long = 0,
+    val lastConfirmedEndUtcMillis: Long? = null,
 )
 
 @Entity(tableName = "segments", foreignKeys = [ForeignKey(entity = EntryEntity::class, parentColumns = ["id"], childColumns = ["entryId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("entryId"), Index(value = ["startedAtUtcMillis", "endUtcMillis"]), Index(value = ["openSlot"], unique = true)])

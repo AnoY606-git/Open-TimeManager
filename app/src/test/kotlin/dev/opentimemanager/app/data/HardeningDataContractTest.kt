@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import java.util.Collections
+import java.util.concurrent.Executor
 import org.junit.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,8 +103,13 @@ class HardeningDataContractTest {
                     arrayOf<Any?>(project, "Archived $index", index.toLong(), index.toLong() + 1),
                 )
                 database.openHelper.writableDatabase.execSQL(
-                    "INSERT INTO entries VALUES (?, ?, '', ?, ?, 'MANUAL', 0, 1, NULL, 'UTC')",
-                    arrayOf<Any?>(entry, project, index.toLong(), index.toLong() + 1),
+                    """INSERT INTO entries (
+                        id, projectId, note, startedAtUtcMillis, endedAtUtcMillis, source,
+                        revision, completed, currentSlot, zoneId, confirmedDurationMillis,
+                        lastConfirmedEndUtcMillis
+                    ) VALUES (?, ?, '', ?, ?, 'MANUAL', 0, 1, NULL, 'UTC', 1, ?)
+                    """.trimIndent(),
+                    arrayOf<Any?>(entry, project, index.toLong(), index.toLong() + 1, index.toLong() + 1),
                 )
                 database.openHelper.writableDatabase.execSQL(
                     "INSERT INTO segments VALUES (?, ?, ?, NULL, NULL, 1, ?, NULL)",
@@ -183,6 +191,181 @@ class HardeningDataContractTest {
 
         assertEquals(MAX_UI_SEGMENT_ROWS, page.segments.size)
         assertEquals(2_501L, page.entryDurations.getValue("heavy"))
+    }
+
+    @Test fun activeEntryWithTwentyThousandCheckpointsUsesConstantProjectionAndDeltaWrites() = runBlocking {
+        val queries = Collections.synchronizedList(mutableListOf<String>())
+        val measured = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            AppDatabase::class.java,
+        ).setQueryCallback({ sql, _ -> queries += sql }, Executor(Runnable::run)).build()
+        try {
+            val measuredCoordinator = TrackingCoordinator(
+                RoomTrackingRepository(measured, ClockSnapshotSource { now }, Dispatchers.IO),
+            )
+            measuredCoordinator.observeSystemSnapshot().first()
+            withContext(Dispatchers.IO) {
+                measured.trackingDao().insertEntry(
+                    EntryEntity(
+                        id = "active-heavy",
+                        projectId = ProjectRepository.DEFAULT_PROJECT_ID.value,
+                        note = "",
+                        startedAtUtcMillis = 0,
+                        endedAtUtcMillis = null,
+                        source = EntrySource.TIMER.name,
+                        revision = 1,
+                        completed = false,
+                        currentSlot = 1,
+                        zoneId = "UTC",
+                        confirmedDurationMillis = 20_000,
+                        lastConfirmedEndUtcMillis = 20_000,
+                    ),
+                )
+                measured.openHelper.writableDatabase.beginTransaction()
+                try {
+                    repeat(20_000) { index ->
+                        measured.openHelper.writableDatabase.execSQL(
+                            "INSERT INTO segments VALUES (?, ?, ?, NULL, NULL, 1, ?, NULL)",
+                            arrayOf<Any?>("closed-$index", "active-heavy", index.toLong(), index.toLong() + 1),
+                        )
+                    }
+                    measured.openHelper.writableDatabase.execSQL(
+                        "INSERT INTO segments VALUES ('active-open', 'active-heavy', 30000, 100, 7, NULL, NULL, 1)",
+                    )
+                    measured.openHelper.writableDatabase.execSQL(
+                        "UPDATE tracking_slot SET state = 'RUNNING', entryId = 'active-heavy', revision = 1 WHERE id = 1",
+                    )
+                    measured.openHelper.writableDatabase.setTransactionSuccessful()
+                } finally {
+                    measured.openHelper.writableDatabase.endTransaction()
+                }
+                measured.openHelper.writableDatabase.execSQL("CREATE TABLE segment_write_audit (operation TEXT NOT NULL)")
+                measured.openHelper.writableDatabase.execSQL(
+                    "CREATE TRIGGER audit_segment_update AFTER UPDATE ON segments BEGIN INSERT INTO segment_write_audit VALUES ('UPDATE'); END",
+                )
+                measured.openHelper.writableDatabase.execSQL(
+                    "CREATE TRIGGER audit_segment_insert AFTER INSERT ON segments BEGIN INSERT INTO segment_write_audit VALUES ('INSERT'); END",
+                )
+                measured.openHelper.writableDatabase.execSQL(
+                    "CREATE TRIGGER protect_confirmed BEFORE UPDATE ON segments WHEN OLD.durationMillis IS NOT NULL BEGIN SELECT RAISE(ABORT, 'confirmed segment changed'); END",
+                )
+            }
+            queries.clear()
+            now = ClockSnapshot(30_500, 600, 7)
+
+            val before = withTimeout(8_000) { measuredCoordinator.observeSystemSnapshot().first() }
+            val result = withTimeout(8_000) {
+                measuredCoordinator.execute(
+                    TrackingCommand.Pause(
+                        CommandTarget(EntryId("active-heavy"), 1, CommandId("heavy-pause")),
+                    ),
+                )
+            }
+
+            assertTrue(result is TrackingResult.Applied)
+            assertEquals(20_000L, before.session.confirmedDurationMillis)
+            assertTrue(before.session.segments.isEmpty())
+            val afterPause = measuredCoordinator.observeSystemSnapshot().first()
+            assertEquals(20_500L, afterPause.session.confirmedDurationMillis)
+            assertTrue(afterPause.session.segments.isEmpty())
+            now = ClockSnapshot(30_500, 600, 7)
+            assertTrue(
+                measuredCoordinator.execute(
+                    TrackingCommand.Resume(
+                        CommandTarget(EntryId("active-heavy"), afterPause.session.revision, CommandId("heavy-resume")),
+                    ),
+                ) is TrackingResult.Applied,
+            )
+            val running = measuredCoordinator.observeSystemSnapshot().first()
+            now = ClockSnapshot(31_000, 1_100, 7)
+            assertTrue(
+                measuredCoordinator.execute(
+                    TrackingCommand.Stop(
+                        CommandTarget(EntryId("active-heavy"), running.session.revision, CommandId("heavy-stop")),
+                    ),
+                ) is TrackingResult.Applied,
+            )
+            val commandQueries = queries.toList()
+            withContext(Dispatchers.IO) {
+                assertEquals(20_002L, measured.trackingDao().closedSegmentCount())
+                assertEquals(3, measured.openHelper.readableDatabase.query("SELECT COUNT(*) FROM segment_write_audit").use { it.moveToFirst(); it.getInt(0) })
+                assertEquals(1L, measured.trackingDao().entrySegments("active-heavy").first { it.id == "closed-0" }.durationMillis)
+                assertEquals(21_000L, measured.trackingDao().entry("active-heavy")!!.confirmedDurationMillis)
+                val plan = measured.openHelper.readableDatabase.query(
+                    "EXPLAIN QUERY PLAN SELECT * FROM segments WHERE openSlot = 1 AND entryId = 'active-heavy' LIMIT 2",
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("detail")))
+                    }
+                }
+                assertTrue(plan.any { it.contains("index_segments_openSlot") })
+            }
+            assertTrue(commandQueries.none { it.contains("ORDER BY startedElapsedRealtimeMillis", ignoreCase = true) })
+            assertTrue(commandQueries.count { it.contains("FROM segments", ignoreCase = true) } <= 24)
+        } finally {
+            measured.close()
+        }
+    }
+
+    @Test fun manualReviewRejectsAggregateOverflowBeforeWritingAndAcceptsExactLongMax() = runBlocking {
+        coordinator.observeSystemSnapshot().first()
+        withContext(Dispatchers.IO) {
+            database.trackingDao().insertEntry(
+                EntryEntity(
+                    id = "review-overflow",
+                    projectId = ProjectRepository.DEFAULT_PROJECT_ID.value,
+                    note = "",
+                    startedAtUtcMillis = 0,
+                    endedAtUtcMillis = null,
+                    source = EntrySource.TIMER.name,
+                    revision = 1,
+                    completed = false,
+                    currentSlot = 1,
+                    zoneId = "UTC",
+                    confirmedDurationMillis = Long.MAX_VALUE,
+                    lastConfirmedEndUtcMillis = Long.MAX_VALUE,
+                ),
+            )
+            database.trackingDao().saveSegment(SegmentEntity("confirmed-max", "review-overflow", 0, null, null, Long.MAX_VALUE, Long.MAX_VALUE))
+            database.trackingDao().saveSegment(SegmentEntity("review-open", "review-overflow", 0, 0, 7, null, null, 1))
+            database.trackingDao().updateSlot(TrackingSlotEntity(state = TrackingState.NEEDS_REVIEW.name, entryId = "review-overflow", revision = 1))
+        }
+        val command = TrackingCommand.ResolveReview(
+            CommandTarget(EntryId("review-overflow"), 1, CommandId("overflow-tail")),
+            ReviewResolution.ManualEnd(1),
+        )
+        val beforeRejected = withContext(Dispatchers.IO) {
+            Triple(
+                database.trackingDao().entry("review-overflow"),
+                database.trackingDao().entrySegments("review-overflow"),
+                database.trackingDao().slot(),
+            )
+        }
+
+        assertEquals(TrackingResult.Rejected(TrackingFailure.OVERFLOW), coordinator.execute(command))
+        withContext(Dispatchers.IO) {
+            assertEquals(beforeRejected.first, database.trackingDao().entry("review-overflow"))
+            assertEquals(beforeRejected.second, database.trackingDao().entrySegments("review-overflow"))
+            assertEquals(beforeRejected.third, database.trackingDao().slot())
+            assertEquals(null, database.trackingDao().command("overflow-tail"))
+            val entry = database.trackingDao().entry("review-overflow")!!
+            database.trackingDao().updateEntry(
+                entry.copy(confirmedDurationMillis = Long.MAX_VALUE - 1, lastConfirmedEndUtcMillis = Long.MAX_VALUE - 1),
+            )
+            database.trackingDao().saveSegment(
+                database.trackingDao().entrySegments("review-overflow").single { it.id == "confirmed-max" }
+                    .copy(durationMillis = Long.MAX_VALUE - 1, endUtcMillis = Long.MAX_VALUE - 1),
+            )
+        }
+
+        val exact = coordinator.execute(
+            TrackingCommand.ResolveReview(
+                CommandTarget(EntryId("review-overflow"), 1, CommandId("exact-max")),
+                ReviewResolution.ManualEnd(1),
+            ),
+        )
+        assertTrue(exact is TrackingResult.Applied)
+        assertEquals(Long.MAX_VALUE, withContext(Dispatchers.IO) { database.trackingDao().entry("review-overflow")!!.confirmedDurationMillis })
     }
 
     @Test fun overflowRecoveryRebasesToReviewAndRotatesGeneration() = runBlocking {

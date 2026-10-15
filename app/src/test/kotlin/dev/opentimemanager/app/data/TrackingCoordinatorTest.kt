@@ -56,7 +56,8 @@ class TrackingCoordinatorTest {
         start()
         now = ClockSnapshot(-10_000, 600, 7)
         tracker.execute(TrackingCommand.Pause(target(snapshot(), "pause")))
-        assertEquals(500L, snapshot().session.segments.single().durationMillis)
+        assertEquals(500L, snapshot().session.confirmedDurationMillis)
+        assertTrue(snapshot().session.segments.isEmpty())
         now = ClockSnapshot(20_000, 900, 7)
         tracker.execute(TrackingCommand.Resume(target(snapshot(), "resume")))
         now = ClockSnapshot(30_000, 1_200, 7)
@@ -102,7 +103,8 @@ class TrackingCoordinatorTest {
         now = ClockSnapshot(2000, 50, 8)
         tracker = coordinator()
         assertEquals(TrackingState.NEEDS_REVIEW, snapshot().session.state)
-        assertEquals(500L, snapshot().session.segments.single().durationMillis)
+        assertEquals(500L, snapshot().session.confirmedDurationMillis)
+        assertTrue(snapshot().session.segments.isEmpty())
     }
     @Test fun snapshotFlowPublishesCommittedTransitions() = runBlocking {
         val channel = kotlinx.coroutines.channels.Channel<AppSnapshot>(kotlinx.coroutines.channels.Channel.UNLIMITED)

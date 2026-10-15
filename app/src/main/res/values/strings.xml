@@ -28,6 +28,7 @@
     <string name="review_required_message">The device restarted or the monotonic clock changed. Confirm or correct the entry in History before continuing.</string>
     <string name="history_heading">Work history</string>
     <string name="search_history">Search projects and notes</string>
+    <string name="search_projects">Search projects</string>
     <string name="load_more_history">Load more</string>
     <string name="load_more_projects">Load more projects</string>
     <string name="add_manual_entry">Add entry</string>

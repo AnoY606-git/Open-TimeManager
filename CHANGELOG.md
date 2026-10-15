@@ -12,6 +12,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - Encrypted `OTMB1` backup schema v2 with complete project metadata and portable preferences, v1 compatibility, retryable verified preview, transactional Merge/Replace restore, UUID conflict detection, and 4 MiB mobile policy.
 - Foreground notification, Quick Settings tile, and widget with privacy projection and stale-command checks.
 - Adaptive Material 3 UI, dynamic color, light/dark/system themes, English/Russian localization, compact/rail/two-pane layouts.
+- Searchable bounded project pages in the History entry editor, including safe editing of entries whose project is archived or outside the first page.
 - Offline license and third-party notices in Settings.
 - Android 12+ support (minimum API 31, target/compile API 36).
 
@@ -21,6 +22,8 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - Android automatic backup and device-transfer extraction are disabled.
 - Portable backups use PBKDF2-HMAC-SHA256 and AES-256-GCM; CSV remains plaintext by design.
 - Cancellation during restore rolls back every Room table; a durable convergence journal applies portable settings after the database commit without claiming cross-store atomicity.
+- Restore reconciliation and ordinary preference mutations share one process-wide serialization boundary; failed preference convergence keeps its durable retry intent.
+- Active timers keep an exact checked duration summary for constant-cardinality system commands while retaining every original segment for reports, history, CSV, and backup. Commands write only the newly opened or closed segment.
 
 ### Known limitations
 

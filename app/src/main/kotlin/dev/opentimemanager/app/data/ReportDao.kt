@@ -71,6 +71,8 @@ abstract class ReportDao {
             revision,
             true,
             zoneId = current?.zoneId ?: ZoneId.systemDefault().id,
+            confirmedDurationMillis = duration,
+            lastConfirmedEndUtcMillis = end,
         ))
         deleteSegments(id)
         insertSegment(SegmentEntity(UUID.randomUUID().toString(), id, start, null, null, duration, end))

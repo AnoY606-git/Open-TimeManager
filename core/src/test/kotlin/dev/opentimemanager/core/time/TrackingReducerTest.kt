@@ -142,6 +142,24 @@ class TrackingReducerTest {
         rejected(RejectionReason.OVERFLOW, TrackingReducer.stop(resumed, target(3), clock(elapsed = 2)))
     }
 
+    @Test fun `compact persisted aggregate is checked together with new delta`() {
+        val compact = TrackingSession.restore(
+            TrackingState.RUNNING,
+            9,
+            entry,
+            project,
+            OpenSegment(SegmentId("open"), clock(5_000, 1_000)),
+            emptyList(),
+            confirmedDurationMillis = 20_000,
+            lastConfirmedEndUtcMillis = 4_000,
+        )
+        val paused = applied(TrackingReducer.pause(compact, target(9), clock(8_000, 1_500)))
+
+        assertEquals(20_500L, paused.confirmedDurationMillis)
+        assertEquals(5_500L, paused.lastConfirmedEndUtcMillis)
+        assertEquals(500L, paused.segments.single().durationMillis)
+    }
+
     @Test fun `segment ids cannot be reused on resume`() {
         val paused = applied(TrackingReducer.pause(start(), target(1), clock(elapsed = 200)))
         rejected(RejectionReason.DUPLICATE_SEGMENT, TrackingReducer.resume(paused, target(2), SegmentId("first"), clock()))

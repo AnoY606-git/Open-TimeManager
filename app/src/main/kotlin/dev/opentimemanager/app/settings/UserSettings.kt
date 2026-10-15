@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -29,12 +31,30 @@ data class UserPreferences(
     val dailyGoalMinutes: Int = 480,
 )
 
+/** One process-wide serialization boundary for DataStore mutations and restore journals. */
+class SettingsMutationBoundary {
+    private val mutex = Mutex()
+
+    suspend fun <T> serialized(block: suspend () -> T): T = mutex.withLock { block() }
+
+    companion object {
+        val PROCESS = SettingsMutationBoundary()
+    }
+}
+
+/** Restore-only port; callers must already hold their shared [SettingsMutationBoundary]. */
+interface RestorePreferenceTarget {
+    val mutationBoundary: SettingsMutationBoundary
+    suspend fun replaceWithinMutationBoundary(value: UserPreferences)
+}
+
 /** Typed process-safe preferences. Privacy is mirrored for RemoteViews/system components. */
 class UserSettings(
     context: Context,
     name: String = FILE_NAME,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-) {
+    override val mutationBoundary: SettingsMutationBoundary = SettingsMutationBoundary.PROCESS,
+) : RestorePreferenceTarget {
     private val appContext = context.applicationContext
     private val store: DataStore<Preferences> = stores.getOrPut(
         appContext.preferencesDataStoreFile(name).absolutePath,
@@ -57,18 +77,27 @@ class UserSettings(
             )
         }
 
-    suspend fun setTheme(value: ThemeMode) = store.edit { it[THEME] = value.name }.let { Unit }
-    suspend fun setDynamicColor(value: Boolean) = store.edit { it[DYNAMIC_COLOR] = value }.let { Unit }
-
-    suspend fun setPrivacy(value: Boolean) {
-        store.edit { it[PRIVACY] = value }
-        appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
-            .edit().putBoolean(PRIVACY_KEY, value).apply()
+    suspend fun setTheme(value: ThemeMode) = mutationBoundary.serialized {
+        store.edit { it[THEME] = value.name }
+        Unit
+    }
+    suspend fun setDynamicColor(value: Boolean) = mutationBoundary.serialized {
+        store.edit { it[DYNAMIC_COLOR] = value }
+        Unit
     }
 
-    suspend fun setDailyGoalMinutes(value: Int) {
+    suspend fun setPrivacy(value: Boolean) = mutationBoundary.serialized {
+        store.edit { it[PRIVACY] = value }
+        check(
+            appContext.getSharedPreferences(SYSTEM_SURFACES, Context.MODE_PRIVATE)
+                .edit().putBoolean(PRIVACY_KEY, value).commit(),
+        ) { "Unable to mirror privacy preference" }
+    }
+
+    suspend fun setDailyGoalMinutes(value: Int) = mutationBoundary.serialized {
         require(value in MIN_GOAL..MAX_GOAL)
         store.edit { it[DAILY_GOAL] = value }
+        Unit
     }
 
     suspend fun current(): UserPreferences = values.first()
@@ -79,6 +108,10 @@ class UserSettings(
      * are intentionally not described as atomically committed together.
      */
     suspend fun replace(value: UserPreferences) {
+        mutationBoundary.serialized { replaceWithinMutationBoundary(value) }
+    }
+
+    override suspend fun replaceWithinMutationBoundary(value: UserPreferences) {
         require(value.dailyGoalMinutes in MIN_GOAL..MAX_GOAL)
         store.edit { preferences ->
             preferences[THEME] = value.theme.name
