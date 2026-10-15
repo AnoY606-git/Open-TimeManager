@@ -27,6 +27,8 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: ''
       - name: Install pinned Android packages
         run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - name: Validate Gradle Wrapper
@@ -80,8 +82,10 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: ''
       - name: Install compile SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - name: Validate Gradle Wrapper
         uses: gradle/actions/wrapper-validation@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
       - name: Configure Gradle

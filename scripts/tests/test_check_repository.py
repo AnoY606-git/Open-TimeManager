@@ -104,6 +104,27 @@ class RepositoryPolicyTest(unittest.TestCase):
         self._git("add", ".github/workflows/ci.yml")
         self.assert_rejected("could not be parsed safely")
 
+    def test_rejects_setup_android_obsolete_default_packages(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            f"steps:\n  - uses: android-actions/setup-android@{PINNED_SHA}\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        self.assert_rejected("override setup-android packages")
+
+    def test_accepts_setup_android_with_explicit_empty_packages(self) -> None:
+        workflow = self.root / ".github/workflows/ci.yml"
+        workflow.write_text(
+            f"steps:\n  - uses: android-actions/setup-android@{PINNED_SHA}\n"
+            "    with:\n"
+            "      packages: ''\n",
+            encoding="utf-8",
+        )
+        self._git("add", ".github/workflows/ci.yml")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_rejects_network_and_broad_android_permissions(self) -> None:
         manifest = self.root / "app/src/main/AndroidManifest.xml"
         manifest.write_text(

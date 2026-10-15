@@ -257,10 +257,40 @@ def workflow_action_references(text: str) -> tuple[list[str], int]:
     return references, invalid
 
 
+def setup_android_package_errors(text: str, relative: str) -> list[str]:
+    """Require an explicit package list so removed SDK defaults cannot break CI."""
+    errors: list[str] = []
+    lines = text.splitlines()
+    for index, original_line in enumerate(lines):
+        line = _strip_yaml_comment(original_line)
+        if "android-actions/setup-android@" not in line:
+            continue
+        uses_indent = len(line) - len(line.lstrip())
+        packages_value: str | None = None
+        for candidate in lines[index + 1 :]:
+            candidate_line = _strip_yaml_comment(candidate)
+            stripped = candidate_line.strip()
+            indent = len(candidate_line) - len(candidate_line.lstrip())
+            if stripped.startswith("-") and indent <= uses_indent:
+                break
+            match = re.fullmatch(r'''["']?packages["']?\s*:\s*(.*?)\s*''', stripped)
+            if match:
+                packages_value = match.group(1)
+                if len(packages_value) >= 2 and packages_value[0] == packages_value[-1] and packages_value[0] in {"'", '"'}:
+                    packages_value = packages_value[1:-1]
+                break
+        if packages_value is None or "tools" in packages_value.split():
+            errors.append(
+                f"GitHub workflow must override setup-android packages without the removed tools package: {relative}"
+            )
+    return errors
+
+
 def workflow_errors(root: Path, tracked: set[str]) -> list[str]:
     errors: list[str] = []
     for relative in sorted(path for path in tracked if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))):
-        references, invalid = workflow_action_references(read_text(root, relative))
+        text = read_text(root, relative)
+        references, invalid = workflow_action_references(text)
         if invalid:
             errors.append(f"GitHub action reference could not be parsed safely: {relative}")
         for reference in references:
@@ -268,6 +298,7 @@ def workflow_errors(root: Path, tracked: set[str]) -> list[str]:
                 continue
             if "@" not in reference or not FULL_SHA.fullmatch(reference.rsplit("@", 1)[1]):
                 errors.append(f"GitHub action must use a full commit SHA: {relative}: {reference}")
+        errors.extend(setup_android_package_errors(text, relative))
     return errors
 
 
