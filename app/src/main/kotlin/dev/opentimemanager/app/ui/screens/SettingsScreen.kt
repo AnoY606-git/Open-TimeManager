@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,11 +53,15 @@ import dev.opentimemanager.app.backup.BackupInspection
 import dev.opentimemanager.app.backup.BackupPreview
 import dev.opentimemanager.app.backup.BackupReadFailure
 import dev.opentimemanager.app.ui.launchOwnedSecret
+import dev.opentimemanager.app.ui.LegalDocument
+import dev.opentimemanager.app.ui.LegalDocumentRepository
 import dev.opentimemanager.app.backup.RestoreMode
 import dev.opentimemanager.app.backup.RestoreResult
 import dev.opentimemanager.core.backup.BackupError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class BackupActions(
     val prepare: suspend (CharArray) -> String,
@@ -101,6 +107,7 @@ fun SettingsScreen(
     val restoreUri = state.controls.pendingRestoreUri?.let(Uri::parse)
     var preview by remember { mutableStateOf(backupActions?.currentPreview?.invoke()) }
     var confirmReplace by remember { mutableStateOf(false) }
+    var selectedLegalDocument by remember { mutableStateOf<LegalDocument?>(null) }
     val scope = rememberCoroutineScope()
     fun restore(mode: RestoreMode) {
         val selected = preview ?: return
@@ -247,6 +254,21 @@ fun SettingsScreen(
                 }
             }
         }
+        item { Text(stringResource(R.string.legal_information), style = MaterialTheme.typography.titleLarge) }
+        item {
+            PreferenceCard(title = stringResource(R.string.legal_information)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LegalDocument.entries.forEach { document ->
+                        OutlinedButton(
+                            onClick = { selectedLegalDocument = document },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(document.titleResource))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showBackupPassword) PasswordDialog(
@@ -321,6 +343,42 @@ fun SettingsScreen(
         },
         dismissButton = {
             TextButton(onClick = { confirmReplace = false }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+    selectedLegalDocument?.let { document ->
+        LegalDocumentDialog(
+            document = document,
+            onDismiss = { selectedLegalDocument = null },
+        )
+    }
+}
+
+@Composable
+private fun LegalDocumentDialog(
+    document: LegalDocument,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember(document) { mutableStateOf("") }
+    LaunchedEffect(document) {
+        text = withContext(Dispatchers.IO) {
+            LegalDocumentRepository(context).read(document)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(document.titleResource)) },
+        text = {
+            SelectionContainer {
+                Text(
+                    text = text,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         },
     )
 }

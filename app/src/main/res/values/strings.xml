@@ -111,6 +111,11 @@
     <string name="notification_channel_blocked">System timer controls are blocked. Time tracking still works in the app.</string>
     <string name="manage_notifications">Manage notifications</string>
     <string name="version_label">Version %1$s</string>
+    <string name="legal_information">Legal information</string>
+    <string name="source_license">Open-source license</string>
+    <string name="project_notice">Project notice</string>
+    <string name="third_party_notices">Third-party notices</string>
+    <string name="close">Close</string>
     <string name="error_invalid_entry">Check the project, date, time, duration and note.</string>
     <string name="error_invalid_project">Enter a project name of 1–80 characters.</string>
     <string name="error_stale_entry">The entry changed. Reload it and try again.</string>

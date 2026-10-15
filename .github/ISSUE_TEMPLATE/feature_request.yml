@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused user-visible improvement
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Who has the problem and what cannot they do today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior, not an implementation mandate.
+    validations:
+      required: true
+  - type: dropdown
+    id: data
+    attributes:
+      label: Does this require new data access or Android permissions?
+      options:
+        - No
+        - Yes — explained below
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and alternatives
+      description: Explain needed data/permissions and the simplest alternative considered.
+    validations:
+      required: true

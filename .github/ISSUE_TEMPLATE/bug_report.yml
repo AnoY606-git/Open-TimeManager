@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible defect without private work data
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach real work logs, backups, passwords, or security exploit details. Report vulnerabilities privately through Security Advisories."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: What happened? Use synthetic project names and notes.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      placeholder: 0.1.0-preview or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and device/emulator
+      placeholder: Android 12 / API 31, emulator
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed private records, passwords, keys, and device identifiers.
+          required: true

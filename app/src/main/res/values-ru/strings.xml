@@ -112,6 +112,11 @@
     <string name="notification_channel_blocked">Системные кнопки таймера заблокированы. Учёт времени в приложении продолжает работать.</string>
     <string name="manage_notifications">Настроить уведомления</string>
     <string name="version_label">Версия %1$s</string>
+    <string name="legal_information">Правовая информация</string>
+    <string name="source_license">Лицензия открытого кода</string>
+    <string name="project_notice">Уведомление проекта</string>
+    <string name="third_party_notices">Уведомления сторонних компонентов</string>
+    <string name="close">Закрыть</string>
     <string name="error_invalid_entry">Проверьте проект, дату, время, длительность и заметку.</string>
     <string name="error_invalid_project">Введите название проекта длиной 1–80 знаков.</string>
     <string name="error_stale_entry">Запись изменилась. Обновите её и повторите.</string>
