@@ -57,14 +57,21 @@ JVM и криптографический provider могут создавать
 независимо от locale; `startUtcMillis` — Unix epoch UTC.
 
 ```json
-{"schemaVersion":1,"projects":[{"id":"p","name":"Работа"}],"entries":[{"id":"e","projectId":"p","note":"","zoneId":"Europe/Moscow","source":"TIMER"}],"segments":[{"id":"s","entryId":"e","projectId":"p","startUtcMillis":0,"durationMillis":1000}],"activeEntry":null}
+{"schemaVersion":1,"projects":[{"id":"a1234567-89ab-4cde-8fab-0123456789ab","name":"Работа"}],"entries":[{"id":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","note":"","zoneId":"Europe/Moscow","source":"TIMER"}],"segments":[{"id":"c1234567-89ab-4cde-8fab-0123456789ab","entryId":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","startUtcMillis":0,"durationMillis":1000}],"activeEntry":null}
 ```
 
 `projects` хранит id и имя; `entries` — id, projectId, заметку, исходный IANA/Java
 ZoneId и source (`TIMER`, `MANUAL`, `IMPORT`). Каждый `segments` содержит id,
 entryId, projectId, startUtcMillis и строго положительную durationMillis.
 Конец сегмента вычисляется как `startUtcMillis + durationMillis` с проверкой
-переполнения. ID должны быть непустыми; повторяющиеся project/entry/segment id и
+переполнения. Все project/entry/segment ID и все ссылки на них, включая
+activeEntry, должны быть UUID в полной стандартной 36-символьной форме
+`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Проверка разбирает UUID и сравнивает
+полную форму без учёта регистра; сокращённые группы, пропущенные дефисы,
+не-hex символы и пробельные префиксы отклоняются как `SchemaError` при encrypt
+и decrypt. Регистр исходного текста сохраняется, автоматической нормализации
+ID или ссылок нет; ссылки должны совпадать с текстом определённого ID.
+Общие конструкторы Domain ID этим форматом не ограничены. Повторяющиеся project/entry/segment id и
 несуществующие ссылки отклоняются. projectId сегмента должен совпадать с проектом
 его записи. Пустые имя/заметка допустимы; их исходный текст сохраняется.
 

@@ -6,6 +6,7 @@ import java.nio.charset.CharacterCodingException
 import java.security.SecureRandom
 import java.time.DateTimeException
 import java.time.ZoneId
+import java.util.UUID
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -135,6 +136,12 @@ object BackupCodec {
     }
 
     private fun validate(snapshot: PortableSnapshot) {
+        snapshot.projects.forEach { requireUuid(it.id.value) }
+        snapshot.entries.forEach { requireUuid(it.id.value); requireUuid(it.projectId.value) }
+        snapshot.segments.forEach {
+            requireUuid(it.id.value); requireUuid(it.entryId.value); requireUuid(it.projectId.value)
+        }
+        snapshot.activeEntry?.let { requireUuid(it.entryId.value); requireUuid(it.projectId.value) }
         val projects = snapshot.projects.associateBy { it.id }
         val entries = snapshot.entries.associateBy { it.id }
         if (projects.size != snapshot.projects.size || entries.size != snapshot.entries.size ||
@@ -144,6 +151,14 @@ object BackupCodec {
         snapshot.activeEntry?.let {
             if (it.state == TrackingState.IDLE || entries[it.entryId]?.projectId != it.projectId) throw BackupError.SchemaError()
         }
+    }
+
+    private fun requireUuid(value: String) {
+        if (value.length != 36) throw BackupError.SchemaError()
+        val uuid = try { UUID.fromString(value) } catch (_: IllegalArgumentException) { throw BackupError.SchemaError() }
+        // UUID.fromString допускает сокращённые группы; принимаем только полную
+        // стандартную форму, сохраняя исходный регистр идентификатора в snapshot.
+        if (!uuid.toString().equals(value, ignoreCase = true)) throw BackupError.SchemaError()
     }
 
     private fun utf8Size(value: String): Long {

@@ -13,6 +13,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackupCodecTest {
+    private val projectId = ProjectId("a1234567-89ab-4cde-8fab-0123456789ab")
+    private val entryId = EntryId("b1234567-89ab-4cde-8fab-0123456789ab")
+    private val segmentId = SegmentId("c1234567-89ab-4cde-8fab-0123456789ab")
     private val password get() = "fixture-password".toCharArray()
     // Независимый frozen vector: Python hashlib.pbkdf2_hmac + cryptography AESGCM,
     // Plaintext — канонический JSON ниже (79 UTF-8 байт), задан вручную.
@@ -23,11 +26,16 @@ class BackupCodecTest {
         override fun nextBytes(bytes: ByteArray) { for (index in bytes.indices) bytes[index] = (next++).toByte() }
     }
 
-    private fun snapshot(state: TrackingState? = null): PortableSnapshot = PortableSnapshot(
-        projects = listOf(PortableProject(ProjectId("p"), "Работа ☕")),
-        entries = listOf(PortableEntry(EntryId("e"), ProjectId("p"), "Заметка\r\n\"тест\"", ZoneId.of("Europe/Moscow"), EntrySource.MANUAL)),
-        segments = listOf(Segment(SegmentId("s"), EntryId("e"), ProjectId("p"), -1234, 1500)),
-        activeEntry = state?.let { PortableActiveEntry(EntryId("e"), ProjectId("p"), it) },
+    private fun snapshot(
+        state: TrackingState? = null,
+        project: ProjectId = projectId,
+        entry: EntryId = entryId,
+        segment: SegmentId = segmentId,
+    ): PortableSnapshot = PortableSnapshot(
+        projects = listOf(PortableProject(project, "Работа ☕")),
+        entries = listOf(PortableEntry(entry, project, "Заметка\r\n\"тест\"", ZoneId.of("Europe/Moscow"), EntrySource.MANUAL)),
+        segments = listOf(Segment(segment, entry, project, -1234, 1500)),
+        activeEntry = state?.let { PortableActiveEntry(entry, project, it) },
     )
 
     private fun roundtrip(snapshot: PortableSnapshot) = BackupCodec.decrypt(BackupCodec.encrypt(snapshot, password, random()), password, BackupLimits())
@@ -56,7 +64,7 @@ class BackupCodecTest {
 
     @Test fun `running snapshot imports as needs review without runtime clock baseline`() {
         val result = roundtrip(snapshot(TrackingState.RUNNING))
-        assertEquals(PortableActiveEntry(EntryId("e"), ProjectId("p"), TrackingState.NEEDS_REVIEW), result.activeEntry)
+        assertEquals(PortableActiveEntry(entryId, projectId, TrackingState.NEEDS_REVIEW), result.activeEntry)
         assertEquals(snapshot().segments, result.segments)
     }
 
@@ -117,7 +125,7 @@ class BackupCodecTest {
                 append("{\"schemaVersion\":1,\"projects\":[],\"entries\":[],\"segments\":[")
                 repeat(count) {
                     if (it > 0) append(',')
-                    append("{\"id\":\"s\",\"entryId\":\"e\",\"projectId\":\"p\",\"startUtcMillis\":0,\"durationMillis\":1}")
+                    append("{\"id\":\"${segmentId.value}\",\"entryId\":\"${entryId.value}\",\"projectId\":\"${projectId.value}\",\"startUtcMillis\":0,\"durationMillis\":1}")
                 }
                 append("],\"activeEntry\":null}")
             }.toByteArray(Charsets.UTF_8)
@@ -142,7 +150,7 @@ class BackupCodecTest {
         val invalid = listOf(
             """{"schemaVersion":2,"projects":[],"entries":[],"segments":[],"activeEntry":null}""",
             """{"schemaVersion":1,"projects":[],"entries":[],"segments":[],"activeEntry":null,"future":0}""",
-            """{"schemaVersion":1,"projects":[{"id":"p","name":"p","unknown":1}],"entries":[],"segments":[],"activeEntry":null}""",
+            """{"schemaVersion":1,"projects":[{"id":"a1234567-89ab-4cde-8fab-0123456789ab","name":"p","unknown":1}],"entries":[],"segments":[],"activeEntry":null}""",
             """{"schemaVersion":1,"projects":[],"entries":[],"segments":[],"activeEntry":null} false""",
             """{"schemaVersion":1,"projects":[],"entries":[],"segments":[]}""",
             """{"schemaVersion":1.5,"projects":[],"entries":[],"segments":[],"activeEntry":null}""",
@@ -163,21 +171,21 @@ class BackupCodecTest {
             PortableSnapshot(source.projects, source.entries, source.segments + source.segments),
             PortableSnapshot(emptyList(), source.entries, source.segments),
             PortableSnapshot(source.projects, emptyList(), source.segments),
-            PortableSnapshot(source.projects, source.entries, source.segments, PortableActiveEntry(EntryId("missing"), ProjectId("p"), TrackingState.PAUSED)),
-            PortableSnapshot(source.projects, source.entries, source.segments, PortableActiveEntry(EntryId("e"), ProjectId("p"), TrackingState.IDLE)),
+            PortableSnapshot(source.projects, source.entries, source.segments, PortableActiveEntry(EntryId("d1234567-89ab-4cde-8fab-0123456789ab"), projectId, TrackingState.PAUSED)),
+            PortableSnapshot(source.projects, source.entries, source.segments, PortableActiveEntry(entryId, projectId, TrackingState.IDLE)),
         )
         for (value in invalid) assertThrows(BackupError.SchemaError::class.java) { BackupCodec.encrypt(value, password, random()) }
     }
 
     @Test fun `authenticated segment still obeys domain invariants`() {
         // Две metadata records и один segment с duration=0, независимо собранные поля.
-        val payload = """{"schemaVersion":1,"projects":[{"id":"p","name":"P"}],"entries":[{"id":"e","projectId":"p","note":"","zoneId":"UTC","source":"TIMER"}],"segments":[{"id":"s","entryId":"e","projectId":"p","startUtcMillis":0,"durationMillis":0}],"activeEntry":null}""".toByteArray(Charsets.UTF_8)
+        val payload = validJson.replace("\"durationMillis\":1", "\"durationMillis\":0").toByteArray(Charsets.UTF_8)
         assertThrows(BackupError.SchemaError::class.java) { BackupCodec.decrypt(authenticated(payload), password, BackupLimits()) }
     }
 
     // JSON-строки, float и неизвестные enum не должны незаметно менять machine schema.
     @Test fun `machine numbers and enum values require exact JSON types`() {
-        val valid = """{"schemaVersion":1,"projects":[{"id":"p","name":"P"}],"entries":[{"id":"e","projectId":"p","note":"","zoneId":"UTC","source":"IMPORT"}],"segments":[{"id":"s","entryId":"e","projectId":"p","startUtcMillis":0,"durationMillis":1}],"activeEntry":null}"""
+        val valid = validJson
         for (invalid in listOf(
             valid.replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""),
             valid.replace("\"startUtcMillis\":0", "\"startUtcMillis\":\"0\""),
@@ -190,6 +198,55 @@ class BackupCodecTest {
             }
         }
     }
+
+    // Удаление UUID guard примет короткие id, UUID.fromString без shape guard
+    // также молча примет сокращённую форму 1-1-1-1-1.
+    @Test fun `encrypt rejects malformed UUID definitions and references`() {
+        for (invalidId in listOf("p", "1-1-1-1-1", "a123456789ab4cde8fab0123456789ab", "a1234567-89ab-4cde-8fab-0123456789ag")) {
+            val invalid = listOf(
+                snapshot(TrackingState.PAUSED, project = ProjectId(invalidId)),
+                snapshot(TrackingState.PAUSED, entry = EntryId(invalidId)),
+                snapshot(segment = SegmentId(invalidId)),
+            )
+            for (value in invalid) assertThrows(invalidId, BackupError.SchemaError::class.java) {
+                BackupCodec.encrypt(value, password, random())
+            }
+        }
+        val valid = snapshot(TrackingState.PAUSED)
+        val invalidReferences = listOf(
+            PortableSnapshot(valid.projects, listOf(valid.entries.single().copy(projectId = ProjectId("bad"))), valid.segments, valid.activeEntry),
+            PortableSnapshot(valid.projects, valid.entries, listOf(valid.segments.single().copy(entryId = EntryId("bad"))), valid.activeEntry),
+            PortableSnapshot(valid.projects, valid.entries, listOf(valid.segments.single().copy(projectId = ProjectId("bad"))), valid.activeEntry),
+            PortableSnapshot(valid.projects, valid.entries, valid.segments, valid.activeEntry!!.copy(entryId = EntryId("bad"))),
+            PortableSnapshot(valid.projects, valid.entries, valid.segments, valid.activeEntry.copy(projectId = ProjectId("bad"))),
+        )
+        for (value in invalidReferences) assertThrows(BackupError.SchemaError::class.java) { BackupCodec.encrypt(value, password, random()) }
+    }
+
+    @Test fun `authenticated JSON rejects malformed UUIDs even when references agree`() {
+        for (id in listOf(projectId.value, entryId.value, segmentId.value)) {
+            for (invalid in listOf("bad", "1-1-1-1-1", "a1234567-89ab-4cde-8fab-0123456789ag")) {
+                val payload = validJson.replace(id, invalid).toByteArray(Charsets.UTF_8)
+                assertThrows("$id -> $invalid", BackupError.SchemaError::class.java) {
+                    BackupCodec.decrypt(authenticated(payload), password, BackupLimits())
+                }
+            }
+        }
+    }
+
+    @Test fun `canonical UUID text roundtrips case insensitively without normalization`() {
+        for (upperCase in listOf(false, true)) {
+            fun text(value: String) = if (upperCase) value.uppercase(java.util.Locale.ROOT) else value
+            val source = snapshot(TrackingState.PAUSED, ProjectId(text(projectId.value)), EntryId(text(entryId.value)), SegmentId(text(segmentId.value)))
+            val result = roundtrip(source)
+            assertEquals(source.projects, result.projects)
+            assertEquals(source.entries, result.entries)
+            assertEquals(source.segments, result.segments)
+            assertEquals(source.activeEntry, result.activeEntry)
+        }
+    }
+
+    private val validJson = """{"schemaVersion":1,"projects":[{"id":"a1234567-89ab-4cde-8fab-0123456789ab","name":"P"}],"entries":[{"id":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","note":"","zoneId":"UTC","source":"IMPORT"}],"segments":[{"id":"c1234567-89ab-4cde-8fab-0123456789ab","entryId":"b1234567-89ab-4cde-8fab-0123456789ab","projectId":"a1234567-89ab-4cde-8fab-0123456789ab","startUtcMillis":0,"durationMillis":1}],"activeEntry":null}"""
 
     @Test fun `encryption does not overwrite caller password`() {
         val chars = password
