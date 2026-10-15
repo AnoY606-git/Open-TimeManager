@@ -16,6 +16,7 @@ import dev.opentimemanager.app.data.PendingPreferencesRestoreEntity
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.UserSettings
+import dev.opentimemanager.app.settings.PrivacyMirror
 import dev.opentimemanager.app.settings.RestorePreferenceTarget
 import dev.opentimemanager.app.settings.SettingsMutationBoundary
 import dev.opentimemanager.core.backup.PortableActiveEntry
@@ -379,6 +380,165 @@ class RestoreRepositoryTest {
             settings = succeedingTarget,
         ).reconcilePendingPreferences()
         assertEquals(pending.toExpectedPreferences(), succeedingTarget.current)
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun failedRestoreReplayIsOrderedBeforeEveryLaterManualPortableMutation() = runBlocking {
+        data class Scenario(
+            val name: String,
+            val expected: UserPreferences,
+            val mutate: suspend (UserSettings) -> Unit,
+        )
+        val restored = UserPreferences(ThemeMode.LIGHT, false, false, 300)
+        val scenarios = listOf(
+            Scenario("theme", restored.copy(theme = ThemeMode.DARK)) { it.setTheme(ThemeMode.DARK) },
+            Scenario("dynamic", restored.copy(dynamicColor = true)) { it.setDynamicColor(true) },
+            Scenario("privacy", restored.copy(privacyMode = true)) { it.setPrivacy(true) },
+            Scenario("goal", restored.copy(dailyGoalMinutes = 720)) { it.setDailyGoalMinutes(720) },
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        scenarios.forEachIndexed { index, scenario ->
+            var mirrorWrites = 0
+            var mirroredPrivacy: Boolean? = null
+            val boundary = SettingsMutationBoundary()
+            val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+            val settingsName = "manual-after-failed-restore-$index-${System.nanoTime()}"
+            val settings = UserSettings(
+                context = context,
+                name = settingsName,
+                mutationBoundary = boundary,
+                recoveryJournal = journal,
+                privacyMirror = PrivacyMirror { value ->
+                    mirrorWrites += 1
+                    if (mirrorWrites == 1) {
+                        false
+                    } else {
+                        mirroredPrivacy = value
+                        true
+                    }
+                },
+            )
+            val configured = RestoreRepository(
+                database,
+                Dispatchers.IO,
+                settings = settings,
+                settingsJournal = journal,
+            )
+            val sourceA = PortableSnapshot(
+                preferences = PortablePreferences(PortableTheme.LIGHT, false, false, 300),
+            )
+
+            assertTrue(configured.restore(configured.preview(sourceA), RestoreMode.REPLACE) is RestoreResult.Applied)
+            assertEquals(restored, database.restoreDao().pendingPreferences()?.toExpectedPreferences())
+
+            scenario.mutate(settings)
+            val startupSettings = UserSettings(
+                context = context,
+                name = settingsName,
+                mutationBoundary = SettingsMutationBoundary(),
+                recoveryJournal = journal,
+                privacyMirror = PrivacyMirror { value ->
+                    mirroredPrivacy = value
+                    true
+                },
+            )
+            RestoreRepository(
+                database,
+                Dispatchers.IO,
+                settings = startupSettings,
+                settingsJournal = journal,
+            ).reconcilePendingPreferences()
+
+            assertEquals(scenario.name, scenario.expected, startupSettings.current())
+            assertEquals(scenario.name, scenario.expected.privacyMode, mirroredPrivacy)
+            assertEquals(scenario.name, null, database.restoreDao().pendingPreferences())
+        }
+    }
+
+    @Test
+    fun manualPrivacyMirrorFailureLeavesNewestIntentForStartupRetry() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        var failMirror = true
+        var mirroredPrivacy = true
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val settings = UserSettings(
+            context = context,
+            name = "manual-privacy-retry-${System.nanoTime()}",
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { value ->
+                if (failMirror) false else true.also { mirroredPrivacy = value }
+            },
+        )
+        val configured = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = settings,
+            settingsJournal = journal,
+        )
+
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            runBlocking { settings.setPrivacy(false) }
+        }
+        assertEquals(false, database.restoreDao().pendingPreferences()?.privacyMode)
+        assertEquals(false, settings.current().privacyMode)
+
+        failMirror = false
+        configured.reconcilePendingPreferences()
+
+        assertFalse(mirroredPrivacy)
+        assertEquals(UserPreferences(privacyMode = false), settings.current())
+        assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun concurrentRestoreAndManualMutationHaveOneObservableOrder() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val enteredRestoreMirror = CompletableDeferred<Unit>()
+        val releaseRestoreMirror = CompletableDeferred<Unit>()
+        var firstMirror = true
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val settings = UserSettings(
+            context = context,
+            name = "concurrent-restore-settings-${System.nanoTime()}",
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { _ ->
+                if (firstMirror) {
+                    firstMirror = false
+                    enteredRestoreMirror.complete(Unit)
+                    releaseRestoreMirror.await()
+                }
+                true
+            },
+        )
+        val configured = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = settings,
+            settingsJournal = journal,
+        )
+        val sourceA = PortableSnapshot(
+            preferences = PortablePreferences(PortableTheme.LIGHT, false, false, 300),
+        )
+        val preview = configured.preview(sourceA)
+        val restoreA = async { configured.restore(preview, RestoreMode.REPLACE) }
+        enteredRestoreMirror.await()
+
+        val manualB = async(start = CoroutineStart.UNDISPATCHED) {
+            settings.setTheme(ThemeMode.DARK)
+        }
+        assertFalse(manualB.isCompleted)
+        releaseRestoreMirror.complete(Unit)
+        assertTrue(restoreA.await() is RestoreResult.Applied)
+        manualB.await()
+        configured.reconcilePendingPreferences()
+
+        assertEquals(UserPreferences(ThemeMode.DARK, false, false, 300), settings.current())
         assertEquals(null, database.restoreDao().pendingPreferences())
     }
 

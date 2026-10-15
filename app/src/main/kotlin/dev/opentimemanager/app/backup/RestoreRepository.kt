@@ -18,6 +18,9 @@ import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.RestorePreferenceTarget
 import dev.opentimemanager.app.settings.SettingsMutationBoundary
+import dev.opentimemanager.app.settings.SettingsRecoveryJournal
+import dev.opentimemanager.app.settings.PendingUserPreferences
+import dev.opentimemanager.app.settings.reconcileSettingsJournalWithinMutationBoundary
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_COLOR_ARGB
 import dev.opentimemanager.core.backup.PortablePreferences
@@ -37,6 +40,7 @@ class RestoreRepository(
     private val dispatcher: CoroutineDispatcher,
     private val nowUtcMillis: () -> Long = System::currentTimeMillis,
     private val settings: RestorePreferenceTarget? = null,
+    private val settingsJournal: SettingsRecoveryJournal = RoomSettingsRecoveryJournal(database, dispatcher),
     private val afterReplaceDelete: suspend () -> Unit = {},
 ) {
     private val settingsMutationBoundary = settings?.mutationBoundary ?: SettingsMutationBoundary.PROCESS
@@ -79,14 +83,7 @@ class RestoreRepository(
 
     private suspend fun reconcilePendingPreferencesWithinBoundary() {
         val target = settings ?: return
-        while (true) {
-            val pending = database.restoreDao().pendingPreferences() ?: return
-            target.replaceWithinMutationBoundary(pending.toUserPreferences())
-            val deleted = database.withTransaction {
-                database.restoreDao().deletePendingPreferences(pending.operationId)
-            }
-            check(deleted in 0..1)
-        }
+        reconcileSettingsJournalWithinMutationBoundary(settingsJournal, target)
     }
 
     private suspend fun applyPayload(payload: RestorePayload, mode: RestoreMode): RestoreResult {
@@ -125,6 +122,29 @@ class RestoreRepository(
             dao.savePendingPreferences(payload.pendingPreferences())
         }
         return RestoreResult.Applied(projects, entries, segments)
+    }
+}
+
+class RoomSettingsRecoveryJournal(
+    private val database: AppDatabase,
+    private val dispatcher: CoroutineDispatcher,
+) : SettingsRecoveryJournal {
+    override suspend fun pending(): PendingUserPreferences? = withContext(dispatcher) {
+        database.restoreDao().pendingPreferences()?.toPendingUserPreferences()
+    }
+
+    override suspend fun save(value: PendingUserPreferences) = withContext(dispatcher) {
+        database.withTransaction {
+            database.restoreDao().savePendingPreferences(value.toEntity())
+        }
+    }
+
+    override suspend fun delete(operationId: String): Boolean = withContext(dispatcher) {
+        val deleted = database.withTransaction {
+            database.restoreDao().deletePendingPreferences(operationId)
+        }
+        check(deleted in 0..1)
+        deleted == 1
     }
 }
 
@@ -394,4 +414,17 @@ private fun PendingPreferencesRestoreEntity.toUserPreferences() = UserPreference
     dynamicColor = dynamicColor,
     privacyMode = privacyMode,
     dailyGoalMinutes = dailyGoalMinutes,
+)
+
+private fun PendingPreferencesRestoreEntity.toPendingUserPreferences() = PendingUserPreferences(
+    operationId = operationId,
+    preferences = toUserPreferences(),
+)
+
+private fun PendingUserPreferences.toEntity() = PendingPreferencesRestoreEntity(
+    operationId = operationId,
+    theme = preferences.theme.name,
+    dynamicColor = preferences.dynamicColor,
+    privacyMode = preferences.privacyMode,
+    dailyGoalMinutes = preferences.dailyGoalMinutes,
 )

@@ -6,6 +6,7 @@ import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.*
 import dev.opentimemanager.app.backup.BackupFileCoordinator
 import dev.opentimemanager.app.backup.RestoreRepository
+import dev.opentimemanager.app.backup.RoomSettingsRecoveryJournal
 import dev.opentimemanager.app.dataexport.CsvExportCoordinator
 import dev.opentimemanager.app.dataexport.ResolverDocumentStore
 import dev.opentimemanager.app.tracking.*
@@ -23,8 +24,9 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val projects = ProjectRepository(database, dispatcher)
     val completedEntries = CompletedEntryRepository(database, dispatcher)
     val activeNotes = ActiveEntryNoteRepository(database, dispatcher)
-    val settings = UserSettings(context)
-    val restore = RestoreRepository(database, dispatcher, settings = settings)
+    private val settingsJournal = RoomSettingsRecoveryJournal(database, dispatcher)
+    val settings = UserSettings(context, recoveryJournal = settingsJournal)
+    val restore = RestoreRepository(database, dispatcher, settings = settings, settingsJournal = settingsJournal)
     val csvExport = CsvExportCoordinator(
         database,
         ResolverDocumentStore(context),
