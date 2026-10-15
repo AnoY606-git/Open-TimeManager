@@ -27,4 +27,5 @@ fun Context.projectName(project: ProjectEntity): String =
     if (project.id == ProjectRepository.DEFAULT_PROJECT_ID.value) getString(R.string.default_project_name) else project.name
 
 fun entryDurationMillis(entryId: String, state: AppUiState): Long =
-    state.snapshot?.segments.orEmpty().filter { it.entryId.value == entryId }.sumOf { it.durationMillis }
+    state.snapshot?.entryDurations?.get(entryId)
+        ?: state.snapshot?.segments.orEmpty().filter { it.entryId.value == entryId }.sumOf { it.durationMillis }

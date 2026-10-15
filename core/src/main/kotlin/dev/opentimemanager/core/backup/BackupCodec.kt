@@ -217,7 +217,14 @@ object BackupCodec {
                 dailyGoalMinutes = it.dailyGoalMinutes,
             )
         } ?: PortablePreferences()
-        PortableSnapshot(projects, entries, segments, active, preferences).also(::validate)
+        PortableSnapshot(
+            projects = projects,
+            entries = entries,
+            segments = segments,
+            activeEntry = active,
+            preferences = preferences,
+            sourceSchemaVersion = payload.schemaVersion,
+        ).also(::validate)
     }
 
     private fun checkCounts(snapshot: PortableSnapshot, limits: BackupLimits) {
@@ -319,7 +326,8 @@ private data class ProjectJson(
     val presentFields: Set<String> = emptySet(),
 ) {
     fun hasV2Metadata(): Boolean = presentFields.any(V2_PROJECT_KEYS::contains)
-    fun hasRequiredV2Metadata(): Boolean = presentFields.containsAll(V2_PROJECT_KEYS)
+    fun hasRequiredV2Metadata(): Boolean = presentFields.containsAll(V2_PROJECT_KEYS) &&
+        colorArgb != null && createdAtUtcMillis != null && isDefault != null
 }
 
 private val V2_PROJECT_KEYS = setOf("colorArgb", "createdAtUtcMillis", "archivedAtUtcMillis", "isDefault")

@@ -4,7 +4,10 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.opentimemanager.app.tracking.*
+import dev.opentimemanager.app.ui.confirmedDayProjection
 import dev.opentimemanager.core.model.*
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -78,7 +81,68 @@ class HardeningDataContractTest {
 
         val firstPage = coordinator.observeSnapshot(historyLimit = 100).first()
         assertEquals(100, firstPage.entries.count(EntryEntity::completed))
+        assertEquals(101, firstPage.projects.size)
+        assertEquals(100, firstPage.entryDurations.size)
+        assertEquals(100, firstPage.segments.size)
         assertTrue(firstPage.hasMoreHistory)
+    }
+
+    @Test fun dailyTotalUsesItsOwnRangeProjectionInsteadOfTheHundredRowHistoryPage() = runBlocking {
+        coordinator.observeSystemSnapshot().first()
+        val projectId = ProjectRepository.DEFAULT_PROJECT_ID.value
+        withContext(Dispatchers.IO) {
+            repeat(101) { index ->
+                database.reportDao().save(
+                    id = "today-$index",
+                    projectId = projectId,
+                    note = "",
+                    start = index * 60_000L,
+                    duration = 60_000L,
+                    expectedRevision = null,
+                )
+            }
+        }
+
+        val page = coordinator.observeSnapshot(historyLimit = 100).first()
+        val total = CompletedEntryRepository(database, Dispatchers.IO)
+            .observeReportTotals(0, 86_400_000)
+            .first()
+        val day = CompletedEntryRepository(database, Dispatchers.IO)
+            .observeReport(0, 86_400_000)
+            .first()
+            .let { confirmedDayProjection(it, LocalDate.ofEpochDay(0), ZoneId.of("UTC")) }
+
+        assertEquals(100, page.entries.count(EntryEntity::completed))
+        assertEquals(101 * 60_000L, total.totalMillis)
+        assertEquals(101 * 60_000L, day.confirmedMillis)
+        assertEquals(101, day.rows.size)
+    }
+
+    @Test fun completedEntryWithThousandsOfSegmentsUsesOneDurationAndABoundedSegmentGraph() = runBlocking {
+        coordinator.observeSystemSnapshot().first()
+        val projectId = ProjectRepository.DEFAULT_PROJECT_ID.value
+        withContext(Dispatchers.IO) {
+            database.trackingDao().insertEntry(
+                EntryEntity("heavy", projectId, "", 0, 2_501, "MANUAL", 0, true, zoneId = "UTC"),
+            )
+            database.openHelper.writableDatabase.beginTransaction()
+            try {
+                repeat(2_501) { index ->
+                    database.openHelper.writableDatabase.execSQL(
+                        "INSERT INTO segments VALUES (?, ?, ?, NULL, NULL, 1, ?, NULL)",
+                        arrayOf<Any?>("heavy-$index", "heavy", index.toLong(), index.toLong() + 1),
+                    )
+                }
+                database.openHelper.writableDatabase.setTransactionSuccessful()
+            } finally {
+                database.openHelper.writableDatabase.endTransaction()
+            }
+        }
+
+        val page = coordinator.observeSnapshot(historyLimit = 1).first()
+
+        assertEquals(MAX_UI_SEGMENT_ROWS, page.segments.size)
+        assertEquals(2_501L, page.entryDurations.getValue("heavy"))
     }
 
     @Test fun overflowRecoveryRebasesToReviewAndRotatesGeneration() = runBlocking {

@@ -13,9 +13,29 @@ abstract class TrackingDao {
     @Query("SELECT * FROM entries ORDER BY startedAtUtcMillis, id") abstract fun entries(): List<EntryEntity>
     @Query("SELECT * FROM segments ORDER BY startedAtUtcMillis, id") abstract fun segments(): List<SegmentEntity>
     @Query("SELECT * FROM projects WHERE archivedAtUtcMillis IS NULL ORDER BY createdAtUtcMillis, id LIMIT 2") abstract fun eligibleProjects(): List<ProjectEntity>
+    @Query("""SELECT * FROM projects
+        WHERE archivedAtUtcMillis IS NULL OR id = :activeProjectId OR id IN (
+            SELECT projectId FROM entries WHERE completed = 1
+            ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :historyLimit
+        )
+        ORDER BY createdAtUtcMillis, id""")
+    abstract fun uiProjects(historyLimit: Int, activeProjectId: String?): List<ProjectEntity>
     @Query("SELECT * FROM entries WHERE completed = 1 ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :limit") abstract fun recentCompletedEntries(limit: Int): List<EntryEntity>
     @Query("SELECT COUNT(*) FROM entries WHERE completed = 1") abstract fun completedEntryCount(): Long
-    @Query("SELECT * FROM segments WHERE entryId IN (:entryIds) AND durationMillis IS NOT NULL ORDER BY startedAtUtcMillis, id") abstract fun closedSegmentsForEntries(entryIds: List<String>): List<SegmentEntity>
+    @Query("""SELECT entryId, SUM(durationMillis) AS durationMillis FROM segments
+        WHERE durationMillis IS NOT NULL AND entryId IN (
+            SELECT id FROM entries WHERE completed = 1
+            ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :historyLimit
+        )
+        GROUP BY entryId""")
+    abstract fun entryDurations(historyLimit: Int): List<EntryDurationRow>
+    @Query("""SELECT * FROM segments
+        WHERE durationMillis IS NOT NULL AND entryId IN (
+            SELECT id FROM entries WHERE completed = 1
+            ORDER BY startedAtUtcMillis DESC, id DESC LIMIT :historyLimit
+        )
+        ORDER BY startedAtUtcMillis, id LIMIT :segmentLimit""")
+    abstract fun recentCompletedSegments(historyLimit: Int, segmentLimit: Int): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE entryId = :entryId ORDER BY startedElapsedRealtimeMillis, id") abstract fun entrySegments(entryId: String): List<SegmentEntity>
     @Query("SELECT * FROM tracking_slot WHERE id = 1") abstract fun slot(): TrackingSlotEntity?
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
@@ -90,7 +110,6 @@ abstract class TrackingDao {
 
     private fun uiSnapshotWithoutRecovery(historyLimit: Int): AppSnapshot {
         require(historyLimit in 1..20_000)
-        val projects = projects()
         val session = restored()
         val completed = recentCompletedEntries(historyLimit)
         val active = session.entryId?.value?.let(::entry)?.takeUnless(EntryEntity::completed)
@@ -99,14 +118,22 @@ abstract class TrackingDao {
             addAll(completed)
         }
         val projectByEntry = entries.associate { it.id to it.projectId }
-        val closed = if (entries.isEmpty()) emptyList() else closedSegmentsForEntries(entries.map(EntryEntity::id))
+        val projects = uiProjects(historyLimit, session.projectId?.value)
+        val durations = if (completed.isEmpty()) emptyMap() else {
+            entryDurations(historyLimit).associate { it.entryId to it.durationMillis }
+        }
+        val completedSegments = if (completed.isEmpty()) emptyList() else {
+            recentCompletedSegments(historyLimit, MAX_UI_SEGMENT_ROWS)
+                .map { it.closed(projectByEntry.getValue(it.entryId)) }
+        }
         return AppSnapshot(
             session = session,
             projects = projects,
             entries = entries,
-            segments = closed.map { it.closed(projectByEntry.getValue(it.entryId)) },
+            segments = completedSegments + session.segments,
             generation = requireNotNull(slot()).generation,
             hasMoreHistory = completedEntryCount() > completed.size,
+            entryDurations = durations,
         )
     }
 
@@ -257,6 +284,13 @@ abstract class TrackingDao {
         saveSegment(SegmentEntity(segment.id.value, segment.entryId.value, segment.startUtcMillis, old?.startedElapsedRealtimeMillis, old?.bootCount, segment.durationMillis, segment.endUtcMillis))
     }
 }
+
+data class EntryDurationRow(
+    val entryId: String,
+    val durationMillis: Long,
+)
+
+internal const val MAX_UI_SEGMENT_ROWS = 2_000
 
 internal fun SegmentEntity.closed(projectId: String) = Segment(SegmentId(id), EntryId(entryId), ProjectId(projectId), startedAtUtcMillis, requireNotNull(durationMillis))
 

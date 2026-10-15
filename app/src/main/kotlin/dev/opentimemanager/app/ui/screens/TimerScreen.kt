@@ -52,7 +52,6 @@ import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectRepository
 import dev.opentimemanager.app.system.TrackingNotification
 import dev.opentimemanager.app.ui.AppUiState
-import dev.opentimemanager.app.ui.confirmedDayProjection
 import dev.opentimemanager.app.ui.formatDateTime
 import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
@@ -107,12 +106,7 @@ fun TimerScreen(
         }
     }
     val elapsed = TrackingNotification.elapsedMillis(snapshot.session, nowElapsed)
-    val zone = ZoneId.systemDefault()
-    val today = rememberCurrentDate(zone)
-    val dayProjection = remember(snapshot.segments, today, zone) {
-        confirmedDayProjection(snapshot.segments, today, zone)
-    }
-    val todayWithActive = todayTrackedMillis(dayProjection, snapshot.session, nowElapsed)
+    val todayWithActive = todayTrackedMillis(state.todayProjection, snapshot.session, nowElapsed)
     val goalMillis = state.preferences.dailyGoalMinutes * 60_000L
     val progress = (todayWithActive.toFloat() / goalMillis).coerceIn(0f, 1f)
 
@@ -338,11 +332,7 @@ private fun ProjectDialog(onDismiss: () -> Unit, onCreate: (String, Int) -> Unit
 fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
     val snapshot = state.snapshot ?: return
     val context = LocalContext.current
-    val zone = ZoneId.systemDefault()
-    val today = rememberCurrentDate(zone)
-    val projection = remember(snapshot.segments, today, zone) {
-        confirmedDayProjection(snapshot.segments, today, zone)
-    }
+    val projection = state.todayProjection
     Column(modifier.fillMaxSize().padding(20.dp)) {
         Text(stringResource(R.string.today_heading), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
@@ -353,7 +343,7 @@ fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
                 val project = snapshot.projects.firstOrNull { it.id == row.projectId.value }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
-                        Text(project?.let(context::projectName).orEmpty(), fontWeight = FontWeight.Medium)
+                        Text(project?.let(context::projectName) ?: row.projectId.value, fontWeight = FontWeight.Medium)
                         Text(formatDateTime(row.firstStartUtcMillis), style = MaterialTheme.typography.bodySmall)
                         if (!entry?.note.isNullOrBlank()) Text(entry?.note.orEmpty(), style = MaterialTheme.typography.bodySmall)
                         Text(formatDuration(row.durationMillis, false), color = MaterialTheme.colorScheme.primary)

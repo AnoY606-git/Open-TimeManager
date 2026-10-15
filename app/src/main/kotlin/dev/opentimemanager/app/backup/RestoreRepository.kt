@@ -118,6 +118,7 @@ data class RestorePayload(
     val segments: List<SegmentEntity>,
     val preferences: PortablePreferences,
     val operationId: String,
+    val sourceSchemaVersion: Int,
 )
 
 @Dao
@@ -188,7 +189,12 @@ abstract class RestoreDao {
 
         payload.projects.forEach { imported ->
             localProjects[imported.id]?.let { local ->
-                if (local != imported) {
+                val same = if (payload.sourceSchemaVersion == 1) {
+                    local.name == imported.name
+                } else {
+                    local == imported
+                }
+                if (!same) {
                     conflicts += BackupConflict(BackupConflictKind.PROJECT, imported.id)
                 }
             }
@@ -306,7 +312,14 @@ private fun PortableSnapshot.toRestorePayload(nowUtcMillis: Long): RestorePayloa
             )
         }
         .toList()
-    return RestorePayload(importedProjects, entryEntities, segmentEntities, preferences, UUID.randomUUID().toString())
+    return RestorePayload(
+        importedProjects,
+        entryEntities,
+        segmentEntities,
+        preferences,
+        UUID.randomUUID().toString(),
+        sourceSchemaVersion,
+    )
 }
 
 internal class RestoreValidationError : IllegalArgumentException()

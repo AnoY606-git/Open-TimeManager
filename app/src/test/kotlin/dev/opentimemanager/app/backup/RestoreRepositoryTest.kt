@@ -117,6 +117,22 @@ class RestoreRepositoryTest {
     }
 
     @Test
+    fun v1MergeComparesOnlyMetadataRepresentedByV1() = runBlocking {
+        database.projectDao().insert(ProjectEntity(projectId.value, "Backup", 0xff123456.toInt(), 9_999, archivedAtUtcMillis = 10))
+        val legacy = PortableSnapshot(
+            projects = listOf(PortableProject(projectId, "Backup")),
+            sourceSchemaVersion = 1,
+        )
+        val preview = repository.preview(legacy)
+
+        assertTrue(preview.conflicts.isEmpty())
+        assertEquals(RestoreResult.Applied(0, 0, 0), repository.restore(preview, RestoreMode.MERGE))
+        assertEquals(0xff123456.toInt(), database.trackingDao().project(projectId.value)?.colorArgb)
+        assertEquals(9_999L, database.trackingDao().project(projectId.value)?.createdAtUtcMillis)
+        assertEquals(10L, database.trackingDao().project(projectId.value)?.archivedAtUtcMillis)
+    }
+
+    @Test
     fun mergeRejectsChangedUuidContentWithoutPartialInsert() = runBlocking {
         database.projectDao().insert(ProjectEntity(projectId.value, "Local", 1, 1))
         val preview = repository.preview(snapshot(projectName = "Backup"))
@@ -247,6 +263,28 @@ class RestoreRepositoryTest {
 
         assertEquals(local, database.trackingDao().project(local.id))
         assertTrue(preview.hasPayload)
+    }
+
+    @Test
+    fun discardDuringInFlightRestoreIsDeferredAndNeverThrowsFromLifecycleCleanup() = runBlocking {
+        val reachedBarrier = CompletableDeferred<Unit>()
+        val holdBarrier = CompletableDeferred<Unit>()
+        val cancellable = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            afterReplaceDelete = {
+                reachedBarrier.complete(Unit)
+                holdBarrier.await()
+            },
+        )
+        val preview = cancellable.preview(snapshot())
+        val operation = async { cancellable.restore(preview, RestoreMode.REPLACE) }
+        reachedBarrier.await()
+
+        preview.discard()
+        operation.cancelAndJoin()
+
+        assertFalse(preview.hasPayload)
     }
 
     @Test

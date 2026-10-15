@@ -17,8 +17,9 @@ data class BackupConflict(
 )
 
 /**
- * Предварительно проверенный snapshot. Payload одноразовый: restore или discard
- * удаляет единственную сильную ссылку и не удерживает расшифрованные данные.
+ * Предварительно проверенный snapshot. Payload остаётся для повтора после отказа,
+ * конфликта или отмены; только Applied или discard удаляет сильную ссылку. Discard во время
+ * restore безопасно отладывается до выхода из операции.
  */
 class BackupPreview internal constructor(
     val counts: BackupCounts,
@@ -34,6 +35,8 @@ class BackupPreview internal constructor(
     private var completedResult: RestoreResult.Applied? = null
     @Volatile
     private var inUse: Boolean = false
+    @Volatile
+    private var discardRequested: Boolean = false
 
     val hasPayload: Boolean
         get() = payload != null
@@ -53,15 +56,24 @@ class BackupPreview internal constructor(
                     }
                 }
             } finally {
-                synchronized(this) { inUse = false }
+                synchronized(this) {
+                    inUse = false
+                    if (discardRequested) {
+                        payload = null
+                        completedResult = null
+                    }
+                }
             }
     }
 
     fun discard() {
         synchronized(this) {
-            check(!inUse) { "Backup preview is being restored" }
-            payload = null
-            completedResult = null
+            if (inUse) {
+                discardRequested = true
+            } else {
+                payload = null
+                completedResult = null
+            }
         }
     }
 }

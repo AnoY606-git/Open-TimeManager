@@ -83,6 +83,20 @@ class BackupCodecTest {
         }
     }
 
+    @Test fun `v2 rejects explicit null for required non-null project metadata`() {
+        val valid = """{"schemaVersion":2,"projects":[{"id":"${projectId.value}","name":"P","colorArgb":1,"createdAtUtcMillis":0,"archivedAtUtcMillis":null,"isDefault":false}],"entries":[],"segments":[],"activeEntry":null,"preferences":{"theme":"SYSTEM","dynamicColor":true,"privacyMode":true,"dailyGoalMinutes":480}}"""
+
+        listOf(
+            valid.replace("\"colorArgb\":1", "\"colorArgb\":null"),
+            valid.replace("\"createdAtUtcMillis\":0", "\"createdAtUtcMillis\":null"),
+            valid.replace("\"isDefault\":false", "\"isDefault\":null"),
+        ).forEach { payload ->
+            assertThrows(BackupError.SchemaError::class.java) {
+                BackupCodec.decrypt(authenticated(payload.toByteArray()), password, BackupLimits())
+            }
+        }
+    }
+
     @Test fun `v1 reader supplies safe metadata defaults and canonicalizes legacy default name`() {
         val legacyDefault = validJson
             .replace(projectId.value, DEFAULT_PROJECT_UUID)
@@ -101,6 +115,7 @@ class BackupCodecTest {
             result.projects.single(),
         )
         assertEquals(PortablePreferences(), result.preferences)
+        assertEquals(1, result.sourceSchemaVersion)
     }
 
     @Test fun `authenticated per-entry duration overflow is rejected as schema error`() {

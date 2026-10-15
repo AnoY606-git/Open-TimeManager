@@ -131,4 +131,9 @@ class CompletedEntryRepository(private val database: AppDatabase, private val di
                 )
             }
         }
+
+    fun observeReport(fromUtcMillis: Long, toUtcMillis: Long): Flow<List<Segment>> =
+        database.invalidationTracker.createFlow("entries", "segments").map {
+            withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }
+        }
 }

@@ -33,7 +33,12 @@ class PortableSnapshot(
     segments: List<Segment> = emptyList(),
     val activeEntry: PortableActiveEntry? = null,
     val preferences: PortablePreferences = PortablePreferences(),
+    /** Reader provenance for compatibility decisions; writers always emit schema v2. */
+    val sourceSchemaVersion: Int = 2,
 ) {
+    init {
+        require(sourceSchemaVersion in 1..2)
+    }
     val projects: List<PortableProject> = Collections.unmodifiableList(projects.toList())
     val entries: List<PortableEntry> = Collections.unmodifiableList(entries.toList())
     val segments: List<Segment> = Collections.unmodifiableList(segments.toList())

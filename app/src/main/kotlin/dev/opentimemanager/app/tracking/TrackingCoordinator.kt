@@ -52,6 +52,8 @@ data class AppSnapshot(
     val segments: List<Segment>,
     val generation: String = LEGACY_COMMAND_GENERATION,
     val hasMoreHistory: Boolean = false,
+    /** Exact totals for the bounded history entries; completed segment rows are not retained. */
+    val entryDurations: Map<String, Long> = emptyMap(),
 )
 
 class TrackingCoordinator(private val repository: RoomTrackingRepository) {

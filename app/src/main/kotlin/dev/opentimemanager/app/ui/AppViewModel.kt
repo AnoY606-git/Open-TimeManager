@@ -32,19 +32,24 @@ import dev.opentimemanager.core.model.TrackingState
 import dev.opentimemanager.core.report.ReportAggregator
 import dev.opentimemanager.core.report.ReportTotals
 import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -79,6 +84,7 @@ data class AppUiState(
     val preferences: UserPreferences = UserPreferences(),
     val controls: AppControls = AppControls(),
     val reportTotals: ReportTotals = ReportAggregator.aggregateTotals(emptyList(), 0, 0),
+    val todayProjection: ConfirmedDayProjection = ConfirmedDayProjection(0, 0, 0, emptyList()),
 ) {
     val availableProjects get() = snapshot?.projects.orEmpty().filter { it.archivedAtUtcMillis == null }
     val selectedProjectId: String? get() {
@@ -130,24 +136,35 @@ class AppViewModel(
         .map { current -> current.historyLimit }
         .distinctUntilChanged()
         .flatMapLatest { limit -> container.trackingCoordinator.observeSnapshot(limit) }
-    private val reportTotals = controls
-        .map { current ->
-            val zone = ZoneId.systemDefault()
-            val today = LocalDate.now(zone)
-            current.reportPeriod.validatedBounds(today, zone).value
-                ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
+    private val localDays = localDayContexts()
+        .distinctUntilChanged()
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+    private val reportTotals = combine(
+        controls.map { it.reportPeriod }.distinctUntilChanged(),
+        localDays,
+    ) { period, day ->
+        period.validatedBounds(day.date, day.zoneId).value
+            ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(day.date, day.zoneId).value)
         }
         .distinctUntilChanged()
         .flatMapLatest { bounds ->
             container.completedEntries.observeReportTotals(bounds.fromUtcMillis, bounds.toUtcMillis)
         }
+    private val todayProjection = localDays.flatMapLatest { day ->
+        val from = day.date.atStartOfDay(day.zoneId).toInstant().toEpochMilli()
+        val to = day.date.plusDays(1).atStartOfDay(day.zoneId).toInstant().toEpochMilli()
+        container.completedEntries.observeReport(from, to).map { segments ->
+            confirmedDayProjection(segments, day.date, day.zoneId)
+        }
+    }
     val state: StateFlow<AppUiState> = combine(
         snapshots,
         container.settings.values,
         controls,
         reportTotals,
-    ) { snapshot, preferences, current, totals ->
-        AppUiState(snapshot, preferences, current, totals)
+        todayProjection,
+    ) { snapshot, preferences, current, totals, today ->
+        AppUiState(snapshot, preferences, current, totals, today)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
     fun navigate(destination: AppDestination) = updateControls { copy(destination = destination) }
@@ -363,8 +380,13 @@ class AppViewModel(
             is TrackingResult.Applied -> {
                 val updater = SystemSurfaceUpdater(application)
                 systemSurfaceWarning {
-                    updater.refresh(result.snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE &&
-                        updater.ensureForegroundControls(result.snapshot)
+                    refreshAndEnsureSystemControls(
+                        refresh = {
+                            updater.refresh(result.snapshot) ==
+                                dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
+                        },
+                        ensureForeground = { updater.ensureForegroundControls(result.snapshot) },
+                    )
                 }?.let(::show)
             }
             is TrackingResult.Duplicate -> Unit
@@ -427,8 +449,44 @@ internal suspend fun systemSurfaceWarning(operation: suspend () -> Boolean): UiM
     UiMessage.SYSTEM_CONTROLS_UNAVAILABLE
 }
 
+/** Both effects must run: notification availability must not short-circuit FGS startup. */
+internal fun refreshAndEnsureSystemControls(
+    refresh: () -> Boolean,
+    ensureForeground: () -> Boolean,
+): Boolean {
+    val notificationAvailable = systemControlAttempt(refresh)
+    val foregroundAvailable = systemControlAttempt(ensureForeground)
+    return notificationAvailable && foregroundAvailable
+}
+
+private fun systemControlAttempt(operation: () -> Boolean): Boolean = try {
+    operation()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    false
+}
+
 internal fun transferFailureMessage(partialDocumentDeleted: Boolean): UiMessage =
     if (partialDocumentDeleted) UiMessage.DATA_IO_ERROR else UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED
+
+internal data class LocalDayContext(val date: LocalDate, val zoneId: ZoneId)
+
+/** Emits immediately and at least once a minute so midnight and time-zone changes re-key range queries. */
+internal fun localDayContexts(
+    now: () -> Instant = Instant::now,
+    zoneId: () -> ZoneId = ZoneId::systemDefault,
+    waitUntilNextDay: suspend (Long) -> Unit = { delay(it) },
+): Flow<LocalDayContext> = flow {
+    while (true) {
+        val instant = now()
+        val zone = zoneId()
+        emit(LocalDayContext(instant.atZone(zone).toLocalDate(), zone))
+        waitUntilNextDay(minOf(millisUntilNextLocalDay(instant, zone), LOCAL_DAY_POLL_MILLIS))
+    }
+}
+
+private const val LOCAL_DAY_POLL_MILLIS = 60_000L
 
 private fun EditResult.toMessage(): UiMessage = when (this) {
     EditResult.Applied -> UiMessage.SAVED

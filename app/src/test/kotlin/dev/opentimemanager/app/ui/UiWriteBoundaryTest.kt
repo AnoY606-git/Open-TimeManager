@@ -8,7 +8,9 @@ import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 
 class UiWriteBoundaryTest {
     @Test
@@ -55,5 +57,35 @@ class UiWriteBoundaryTest {
             systemSurfaceWarning { false },
         )
         assertNull(systemSurfaceWarning { true })
+    }
+
+    @Test fun unavailableNotificationRefreshStillAttemptsForegroundServiceStart() {
+        var foregroundAttempted = false
+
+        val available = refreshAndEnsureSystemControls(
+            refresh = { false },
+            ensureForeground = {
+                foregroundAttempted = true
+                true
+            },
+        )
+
+        assertFalse(available)
+        assertTrue(foregroundAttempted)
+    }
+
+    @Test fun failedNotificationRefreshStillAttemptsForegroundServiceStart() {
+        var foregroundAttempted = false
+
+        val available = refreshAndEnsureSystemControls(
+            refresh = { error("notification manager unavailable") },
+            ensureForeground = {
+                foregroundAttempted = true
+                true
+            },
+        )
+
+        assertFalse(available)
+        assertTrue(foregroundAttempted)
     }
 }

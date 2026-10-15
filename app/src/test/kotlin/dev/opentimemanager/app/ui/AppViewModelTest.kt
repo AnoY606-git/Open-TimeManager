@@ -28,6 +28,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -378,6 +380,24 @@ class AppViewModelTest {
                 ZoneId.of("Europe/Berlin"),
             ),
         )
+    }
+
+    @Test fun localDayFlowEmitsANewReportKeyAcrossMidnightWithoutControlsChanges() = runBlocking {
+        val instants = java.util.ArrayDeque(
+            listOf(
+                Instant.parse("2026-10-18T20:59:59Z"),
+                Instant.parse("2026-10-18T21:00:00Z"),
+            ),
+        )
+
+        val days = localDayContexts(
+            now = { instants.removeFirst() },
+            zoneId = { ZoneId.of("Europe/Moscow") },
+            waitUntilNextDay = {},
+        ).take(2).toList()
+
+        assertEquals(listOf(LocalDate.of(2026, 10, 18), LocalDate.of(2026, 10, 19)), days.map { it.date })
+        assertEquals(listOf(ZoneId.of("Europe/Moscow"), ZoneId.of("Europe/Moscow")), days.map { it.zoneId })
     }
 
     @Test fun notificationControlStatusDistinguishesPermissionAndBlockedChannel() {
