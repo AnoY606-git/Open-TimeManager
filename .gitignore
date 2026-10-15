@@ -5,6 +5,7 @@ docs/superpowers/
 
 # Локальная Android/Gradle toolchain
 .gradle/
+.kotlin/
 .toolchain/
 local.properties
 **/build/

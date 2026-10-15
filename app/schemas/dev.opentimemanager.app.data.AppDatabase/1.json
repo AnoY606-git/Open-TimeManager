@@ -1,0 +1,363 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "07ce84599ba36e4d49cacc321ccde675",
+    "entities": [
+      {
+        "tableName": "projects",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `colorArgb` INTEGER NOT NULL, `createdAtUtcMillis` INTEGER NOT NULL, `archivedAtUtcMillis` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorArgb",
+            "columnName": "colorArgb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtUtcMillis",
+            "columnName": "createdAtUtcMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archivedAtUtcMillis",
+            "columnName": "archivedAtUtcMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `projectId` TEXT NOT NULL, `note` TEXT NOT NULL, `startedAtUtcMillis` INTEGER NOT NULL, `endedAtUtcMillis` INTEGER, `source` TEXT NOT NULL, `revision` INTEGER NOT NULL, `completed` INTEGER NOT NULL, `currentSlot` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`projectId`) REFERENCES `projects`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtUtcMillis",
+            "columnName": "startedAtUtcMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAtUtcMillis",
+            "columnName": "endedAtUtcMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentSlot",
+            "columnName": "currentSlot",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_entries_projectId",
+            "unique": false,
+            "columnNames": [
+              "projectId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_entries_projectId` ON `${TABLE_NAME}` (`projectId`)"
+          },
+          {
+            "name": "index_entries_startedAtUtcMillis",
+            "unique": false,
+            "columnNames": [
+              "startedAtUtcMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_entries_startedAtUtcMillis` ON `${TABLE_NAME}` (`startedAtUtcMillis`)"
+          },
+          {
+            "name": "index_entries_currentSlot",
+            "unique": true,
+            "columnNames": [
+              "currentSlot"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_entries_currentSlot` ON `${TABLE_NAME}` (`currentSlot`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "projects",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "segments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `entryId` TEXT NOT NULL, `startedAtUtcMillis` INTEGER NOT NULL, `startedElapsedRealtimeMillis` INTEGER, `bootCount` INTEGER, `durationMillis` INTEGER, `endUtcMillis` INTEGER, `openSlot` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`entryId`) REFERENCES `entries`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryId",
+            "columnName": "entryId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtUtcMillis",
+            "columnName": "startedAtUtcMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedElapsedRealtimeMillis",
+            "columnName": "startedElapsedRealtimeMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bootCount",
+            "columnName": "bootCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "durationMillis",
+            "columnName": "durationMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "endUtcMillis",
+            "columnName": "endUtcMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "openSlot",
+            "columnName": "openSlot",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_segments_entryId",
+            "unique": false,
+            "columnNames": [
+              "entryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_segments_entryId` ON `${TABLE_NAME}` (`entryId`)"
+          },
+          {
+            "name": "index_segments_startedAtUtcMillis_endUtcMillis",
+            "unique": false,
+            "columnNames": [
+              "startedAtUtcMillis",
+              "endUtcMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_segments_startedAtUtcMillis_endUtcMillis` ON `${TABLE_NAME}` (`startedAtUtcMillis`, `endUtcMillis`)"
+          },
+          {
+            "name": "index_segments_openSlot",
+            "unique": true,
+            "columnNames": [
+              "openSlot"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_segments_openSlot` ON `${TABLE_NAME}` (`openSlot`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "entries",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "entryId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "tracking_slot",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `state` TEXT NOT NULL, `entryId` TEXT, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`entryId`) REFERENCES `entries`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryId",
+            "columnName": "entryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tracking_slot_entryId",
+            "unique": false,
+            "columnNames": [
+              "entryId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tracking_slot_entryId` ON `${TABLE_NAME}` (`entryId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "entries",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "entryId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "applied_commands",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`commandId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `entryId` TEXT, `state` TEXT NOT NULL, PRIMARY KEY(`commandId`))",
+        "fields": [
+          {
+            "fieldPath": "commandId",
+            "columnName": "commandId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryId",
+            "columnName": "entryId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "commandId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_applied_commands_revision",
+            "unique": true,
+            "columnNames": [
+              "revision"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_applied_commands_revision` ON `${TABLE_NAME}` (`revision`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '07ce84599ba36e4d49cacc321ccde675')"
+    ]
+  }
+}

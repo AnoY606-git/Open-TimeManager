@@ -117,10 +117,12 @@ class TrackingReducerTest {
         assertEquals(clock(), recovered.openSegment!!.startedAt)
     }
 
-    @Test fun `unknown boot count still uses monotonic elapsed time`() {
+    @Test fun `unknown boot count preserves uncertain anchor without charging time`() {
         val running = applied(TrackingReducer.start(TrackingSession.idle(), project, entry, SegmentId("first"), clock(boot = null), CommandId("start"), 0))
         val stopped = TrackingReducer.stop(running, target(1), clock(elapsed = 300, boot = null)) as TransitionResult.Applied
-        assertEquals(200L, stopped.completedEntry!!.durationMillis)
+        assertNull(stopped.completedEntry)
+        assertEquals(TrackingState.NEEDS_REVIEW, stopped.session.state)
+        assertEquals(running.openSegment, stopped.session.openSegment)
     }
 
     @Test fun `zero and backward elapsed durations are rejected`() {

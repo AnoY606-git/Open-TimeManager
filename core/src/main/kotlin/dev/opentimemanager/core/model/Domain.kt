@@ -62,6 +62,30 @@ class TrackingSession internal constructor(
 
     companion object {
         fun idle(): TrackingSession = TrackingSession(TrackingState.IDLE, 0, null, null, null, emptyList(), emptySet())
+
+        /** Восстановление доверяет только проверенным значениям, не открывая изменяемый конструктор. */
+        fun restore(
+            state: TrackingState,
+            revision: Long,
+            entryId: EntryId?,
+            projectId: ProjectId?,
+            openSegment: OpenSegment?,
+            segments: List<Segment>,
+        ): TrackingSession {
+            require(revision >= 0)
+            if (state == TrackingState.IDLE) {
+                require(entryId == null && projectId == null && openSegment == null && segments.isEmpty())
+            } else {
+                require(entryId != null && projectId != null)
+                require(state != TrackingState.RUNNING || openSegment != null)
+                require(state != TrackingState.PAUSED || (openSegment == null && segments.isNotEmpty()))
+                require(segments.all { it.entryId == entryId && it.projectId == projectId })
+                require(segments.map { it.id }.distinct().size == segments.size)
+                require(openSegment == null || segments.none { it.id == openSegment.id })
+                segments.fold(0L) { sum, segment -> Math.addExact(sum, segment.durationMillis) }
+            }
+            return TrackingSession(state, revision, entryId, projectId, openSegment, segments, emptySet())
+        }
     }
 }
 

@@ -48,7 +48,8 @@ object TrackingReducer {
         guard(session, target)?.let { return it }
         if (session.state != TrackingState.RUNNING) return reject(RejectionReason.INVALID_STATE)
         return checked {
-            val state = if (session.openSegment!!.startedAt.bootCount != now.bootCount) TrackingState.NEEDS_REVIEW else TrackingState.RUNNING
+            val start = session.openSegment!!.startedAt
+            val state = if (!sameBoot(start, now) || now.elapsedRealtimeMillis < start.elapsedRealtimeMillis) TrackingState.NEEDS_REVIEW else TrackingState.RUNNING
             TransitionResult.Applied(next(session, target.commandId, state, session.openSegment))
         }
     }
@@ -61,7 +62,7 @@ object TrackingReducer {
         }
         return checked {
             val open = session.openSegment
-            if (open != null && open.startedAt.bootCount != now.bootCount) {
+            if (open != null && !sameBoot(open.startedAt, now)) {
                 return@checked TransitionResult.Applied(next(session, target.commandId, TrackingState.NEEDS_REVIEW, open))
             }
             val segments = if (open == null) session.segments else {
@@ -111,4 +112,7 @@ object TrackingReducer {
     }
 
     private fun reject(reason: RejectionReason) = TransitionResult.Rejected(reason)
+
+    private fun sameBoot(start: ClockSnapshot, now: ClockSnapshot): Boolean =
+        start.bootCount != null && start.bootCount == now.bootCount
 }
