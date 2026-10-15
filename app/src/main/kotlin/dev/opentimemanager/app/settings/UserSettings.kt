@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 
@@ -35,6 +38,15 @@ data class UserPreferences(
 data class PendingUserPreferences(
     val operationId: String,
     val preferences: UserPreferences,
+)
+
+enum class SettingsMutationResult {
+    APPLIED,
+    APPLIED_PENDING_RECOVERY,
+}
+
+class SettingsRecoveryPendingException : IOException(
+    "Pending privacy preference could not be mirrored",
 )
 
 /** Durable ordering boundary between Room recovery intent and DataStore. */
@@ -66,16 +78,17 @@ class SettingsMutationBoundary {
 /** Restore-only port; callers must already hold their shared [SettingsMutationBoundary]. */
 interface RestorePreferenceTarget {
     val mutationBoundary: SettingsMutationBoundary
-    suspend fun replaceWithinMutationBoundary(value: UserPreferences)
+    suspend fun replaceWithinMutationBoundary(value: UserPreferences): SettingsMutationResult
 }
 
 suspend fun reconcileSettingsJournalWithinMutationBoundary(
     journal: SettingsRecoveryJournal,
     target: RestorePreferenceTarget,
-) {
+): SettingsMutationResult {
     while (true) {
-        val pending = journal.pending() ?: return
-        target.replaceWithinMutationBoundary(pending.preferences)
+        val pending = journal.pending() ?: return SettingsMutationResult.APPLIED
+        val result = target.replaceWithinMutationBoundary(pending.preferences)
+        if (result == SettingsMutationResult.APPLIED_PENDING_RECOVERY) return result
         journal.delete(pending.operationId)
     }
 }
@@ -88,6 +101,7 @@ class UserSettings(
     override val mutationBoundary: SettingsMutationBoundary = SettingsMutationBoundary.PROCESS,
     private val recoveryJournal: SettingsRecoveryJournal? = null,
     privacyMirror: PrivacyMirror? = null,
+    private val privacyMirrorDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val strictPreferencesReader: StrictPreferencesReader = StrictPreferencesReader { store ->
         store.data.first()
     },
@@ -112,9 +126,9 @@ class UserSettings(
     suspend fun setTheme(value: ThemeMode) = mutatePartial { it.copy(theme = value) }
     suspend fun setDynamicColor(value: Boolean) = mutatePartial { it.copy(dynamicColor = value) }
     suspend fun setPrivacy(value: Boolean) = mutatePartial { it.copy(privacyMode = value) }
-    suspend fun setDailyGoalMinutes(value: Int) {
+    suspend fun setDailyGoalMinutes(value: Int): SettingsMutationResult {
         require(value in MIN_GOAL..MAX_GOAL)
-        mutatePartial { it.copy(dailyGoalMinutes = value) }
+        return mutatePartial { it.copy(dailyGoalMinutes = value) }
     }
 
     suspend fun current(): UserPreferences = values.first()
@@ -124,34 +138,51 @@ class UserSettings(
      * surfaces. A Room journal provides retryable convergence; the two stores
      * are intentionally not described as atomically committed together.
      */
-    suspend fun replace(value: UserPreferences) {
+    suspend fun replace(value: UserPreferences): SettingsMutationResult =
         mutationBoundary.serialized {
             drainRecoveryJournalWithinMutationBoundary()
             persistWithinMutationBoundary(value)
         }
+
+    /**
+     * Produces one strict export view while holding the same ordering boundary
+     * as restore and user mutations. The callback may take a Room snapshot, so
+     * graph and settings cannot be combined from different serial states.
+     */
+    suspend fun <T> withStrictExportSnapshot(
+        block: suspend (UserPreferences) -> T,
+    ): T = mutationBoundary.serialized {
+        drainRecoveryJournalWithinMutationBoundary()
+        block(decode(strictPreferencesReader.read(store)))
     }
 
-    private suspend fun mutatePartial(transform: (UserPreferences) -> UserPreferences) {
-        mutationBoundary.serialized {
-            drainRecoveryJournalWithinMutationBoundary()
-            val current = decode(strictPreferencesReader.read(store))
-            persistWithinMutationBoundary(transform(current))
-        }
+    private suspend fun mutatePartial(
+        transform: (UserPreferences) -> UserPreferences,
+    ): SettingsMutationResult = mutationBoundary.serialized {
+        drainRecoveryJournalWithinMutationBoundary()
+        val current = decode(strictPreferencesReader.read(store))
+        persistWithinMutationBoundary(transform(current))
     }
 
     private suspend fun drainRecoveryJournalWithinMutationBoundary() {
-        recoveryJournal?.let { reconcileSettingsJournalWithinMutationBoundary(it, this) }
+        val result = recoveryJournal?.let {
+            reconcileSettingsJournalWithinMutationBoundary(it, this)
+        } ?: SettingsMutationResult.APPLIED
+        if (result == SettingsMutationResult.APPLIED_PENDING_RECOVERY) {
+            throw SettingsRecoveryPendingException()
+        }
     }
 
-    private suspend fun persistWithinMutationBoundary(value: UserPreferences) {
+    private suspend fun persistWithinMutationBoundary(value: UserPreferences): SettingsMutationResult {
         val journal = recoveryJournal
-        if (journal == null) {
+        return if (journal == null) {
             replaceWithinMutationBoundary(value)
         } else {
             val pending = PendingUserPreferences(UUID.randomUUID().toString(), value)
             journal.save(pending)
-            replaceWithinMutationBoundary(value)
-            journal.delete(pending.operationId)
+            val result = replaceWithinMutationBoundary(value)
+            if (result == SettingsMutationResult.APPLIED) journal.delete(pending.operationId)
+            result
         }
     }
 
@@ -167,7 +198,7 @@ class UserSettings(
         dailyGoalMinutes = (this[DAILY_GOAL] ?: 480).coerceIn(MIN_GOAL, MAX_GOAL),
     )
 
-    override suspend fun replaceWithinMutationBoundary(value: UserPreferences) {
+    override suspend fun replaceWithinMutationBoundary(value: UserPreferences): SettingsMutationResult {
         require(value.dailyGoalMinutes in MIN_GOAL..MAX_GOAL)
         store.edit { preferences ->
             preferences[THEME] = value.theme.name
@@ -175,7 +206,18 @@ class UserSettings(
             preferences[PRIVACY] = value.privacyMode
             preferences[DAILY_GOAL] = value.dailyGoalMinutes
         }
-        check(privacyMirror.write(value.privacyMode)) { "Unable to mirror privacy preference" }
+        val mirrored = try {
+            withContext(privacyMirrorDispatcher) { privacyMirror.write(value.privacyMode) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        return if (mirrored) {
+            SettingsMutationResult.APPLIED
+        } else {
+            SettingsMutationResult.APPLIED_PENDING_RECOVERY
+        }
     }
 
     companion object {

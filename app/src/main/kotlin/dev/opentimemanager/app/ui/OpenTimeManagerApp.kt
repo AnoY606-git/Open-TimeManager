@@ -281,4 +281,5 @@ private fun UiMessage.resource(): Int = when (this) {
     UiMessage.DATA_IO_ERROR -> R.string.data_io_error
     UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED -> R.string.partial_file_cleanup_required
     UiMessage.SYSTEM_CONTROLS_UNAVAILABLE -> R.string.system_controls_unavailable
+    UiMessage.SETTINGS_SYSTEM_PRIVACY_PENDING -> R.string.settings_system_privacy_pending
 }

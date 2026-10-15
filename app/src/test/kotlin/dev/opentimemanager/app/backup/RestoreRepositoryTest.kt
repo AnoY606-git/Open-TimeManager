@@ -19,7 +19,10 @@ import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.settings.PrivacyMirror
 import dev.opentimemanager.app.settings.RestorePreferenceTarget
 import dev.opentimemanager.app.settings.SettingsMutationBoundary
+import dev.opentimemanager.app.settings.SettingsMutationResult
 import dev.opentimemanager.app.settings.StrictPreferencesReader
+import dev.opentimemanager.app.ui.UiMessage
+import dev.opentimemanager.app.ui.settingsMutationUiMessage
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
@@ -35,19 +38,23 @@ import dev.opentimemanager.core.model.TrackingState
 import java.io.IOException
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -483,9 +490,9 @@ class RestoreRepositoryTest {
             settingsJournal = journal,
         )
 
-        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
-            runBlocking { settings.setPrivacy(false) }
-        }
+        val result = settings.setPrivacy(false)
+        assertEquals(SettingsMutationResult.APPLIED_PENDING_RECOVERY, result)
+        assertEquals(UiMessage.SETTINGS_SYSTEM_PRIVACY_PENDING, settingsMutationUiMessage { result })
         assertEquals(false, database.restoreDao().pendingPreferences()?.privacyMode)
         assertEquals(false, settings.current().privacyMode)
 
@@ -495,6 +502,85 @@ class RestoreRepositoryTest {
         assertFalse(mirroredPrivacy)
         assertEquals(UserPreferences(privacyMode = false), settings.current())
         assertEquals(null, database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun privacyMirrorRunsOnItsInjectedIoDispatcher() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val callerThread = Thread.currentThread().name
+        val executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "privacy-mirror-io")
+        }
+        val dispatcher = executor.asCoroutineDispatcher()
+        try {
+            var mirrorThread: String? = null
+            val settings = UserSettings(
+                context = context,
+                name = "privacy-mirror-dispatcher-${System.nanoTime()}",
+                mutationBoundary = SettingsMutationBoundary(),
+                privacyMirrorDispatcher = dispatcher,
+                privacyMirror = PrivacyMirror {
+                    mirrorThread = Thread.currentThread().name
+                    true
+                },
+            )
+
+            assertEquals(SettingsMutationResult.APPLIED, settings.setPrivacy(false))
+
+            assertTrue(mirrorThread?.startsWith("privacy-mirror-io") == true)
+            assertNotEquals(callerThread, mirrorThread)
+        } finally {
+            dispatcher.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun cancellationAfterDataStoreCommitRetainsJournalForStartupRecovery() = runBlocking<Unit> {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val enteredMirror = CompletableDeferred<Unit>()
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val settingsName = "privacy-mirror-cancel-${System.nanoTime()}"
+        val settings = UserSettings(
+            context = context,
+            name = settingsName,
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror {
+                enteredMirror.complete(Unit)
+                awaitCancellation()
+            },
+        )
+
+        val mutation = async { settings.setPrivacy(false) }
+        enteredMirror.await()
+        mutation.cancelAndJoin()
+
+        assertTrue(mutation.isCancelled)
+        assertEquals(false, settings.current().privacyMode)
+        assertEquals(false, database.restoreDao().pendingPreferences()?.privacyMode)
+
+        var recoveredPrivacy = true
+        val startupSettings = UserSettings(
+            context = context,
+            name = settingsName,
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { value ->
+                recoveredPrivacy = value
+                true
+            },
+        )
+        RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = startupSettings,
+            settingsJournal = journal,
+        ).reconcilePendingPreferences()
+
+        assertFalse(recoveredPrivacy)
+        assertNull(database.restoreDao().pendingPreferences())
     }
 
     @Test
@@ -963,10 +1049,11 @@ class RestoreRepositoryTest {
         val applied = mutableListOf<UserPreferences>()
         var current: UserPreferences? = null
 
-        override suspend fun replaceWithinMutationBoundary(value: UserPreferences) {
+        override suspend fun replaceWithinMutationBoundary(value: UserPreferences): SettingsMutationResult {
             action(value)
             applied += value
             current = value
+            return SettingsMutationResult.APPLIED
         }
     }
 

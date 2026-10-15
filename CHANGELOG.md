@@ -24,6 +24,8 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - Cancellation during restore rolls back every Room table; a durable convergence journal applies portable settings after the database commit without claiming cross-store atomicity.
 - Manual portable-setting changes share the restore journal ordering boundary and retain a retryable full intent across DataStore or privacy-mirror failure, so an older restore cannot overwrite a newer user choice after restart.
 - Partial settings changes use a strict DataStore read: a transient read error reports failure before any journal, DataStore, or privacy-mirror write instead of replacing unrelated settings with defaults.
+- Backup creation drains the settings recovery journal and takes a strict, serialized Room/DataStore snapshot; a settings read or convergence failure aborts before a backup file is offered.
+- A setting already committed to DataStore is reported as saved when its Android privacy mirror needs retry, with a localized warning and the durable recovery intent retained; mirror disk I/O runs off the main thread.
 - Restore reconciliation and ordinary preference mutations share one process-wide serialization boundary; failed preference convergence keeps its durable retry intent.
 - Active timers keep an exact checked duration summary for constant-cardinality system commands while retaining every original segment for reports, history, CSV, and backup. Commands write only the newly opened or closed segment.
 

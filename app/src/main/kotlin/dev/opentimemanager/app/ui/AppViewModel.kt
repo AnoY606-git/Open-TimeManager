@@ -20,6 +20,7 @@ import dev.opentimemanager.app.backup.RestoreMode
 import dev.opentimemanager.app.backup.RestoreResult
 import dev.opentimemanager.app.dataexport.CsvExportResult
 import dev.opentimemanager.app.settings.ThemeMode
+import dev.opentimemanager.app.settings.SettingsMutationResult
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.system.SystemSurfaceUpdater
 import dev.opentimemanager.app.tracking.AppSnapshot
@@ -68,6 +69,7 @@ enum class UiMessage {
     DATA_IO_ERROR,
     PARTIAL_FILE_CLEANUP_REQUIRED,
     SYSTEM_CONTROLS_UNAVAILABLE,
+    SETTINGS_SYSTEM_PRIVACY_PENDING,
 }
 
 data class AppControls(
@@ -474,13 +476,11 @@ class AppViewModel(
         }
     }
 
-    private fun changeSettings(block: suspend () -> Unit) = viewModelScope.launch {
-        try {
-            block()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            show(UiMessage.ACTION_FAILED)
+    private fun changeSettings(
+        block: suspend () -> SettingsMutationResult,
+    ) = viewModelScope.launch {
+        settingsMutationUiMessage(block)?.let {
+            show(it)
             return@launch
         }
         systemSurfaceWarning {
@@ -553,6 +553,19 @@ class AppViewModel(
 
 internal suspend fun cancellationAwareUiWrite(block: suspend () -> UiMessage?): UiMessage? = try {
     block()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    UiMessage.ACTION_FAILED
+}
+
+internal suspend fun settingsMutationUiMessage(
+    mutation: suspend () -> SettingsMutationResult,
+): UiMessage? = try {
+    when (mutation()) {
+        SettingsMutationResult.APPLIED -> null
+        SettingsMutationResult.APPLIED_PENDING_RECOVERY -> UiMessage.SETTINGS_SYSTEM_PRIVACY_PENDING
+    }
 } catch (cancelled: CancellationException) {
     throw cancelled
 } catch (_: Exception) {

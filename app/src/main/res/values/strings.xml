@@ -147,4 +147,5 @@
         <item quantity="other">%d days</item>
     </plurals>
     <string name="system_controls_unavailable">Time was saved, but Android system controls are unavailable. Open the app to continue.</string>
+    <string name="settings_system_privacy_pending">Setting saved. Android system privacy controls will retry automatically.</string>
 </resources>

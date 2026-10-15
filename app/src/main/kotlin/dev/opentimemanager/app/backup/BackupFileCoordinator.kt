@@ -93,9 +93,14 @@ class BackupFileCoordinator(
     suspend fun prepareBackup(password: CharArray): PreparedBackup {
         var prepared: PreparedBackup? = null
         try {
+            val snapshot = settings?.withStrictExportSnapshot { preferences ->
+                withContext(dispatcher) {
+                    database.withTransaction { portableSnapshot(preferences.toPortable()) }
+                }
+            } ?: withContext(dispatcher) {
+                database.withTransaction { portableSnapshot(PortablePreferences()) }
+            }
             return withContext(dispatcher) {
-                val preferences = settings?.current()?.toPortable() ?: PortablePreferences()
-                val snapshot = database.withTransaction { portableSnapshot(preferences) }
                 val encrypted = BackupCodec.encrypt(snapshot, password, random, limits)
                 PreparedBackup(
                     fileName = "open-timemanager-${BACKUP_DATE.format(clock.instant().atZone(ZoneOffset.UTC))}.otmbackup",

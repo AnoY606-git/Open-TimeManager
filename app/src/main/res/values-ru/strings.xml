@@ -154,4 +154,5 @@
         <item quantity="other">%d дня</item>
     </plurals>
     <string name="system_controls_unavailable">Время сохранено, но системное управление Android недоступно. Откройте приложение.</string>
+    <string name="settings_system_privacy_pending">Настройка сохранена. Системная защита приватности Android повторит синхронизацию автоматически.</string>
 </resources>

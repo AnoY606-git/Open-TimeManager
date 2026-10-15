@@ -15,6 +15,10 @@ import dev.opentimemanager.app.dataexport.CsvExportResult
 import dev.opentimemanager.app.dataexport.DocumentStore
 import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.settings.ThemeMode
+import dev.opentimemanager.app.settings.PendingUserPreferences
+import dev.opentimemanager.app.settings.PrivacyMirror
+import dev.opentimemanager.app.settings.SettingsMutationBoundary
+import dev.opentimemanager.app.settings.StrictPreferencesReader
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.ui.UtcBounds
@@ -22,7 +26,9 @@ import dev.opentimemanager.core.backup.BackupCodec
 import dev.opentimemanager.core.backup.BackupLimits
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
+import dev.opentimemanager.core.backup.PortablePreferences
 import dev.opentimemanager.core.backup.PortableSnapshot
+import dev.opentimemanager.core.backup.PortableTheme
 import dev.opentimemanager.core.model.EntryId
 import dev.opentimemanager.core.model.EntrySource
 import dev.opentimemanager.core.model.ProjectId
@@ -47,9 +53,12 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -266,6 +275,175 @@ class BackupFileCoordinatorTest {
 
         assertEquals(custom, database.trackingDao().project(custom.id))
         assertEquals(expectedPreferences, settings.current())
+    }
+
+    @Test
+    fun strictSettingsReadFailureAbortsBackupBeforeAnyDocumentOrCiphertextEscapes() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        var failStrictRead = false
+        var mirrorWrites = 0
+        val settings = UserSettings(
+            context = context,
+            name = "backup-strict-read-${System.nanoTime()}",
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { mirrorWrites += 1; true },
+            strictPreferencesReader = StrictPreferencesReader { store ->
+                if (failStrictRead) throw IOException("DataStore read failed")
+                store.data.first()
+            },
+        )
+        val expected = UserPreferences(ThemeMode.DARK, false, false, 720)
+        settings.replace(expected)
+        val mirrorWritesBeforeBackup = mirrorWrites
+        failStrictRead = true
+        val restore = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = settings,
+            settingsJournal = journal,
+        )
+        val backup = BackupFileCoordinator(
+            database,
+            documents,
+            restore,
+            Dispatchers.IO,
+            settings = settings,
+        )
+        val password = "secret".toCharArray()
+
+        org.junit.Assert.assertThrows(IOException::class.java) {
+            runBlocking { backup.prepareBackup(password) }
+        }
+
+        assertArrayEquals(CharArray(password.size), password)
+        assertTrue(documents.bytes.isEmpty())
+        assertTrue(documents.deleted.isEmpty())
+        assertEquals(mirrorWritesBeforeBackup, mirrorWrites)
+        assertEquals(expected, settings.current())
+        assertNull(database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun pendingSettingsIntentIsConvergedBeforeTheStrictBackupSnapshot() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val settings = UserSettings(
+            context = context,
+            name = "backup-pending-settings-${System.nanoTime()}",
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { true },
+        )
+        val expected = UserPreferences(ThemeMode.DARK, false, false, 615)
+        journal.save(PendingUserPreferences("pending-A", expected))
+        val restore = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = settings,
+            settingsJournal = journal,
+        )
+        val backup = BackupFileCoordinator(
+            database,
+            documents,
+            restore,
+            Dispatchers.IO,
+            settings = settings,
+        )
+
+        val prepared = backup.prepareBackup("secret".toCharArray())
+        assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
+        val decoded = BackupCodec.decrypt(
+            documents.bytes.getValue(backupUri),
+            "secret".toCharArray(),
+            BackupFileCoordinator.APP_LIMITS,
+        )
+
+        assertEquals(
+            PortablePreferences(PortableTheme.DARK, false, false, 615),
+            decoded.preferences,
+        )
+        assertEquals(expected, settings.current())
+        assertNull(database.restoreDao().pendingPreferences())
+    }
+
+    @Test
+    fun backupGraphAndSettingsAreOneSerialStateAgainstRestoreAndManualMutation() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val boundary = SettingsMutationBoundary()
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val strictReadEntered = CompletableDeferred<Unit>()
+        val releaseStrictRead = CompletableDeferred<Unit>()
+        var holdFirstStrictRead = true
+        val settings = UserSettings(
+            context = context,
+            name = "backup-serialized-settings-${System.nanoTime()}",
+            mutationBoundary = boundary,
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { true },
+            strictPreferencesReader = StrictPreferencesReader { store ->
+                val value = store.data.first()
+                if (holdFirstStrictRead) {
+                    holdFirstStrictRead = false
+                    strictReadEntered.complete(Unit)
+                    releaseStrictRead.await()
+                }
+                value
+            },
+        )
+        val initialPreferences = UserPreferences(ThemeMode.LIGHT, false, true, 300)
+        settings.replace(initialPreferences)
+        val graphId = ProjectId("15000000-0000-4000-8000-000000000099")
+        database.projectDao().insert(ProjectEntity(graphId.value, "Graph A", 7, 10))
+        val restore = RestoreRepository(
+            database,
+            Dispatchers.IO,
+            settings = settings,
+            settingsJournal = journal,
+        )
+        val restoreSource = PortableSnapshot(
+            projects = listOf(PortableProject(graphId, "Graph B")),
+            preferences = PortablePreferences(PortableTheme.DARK, true, false, 600),
+        )
+        val restorePreview = restore.preview(restoreSource)
+        val backup = BackupFileCoordinator(
+            database,
+            documents,
+            restore,
+            Dispatchers.IO,
+            settings = settings,
+        )
+
+        val preparing = async { backup.prepareBackup("secret".toCharArray()) }
+        strictReadEntered.await()
+        val restoring = async(start = CoroutineStart.UNDISPATCHED) {
+            restore.restore(restorePreview, RestoreMode.REPLACE)
+        }
+        val manual = async(start = CoroutineStart.UNDISPATCHED) {
+            settings.setDailyGoalMinutes(900)
+        }
+        assertFalse(restoring.isCompleted)
+        assertFalse(manual.isCompleted)
+        releaseStrictRead.complete(Unit)
+        val prepared = preparing.await()
+        restoring.await()
+        manual.await()
+        assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
+        val decoded = BackupCodec.decrypt(
+            documents.bytes.getValue(backupUri),
+            "secret".toCharArray(),
+            BackupFileCoordinator.APP_LIMITS,
+        )
+
+        assertEquals(
+            PortablePreferences(PortableTheme.LIGHT, false, true, 300),
+            decoded.preferences,
+        )
+        assertEquals("Graph A", decoded.projects.single { it.id == graphId }.name)
+        assertNull(database.restoreDao().pendingPreferences())
     }
 
     @Test

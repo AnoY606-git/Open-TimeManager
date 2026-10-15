@@ -1,6 +1,8 @@
 package dev.opentimemanager.app.ui
 
 import dev.opentimemanager.app.data.ProjectEditResult
+import dev.opentimemanager.app.settings.SettingsMutationResult
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +67,24 @@ class UiWriteBoundaryTest {
             systemSurfaceWarning { false },
         )
         assertNull(systemSurfaceWarning { true })
+    }
+
+    @Test fun durableSettingsWithPendingPrivacyMirrorUsesRecoveryWarning() = runBlocking {
+        assertNull(settingsMutationUiMessage { SettingsMutationResult.APPLIED })
+        assertEquals(
+            UiMessage.SETTINGS_SYSTEM_PRIVACY_PENDING,
+            settingsMutationUiMessage { SettingsMutationResult.APPLIED_PENDING_RECOVERY },
+        )
+        assertEquals(
+            UiMessage.ACTION_FAILED,
+            settingsMutationUiMessage { throw IOException("DataStore failed before commit") },
+        )
+        try {
+            settingsMutationUiMessage { throw CancellationException("screen left") }
+            fail("CancellationException must be rethrown")
+        } catch (_: CancellationException) {
+            Unit
+        }
     }
 
     @Test fun unavailableNotificationRefreshStillAttemptsForegroundServiceStart() {
