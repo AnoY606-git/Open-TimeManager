@@ -1,5 +1,7 @@
 package dev.opentimemanager.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,12 +36,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
+import dev.opentimemanager.app.backup.BackupFileCoordinator
+import dev.opentimemanager.app.dataexport.CsvExportCoordinator
 import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.ui.screens.HistoryScreen
 import dev.opentimemanager.app.ui.screens.ReportsScreen
 import dev.opentimemanager.app.ui.screens.SettingsScreen
 import dev.opentimemanager.app.ui.screens.TimerScreen
 import dev.opentimemanager.app.ui.screens.TodayPane
+import dev.opentimemanager.app.ui.screens.BackupActions
 
 @Composable
 fun OpenTimeManagerApp(
@@ -54,6 +59,17 @@ fun OpenTimeManagerApp(
     val snapshot = state.snapshot
     val configuration = LocalConfiguration.current
     val snackbar = remember { SnackbarHostState() }
+    // These launchers stay registered for every destination. Android may deliver
+    // a pending result after process recreation before Reports/Settings is shown.
+    val csvDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(CsvExportCoordinator.MIME_TYPE),
+    ) { uri -> viewModel?.completeCsvExport(uri) }
+    val backupDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BackupFileCoordinator.MIME_TYPE),
+    ) { uri -> viewModel?.completeBackup(uri) }
+    val openBackupDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> viewModel?.selectBackupDocument(uri) }
     val message = state.controls.message
     val messageText = message?.let { stringResource(it.resource()) }
     LaunchedEffect(message, messageText) {
@@ -89,21 +105,38 @@ fun OpenTimeManagerApp(
                         }
                     },
                 ) { padding ->
-                    DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, selectedLanguage, onLanguage, Modifier.padding(padding))
+                    DestinationContent(
+                        state, viewModel, layout, compactTimer, notificationStatus,
+                        onManageNotifications, selectedLanguage, onLanguage,
+                        onLaunchCsvDocument = csvDocument::launch,
+                        onLaunchBackupDocument = backupDocument::launch,
+                        onLaunchOpenBackupDocument = openBackupDocument::launch,
+                        modifier = Modifier.padding(padding),
+                    )
                 }
             } else {
-                Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    NavigationRail(Modifier.testTag("expanded_navigation")) {
-                        destinations.forEach { destination ->
-                            NavigationRailItem(
-                                selected = state.controls.destination == destination,
-                                onClick = { viewModel?.navigate(destination) },
-                                icon = { DestinationMarker(destination) },
-                                label = { Text(stringResource(destination.label())) },
-                            )
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    Row(Modifier.fillMaxSize()) {
+                        NavigationRail(Modifier.testTag("expanded_navigation")) {
+                            destinations.forEach { destination ->
+                                NavigationRailItem(
+                                    selected = state.controls.destination == destination,
+                                    onClick = { viewModel?.navigate(destination) },
+                                    icon = { DestinationMarker(destination) },
+                                    label = { Text(stringResource(destination.label())) },
+                                )
+                            }
                         }
+                        DestinationContent(
+                            state, viewModel, layout, compactTimer, notificationStatus,
+                            onManageNotifications, selectedLanguage, onLanguage,
+                            onLaunchCsvDocument = csvDocument::launch,
+                            onLaunchBackupDocument = backupDocument::launch,
+                            onLaunchOpenBackupDocument = openBackupDocument::launch,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    DestinationContent(state, viewModel, layout, compactTimer, notificationStatus, onManageNotifications, selectedLanguage, onLanguage, Modifier.weight(1f))
+                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                 }
             }
         }
@@ -129,6 +162,9 @@ private fun DestinationContent(
     onManageNotifications: () -> Unit,
     selectedLanguage: AppLanguage,
     onLanguage: (AppLanguage) -> Unit,
+    onLaunchCsvDocument: (String) -> Unit,
+    onLaunchBackupDocument: (String) -> Unit,
+    onLaunchOpenBackupDocument: (Array<String>) -> Unit,
     modifier: Modifier,
 ) {
     when (state.controls.destination) {
@@ -142,7 +178,14 @@ private fun DestinationContent(
             onDelete = { id, revision -> viewModel?.deleteEntry(id, revision) },
             modifier = modifier,
         )
-        AppDestination.REPORTS -> ReportsScreen(state, { viewModel?.selectReportPeriod(it) }, modifier)
+        AppDestination.REPORTS -> ReportsScreen(
+            state = state,
+            onSelectPeriod = { viewModel?.selectReportPeriod(it) },
+            modifier = modifier,
+            onBeginCsvExport = viewModel?.let { model -> model::beginCsvExport },
+            onCancelCsvExport = viewModel?.let { model -> model::cancelCsvExport },
+            onLaunchCsvDocument = onLaunchCsvDocument,
+        )
         AppDestination.SETTINGS -> SettingsScreen(
             state = state,
             onTheme = { viewModel?.setTheme(it) },
@@ -152,6 +195,19 @@ private fun DestinationContent(
             onPrivacy = { viewModel?.setPrivacy(it) },
             onDailyGoal = { viewModel?.setDailyGoalMinutes(it) },
             modifier = modifier,
+            onLaunchBackupDocument = onLaunchBackupDocument,
+            onLaunchOpenBackupDocument = onLaunchOpenBackupDocument,
+            backupActions = viewModel?.let { model ->
+                BackupActions(
+                    prepare = model::prepareBackup,
+                    cancelPrepare = model::cancelBackup,
+                    clearSelectedDocument = model::clearBackupDocument,
+                    inspect = model::inspectBackup,
+                    currentPreview = model::currentBackupPreview,
+                    discardPreview = model::discardBackupPreview,
+                    restore = model::restoreBackup,
+                )
+            },
         )
     }
 }
@@ -213,4 +269,7 @@ private fun UiMessage.resource(): Int = when (this) {
     UiMessage.STALE_ENTRY -> R.string.error_stale_entry
     UiMessage.ACTION_FAILED -> R.string.error_action_failed
     UiMessage.SAVED -> R.string.action_completed
+    UiMessage.CSV_EXPORTED -> R.string.csv_export_success
+    UiMessage.BACKUP_CREATED -> R.string.backup_created_success
+    UiMessage.DATA_IO_ERROR -> R.string.data_io_error
 }

@@ -1,6 +1,7 @@
 package dev.opentimemanager.app.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,13 @@ import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.data.ProjectEditResult
 import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.di.AppContainer
+import dev.opentimemanager.app.backup.BackupInspection
+import dev.opentimemanager.app.backup.BackupWriteResult
+import dev.opentimemanager.app.backup.BackupPreview
+import dev.opentimemanager.app.backup.DataTransferSession
+import dev.opentimemanager.app.backup.RestoreMode
+import dev.opentimemanager.app.backup.RestoreResult
+import dev.opentimemanager.app.dataexport.CsvExportResult
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.system.SystemSurfaceUpdater
@@ -34,7 +42,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class AppDestination { TIMER, HISTORY, REPORTS, SETTINGS }
-enum class UiMessage { INVALID_ENTRY, INVALID_PROJECT, STALE_ENTRY, ACTION_FAILED, SAVED }
+enum class UiMessage {
+    INVALID_ENTRY,
+    INVALID_PROJECT,
+    STALE_ENTRY,
+    ACTION_FAILED,
+    SAVED,
+    CSV_EXPORTED,
+    BACKUP_CREATED,
+    DATA_IO_ERROR,
+}
 
 data class AppControls(
     val destination: AppDestination = AppDestination.TIMER,
@@ -42,6 +59,8 @@ data class AppControls(
     val historySearch: String = "",
     val reportPeriod: ReportPeriod = ReportPeriod.WEEK,
     val message: UiMessage? = null,
+    val dataTransferBusy: Boolean = false,
+    val pendingRestoreUri: String? = null,
 )
 
 data class AppUiState(
@@ -92,6 +111,7 @@ class AppViewModel(
     private val application: Application,
     private val container: AppContainer,
 ) : ViewModel() {
+    private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
     val state: StateFlow<AppUiState> = combine(
         container.trackingCoordinator.observeSnapshot(),
@@ -188,6 +208,113 @@ class AppViewModel(
     fun setDynamicColor(value: Boolean) = changeSettings { container.settings.setDynamicColor(value) }
     fun setPrivacy(value: Boolean) = changeSettings { container.settings.setPrivacy(value) }
     fun setDailyGoalMinutes(value: Int) = changeSettings { container.settings.setDailyGoalMinutes(value) }
+
+    fun beginCsvExport(range: UtcBounds): String = transfers.beginCsv(range).also {
+        updateControls { copy(dataTransferBusy = true) }
+    }
+
+    fun cancelCsvExport() {
+        transfers.cancelCsv()
+        updateControls { copy(dataTransferBusy = false) }
+    }
+
+    fun completeCsvExport(uri: Uri?) {
+        updateControls { copy(dataTransferBusy = true) }
+        viewModelScope.launch {
+            try {
+                when (transfers.finishCsv(uri)) {
+                    CsvExportResult.Success -> show(UiMessage.CSV_EXPORTED)
+                    CsvExportResult.Cancelled -> Unit
+                    is CsvExportResult.Failed -> show(UiMessage.DATA_IO_ERROR)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                show(UiMessage.DATA_IO_ERROR)
+            } finally {
+                updateControls { copy(dataTransferBusy = false) }
+            }
+        }
+    }
+
+    suspend fun prepareBackup(password: CharArray): String {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            return transfers.beginBackup(password)
+        } catch (cancelled: CancellationException) {
+            updateControls { copy(dataTransferBusy = false) }
+            throw cancelled
+        } catch (error: Exception) {
+            updateControls { copy(dataTransferBusy = false) }
+            throw error
+        }
+    }
+
+    fun cancelBackup() {
+        transfers.cancelBackup()
+        updateControls { copy(dataTransferBusy = false) }
+    }
+
+    fun selectBackupDocument(uri: Uri?) = updateControls { copy(pendingRestoreUri = uri?.toString()) }
+
+    fun clearBackupDocument() = updateControls { copy(pendingRestoreUri = null) }
+
+    fun completeBackup(uri: Uri?) {
+        updateControls { copy(dataTransferBusy = true) }
+        viewModelScope.launch {
+            try {
+                when (transfers.finishBackup(uri)) {
+                    BackupWriteResult.Success -> show(UiMessage.BACKUP_CREATED)
+                    BackupWriteResult.Cancelled -> Unit
+                    is BackupWriteResult.Failed -> show(UiMessage.DATA_IO_ERROR)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                show(UiMessage.DATA_IO_ERROR)
+            } finally {
+                updateControls { copy(dataTransferBusy = false) }
+            }
+        }
+    }
+
+    suspend fun inspectBackup(uri: Uri?, password: CharArray): BackupInspection {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            val result = container.backupFiles.inspectBackup(uri, password)
+            if (result is BackupInspection.Ready) transfers.retainPreview(result.preview)
+            return result
+        } finally {
+            updateControls { copy(dataTransferBusy = false) }
+        }
+    }
+
+    fun currentBackupPreview(): BackupPreview? = transfers.currentPreview()
+
+    fun discardBackupPreview() = transfers.discardPreview()
+
+    suspend fun restoreBackup(
+        preview: dev.opentimemanager.app.backup.BackupPreview,
+        mode: RestoreMode,
+    ): RestoreResult {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            transfers.consumePreview(preview)
+            val result = container.restore.restore(preview, mode)
+            if (result is RestoreResult.Applied) {
+                val snapshot = container.trackingCoordinator.observeSnapshot().first()
+                SystemSurfaceUpdater(application).refresh(snapshot)
+            }
+            return result
+        } finally {
+            updateControls { copy(dataTransferBusy = false) }
+        }
+    }
+
+    override fun onCleared() {
+        transfers.clear()
+        super.onCleared()
+    }
 
     private fun execute(command: TrackingCommand) = launchWrite {
         when (val result = container.trackingCoordinator.execute(command)) {

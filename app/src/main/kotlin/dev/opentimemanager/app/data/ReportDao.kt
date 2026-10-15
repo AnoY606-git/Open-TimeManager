@@ -5,6 +5,7 @@ import dev.opentimemanager.core.model.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.time.ZoneId
 
 sealed interface EditResult {
     data object Applied : EditResult
@@ -38,7 +39,17 @@ abstract class ReportDao {
         val revision = try { current?.revision?.let { Math.incrementExact(it) } ?: 0 } catch (_: ArithmeticException) { return EditResult.InvalidInput }
         val project = project(projectId) ?: return EditResult.MissingProject
         if (project.archivedAtUtcMillis != null && current?.projectId != projectId) return EditResult.ArchivedProject
-        saveEntry(EntryEntity(id, projectId, note, start, end, EntrySource.MANUAL.name, revision, true))
+        saveEntry(EntryEntity(
+            id,
+            projectId,
+            note,
+            start,
+            end,
+            EntrySource.MANUAL.name,
+            revision,
+            true,
+            zoneId = current?.zoneId ?: ZoneId.systemDefault().id,
+        ))
         deleteSegments(id)
         insertSegment(SegmentEntity(UUID.randomUUID().toString(), id, start, null, null, duration, end))
         return EditResult.Applied

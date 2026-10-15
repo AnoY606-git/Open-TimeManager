@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import dev.opentimemanager.app.ui.defaultCustomReport
 import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
 import dev.opentimemanager.app.ui.validateCustomReportInput
+import dev.opentimemanager.app.ui.UtcBounds
 import dev.opentimemanager.core.report.ReportAggregator
 import java.time.ZoneId
 
@@ -44,6 +46,9 @@ fun ReportsScreen(
     state: AppUiState,
     onSelectPeriod: (ReportPeriod) -> Unit,
     modifier: Modifier = Modifier,
+    onBeginCsvExport: ((UtcBounds) -> String)? = null,
+    onCancelCsvExport: (() -> Unit)? = null,
+    onLaunchCsvDocument: (String) -> Unit = {},
 ) {
     val snapshot = state.snapshot ?: return
     val context = LocalContext.current
@@ -55,6 +60,8 @@ fun ReportsScreen(
         ReportAggregator.aggregate(snapshot.segments, bounds.fromUtcMillis, bounds.toUtcMillis, zone)
     }
     var showCustom by remember { mutableStateOf(false) }
+    var exportLaunchFailed by remember { mutableStateOf(false) }
+    val exportBusy = state.controls.dataTransferBusy
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -94,6 +101,32 @@ fun ReportsScreen(
                 Column(Modifier.padding(20.dp)) {
                     Text(stringResource(R.string.report_total), style = MaterialTheme.typography.labelLarge)
                     Text(formatDuration(totals.totalMillis, false), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        exportLaunchFailed = false
+                        try {
+                            val name = onBeginCsvExport?.invoke(bounds) ?: return@Button
+                            onLaunchCsvDocument(name)
+                        } catch (_: Exception) {
+                            onCancelCsvExport?.invoke()
+                            exportLaunchFailed = true
+                        }
+                    },
+                    enabled = !exportBusy && onBeginCsvExport != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (exportBusy) stringResource(R.string.export_in_progress) else stringResource(R.string.export_csv))
+                }
+                if (exportLaunchFailed) {
+                    Text(
+                        stringResource(R.string.csv_export_error),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }

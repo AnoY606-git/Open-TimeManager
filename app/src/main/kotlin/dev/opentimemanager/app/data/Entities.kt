@@ -10,6 +10,7 @@ data class EntryEntity(
     @PrimaryKey val id: String, val projectId: String, val note: String,
     val startedAtUtcMillis: Long, val endedAtUtcMillis: Long?, val source: String,
     val revision: Long, val completed: Boolean, val currentSlot: Int? = null,
+    @ColumnInfo(defaultValue = "'UTC'") val zoneId: String = "UTC",
 )
 
 @Entity(tableName = "segments", foreignKeys = [ForeignKey(entity = EntryEntity::class, parentColumns = ["id"], childColumns = ["entryId"], onDelete = ForeignKey.RESTRICT)], indices = [Index("entryId"), Index(value = ["startedAtUtcMillis", "endUtcMillis"]), Index(value = ["openSlot"], unique = true)])

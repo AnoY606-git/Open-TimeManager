@@ -4,6 +4,7 @@ import androidx.room.*
 import dev.opentimemanager.app.tracking.*
 import dev.opentimemanager.core.model.*
 import dev.opentimemanager.core.time.TrackingReducer
+import java.time.ZoneId
 import java.util.UUID
 
 @Dao
@@ -161,7 +162,18 @@ abstract class TrackingDao {
         } else if (session.entryId != null) {
             val id = requireNotNull(session.entryId).value
             if (current == null || current.id != id) {
-                insertEntry(EntryEntity(id, session.projectId!!.value, "", session.openSegment!!.startedAt.wallUtcMillis, null, EntrySource.TIMER.name, session.revision, false, 1))
+                insertEntry(EntryEntity(
+                    id,
+                    session.projectId!!.value,
+                    "",
+                    session.openSegment!!.startedAt.wallUtcMillis,
+                    null,
+                    EntrySource.TIMER.name,
+                    session.revision,
+                    false,
+                    1,
+                    ZoneId.systemDefault().id,
+                ))
             } else updateEntry(current.copy(revision = session.revision))
             for (segment in session.segments) saveClosed(segment)
             session.openSegment?.let { open ->
