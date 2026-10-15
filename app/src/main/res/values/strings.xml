@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Open TimeManager</string>
+    <string name="tracking_channel">Work time tracking</string>
+    <string name="tracking_ready">Ready</string>
+    <string name="tracking_running">Tracking</string>
+    <string name="tracking_paused">Paused</string>
+    <string name="tracking_review">Review required</string>
+    <string name="tracking_start">Start</string>
+    <string name="tracking_pause">Pause</string>
+    <string name="tracking_resume">Resume</string>
+    <string name="tracking_stop">Stop</string>
+    <string name="tracking_open">Open app</string>
+    <string name="tracking_widget_description">Work timer with start, pause, resume and stop controls</string>
+</resources>
