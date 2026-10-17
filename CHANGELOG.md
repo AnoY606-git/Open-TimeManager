@@ -8,6 +8,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 - Redesigned all four screens with an ink-and-violet visual system, complete light/dark palettes, clearer typography, original line icons, and floating adaptive navigation.
 - Reworked timer controls, project selection, history entries, report distributions, and grouped preferences without changing the tracking or backup formats.
+- Refreshed the bilingual repository landing pages with a local brand mark, emulator galleries, dark-theme previews, and expandable technical documentation.
 
 ### Security and privacy
 

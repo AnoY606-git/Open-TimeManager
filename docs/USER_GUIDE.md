@@ -10,6 +10,10 @@
 2. Нажмите «Начать». Можно добавить заметку, поставить учёт на паузу, продолжить или завершить.
 3. Переключение проекта закрывает прежний отрезок и начинает новый без двух одновременных таймеров.
 
+Текущая сессия и основные кнопки находятся в графитовом блоке; ниже — цель
+на день, выбор проектов и заметка активной записи. Нижняя панель переключает
+четыре раздела, на широком экране она превращается в боковую.
+
 При большом числе активных проектов список загружается порциями; нажмите «Загрузить ещё проекты», чтобы показать следующую порцию. Мобильный лимит — 20 000 проектов.
 
 После перезагрузки или потери надёжной опоры времени запись переходит в «Нужна проверка». Оставьте только подтверждённое время или укажите проверенное время окончания.
@@ -19,6 +23,10 @@
 - В «Истории» есть поиск, ручная запись, редактирование, необратимое удаление и постраничная загрузка старых записей. В форме ручной записи поиск проектов и кнопка «Загрузить ещё проекты» доступны независимо от списка «Таймера»; при редактировании текущий проект остаётся доступен, даже если он уже архивирован.
 - «Отчёты» агрегируют подтверждённые отрезки за неделю, месяц или свой период длительностью не более 10 лет. CSV сохраняется через системный выбор файла и не подходит для восстановления.
 - Разрешение уведомлений включает foreground-уведомление. Плитка Quick Settings и виджет отражают состояние. При отказе учёт внутри приложения остаётся доступен. Privacy mode скрывает имя проекта на системных поверхностях.
+
+Кнопка «+» в истории добавляет запись, карандаш открывает редактирование,
+корзина — подтверждение удаления. Цветная полоса отчёта показывает доли
+проектов в подтверждённом времени выбранного периода, а не прогноз.
 
 ### Копия и восстановление
 
@@ -43,6 +51,10 @@
 2. Tap Start. You can add a note, pause, resume, or stop the session.
 3. Switching projects closes the previous segment and starts a new one without allowing two concurrent timers.
 
+The ink session card contains the timer and primary controls, followed by the
+daily goal, projects, and active note. The four-destination bottom navigation
+becomes a side rail on wider screens.
+
 When many active projects exist, the selector loads them in bounded pages; tap Load more projects to show the next page. The mobile limit is 20,000 projects.
 
 After a reboot or an untrustworthy monotonic-time reference, the entry changes to Needs review. Keep only confirmed time or provide an end time you can verify.
@@ -52,6 +64,10 @@ After a reboot or an untrustworthy monotonic-time reference, the entry changes t
 - History supports search, manual entries, editing, deletion, and bounded loading of older records. The manual-entry form has its own searchable, paged project picker; an entry's current project remains available while editing even if it has since been archived. Deletion has no Undo.
 - Reports aggregate confirmed segments for a week, month, or a custom range of at most 10 years. CSV is saved through the system document picker and is for analysis, not restore.
 - Notification permission enables foreground controls. The Quick Settings tile and widget reflect timer state. If notifications are denied, in-app tracking remains available. Privacy mode hides project names on system surfaces.
+
+The + button in History adds an entry; the pencil edits it and the trash icon
+opens deletion confirmation. The report's colored distribution shows actual
+project shares of confirmed time for the selected period, not a forecast.
 
 ### Backup and restore
 

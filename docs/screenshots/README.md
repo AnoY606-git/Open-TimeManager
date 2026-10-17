@@ -7,7 +7,11 @@
 
 - Android 16, API 36, AOSP x86_64, профиль Pixel 5.
 - Экран 1080 × 2340; PNG уменьшены до 720 × 1560 без дорисовки интерфейса.
+- На эмуляторе включена жестовая системная навигация Android.
 - Светлая тема, dynamic color отключён, стандартный масштаб текста.
+- Обновлённый интерфейс: графитовые блоки таймера и итогов, фиолетовый акцент,
+  отдельные иконки вкладок и компактные карточки. Файлы `*-timer-dark.png`
+  дополнительно показывают тёмную тему.
 - Отдельные наборы `ru-*.png` и `en-*.png` для выбранного языка приложения.
 - System UI demo mode фиксирует часы строки состояния на 12:34 и скрывает
   уведомления; он не подменяет часы или результаты таймера внутри приложения.
@@ -26,9 +30,8 @@
 | Design Lab | 11:30 | 30 | Icon sketches |
 
 Три ручные записи дают 3 часа: 2 часа `Design Lab` и 1 час `Learning`.
-Кадр таймера дополнительно показывает настоящую короткую сессию на паузе.
-Снимки сделаны последовательно: короткие демонстрационные таймерные сессии
-могут немного увеличить итог в более поздних кадрах.
+Кадр таймера дополнительно показывает настоящую короткую сессию на паузе;
+её подтверждённые секунды также учитываются в итогах.
 
 Для обновления снимков используйте отдельный эмулятор и синтетические данные.
 Сначала выполните инструментальные тесты на чистой тестовой установке, затем
@@ -42,6 +45,8 @@ These are real ADB captures from the Android 16 / API 36 emulator using a Pixel 
 profile, not a physical phone or interface mockups. Images were resized from
 1080 × 2340 to 720 × 1560. The app uses the light theme with dynamic colors off.
 Russian and English sets use the app's actual language selection.
+The redesigned interface uses ink timer/summary surfaces, violet accents, distinct
+navigation icons, and compact cards. `*-timer-dark.png` also shows the dark theme.
 
 Only synthetic projects and records listed above are used. System UI demo mode
 stabilizes the status-bar clock and hides notifications without changing the
