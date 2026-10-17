@@ -4,6 +4,12 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-17
+
+### Release
+
+- First stable release; see the [bilingual release notes](docs/releases/1.0.0.md) for features and upgrade precautions. Exact signing, checksums, source revision, and verification results accompany the release assets.
+
 ### Design
 
 - Redesigned all four screens with an ink-and-violet visual system, complete light/dark palettes, clearer typography, original line icons, and floating adaptive navigation.

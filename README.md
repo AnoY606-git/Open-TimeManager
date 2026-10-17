@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/AnoY606-git/Open-TimeManager/releases/latest">Скачать</a> ·
   <a href="#интерфейс">Интерфейс</a> ·
   <a href="#возможности">Возможности</a> ·
   <a href="#установка">Установка</a> ·
@@ -67,18 +68,24 @@
 
 ## Установка
 
-> [!NOTE]
-> Сейчас это **0.1.0-preview**, не релиз Google Play. Сборки для тестирования
-> находятся в артефактах успешного [GitHub Actions](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml).
-> Debug APK подписан тестовым ключом; release APK необходимо подписывать отдельно.
+> [!TIP]
+> **Open TimeManager 1.0.0** — [релиз и подписанный APK](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.0.0).
+> Установочный файл: `Open-TimeManager-1.0.0.apk`. Рядом опубликованы SHA-256,
+> данные сертификата и соответствующие исходники. Это не релиз Google Play.
 
-Выберите успешный запуск CI и скачайте артефакт
+Для разработки также доступны артефакты успешного [GitHub Actions](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml):
 `open-timemanager-debug-and-unsigned-release-apks`. Для просмотра и скачивания
-нужен доступ к репозиторию.
+артефактов Actions может потребоваться вход в GitHub. В отличие от официального
+APK релиза, debug-файл подписан тестовым ключом, а release-файл из CI не подписан.
 
 **Требования:** Android 12+ (API 31). Целевая версия — Android 16 / API 36.
 Сначала проверьте сборку на эмуляторе. При обновлении установленного приложения
 сохраняйте данные; несовпадение подписи — не повод удалять приложение без копии.
+
+При переходе с preview/debug сначала остановите таймер и создайте отдельную
+проверенную зашифрованную копию. Подпись 1.0 отличается от debug-подписи;
+несовместимую установку нельзя обновить поверх с сохранением данных одним APK.
+[Порядок выпуска и ограничения обновления →](docs/releases/1.0.0.md)
 
 <details>
 <summary><strong>Сборка из исходников · Linux и Windows</strong></summary>
@@ -191,12 +198,12 @@ scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs
 | [Скриншоты](docs/screenshots/README.md) | [Формат backup и CSV](docs/BACKUP_FORMAT.md) | [Подготовка релиза](docs/RELEASING.md) |
 | [История изменений](CHANGELOG.md) | [Сообщить об уязвимости](SECURITY.md) | [Проверки и APK](https://github.com/AnoY606-git/Open-TimeManager/actions) |
 
-## Ограничения preview-версии
+## Ограничения
 
 - нет синхронизации, командных функций, веб-кабинета, геолокации, payroll и импорта CSV;
 - перенос выполняется вручную через Storage Access Framework;
 - системные кнопки зависят от разрешения уведомлений и ограничений прошивки/OEM; сам учёт внутри приложения остаётся доступен;
-- release APK не подписан и не опубликован в Google Play;
+- подписанный APK распространяется через GitHub Releases, не через Google Play;
 - независимый криптографический аудит, проверка Google Play policy и подтверждённые метрики батареи/производительности не проводились;
 - инструментальные тесты подготовлены для API 31 и 36 и запускаются в CI; локальная сборка сама по себе не доказывает прохождение на физическом устройстве.
 

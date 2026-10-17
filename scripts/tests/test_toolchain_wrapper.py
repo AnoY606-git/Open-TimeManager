@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = ROOT / "scripts/with-toolchain.sh"
 README_ADB_COMMANDS = (
     "scripts/with-toolchain.sh adb devices",
-    "scripts/with-toolchain.sh adb install -r app/build/outputs/apk/debug/app-debug.apk",
+    "scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk",
 )
 
 
@@ -25,6 +25,7 @@ class ToolchainWrapperDocumentationTest(unittest.TestCase):
                     self.assertIn(command, contents)
                 self.assertNotIn("\nadb devices\n", contents)
                 self.assertNotIn("\nadb install -r ", contents)
+                self.assertNotIn("\nadb -s SERIAL install -r ", contents)
 
 
 @unittest.skipUnless(os.name == "posix", "with-toolchain.sh requires a POSIX environment")

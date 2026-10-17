@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes currently target the latest `0.1.x` preview source on the default branch. No older stable release line exists yet.
+Security fixes target the latest `1.0.x` release and the default branch. Earlier `0.1.x` preview builds are no longer supported; create and verify a separate backup before migrating from a differently signed preview installation.
 
 ## Report privately
 
@@ -12,4 +12,4 @@ Use GitHub's **Private vulnerability reporting** for this repository: open **Sec
 
 Include the affected revision/version, Android/API level, impact, minimal reproduction, and whether the report involves a crafted `.otmbackup`, stale system action, local storage, or document provider. Use synthetic data only.
 
-Acknowledgement uses the same private channel. Triage and disclosure timing depend on severity and fix availability; this preview project promises no fixed response SLA. The security model and limitations are documented in [docs/SECURITY.md](docs/SECURITY.md).
+Acknowledgement uses the same private channel. Triage and disclosure timing depend on severity and fix availability; this community-maintained project promises no fixed response SLA. The security model and limitations are documented in [docs/SECURITY.md](docs/SECURITY.md).

@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/AnoY606-git/Open-TimeManager/releases/latest">Download</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#install">Install</a> ·
@@ -71,9 +72,13 @@ Elapsed work uses the device's monotonic clock; calendar boundaries use UTC and 
 
 ## Install
 
-**Current version: `0.1.0-preview`.** Requires **Android 12+ (API 31)**; targets Android 16 / API 36. This is a preview, not a Google Play release.
+**Current version: `1.0.0`.** Requires **Android 12+ (API 31)**; targets Android 16 / API 36.
 
-Open [GitHub Actions → CI](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml), select a successful run, and look under **Artifacts** for `open-timemanager-debug-and-unsigned-release-apks`. Repository access is required to view runs and download artifacts. See the [CI workflow](.github/workflows/ci.yml) for the build steps.
+Download **`Open-TimeManager-1.0.0.apk`** from the [1.0.0 release](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.0.0). It is accompanied by final checksums, public signing-certificate details, and corresponding source. This is not a Google Play release.
+
+Before migrating from a preview/debug installation, stop the timer and create and verify a separate encrypted backup. The production key differs from the debug key; do not uninstall or clear app data to force an update. See the [release notes and migration precautions](docs/releases/1.0.0.md).
+
+For development builds, open [GitHub Actions → CI](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml), select a successful run, and look under **Artifacts** for `open-timemanager-debug-and-unsigned-release-apks`. Downloading Actions artifacts may require signing in. These debug/unsigned files are not the signed official release. See the [CI workflow](.github/workflows/ci.yml) for the build steps.
 
 | Artifact | Purpose |
 | --- | --- |
@@ -195,12 +200,12 @@ Replace imports within one Room database transaction. The transaction rolls back
 
 See the [user guide](docs/USER_GUIDE.md), [security model](docs/SECURITY.md), and [backup/CSV format](docs/BACKUP_FORMAT.md).
 
-## Preview limitations
+## Limitations
 
 - No synchronization, teams, web dashboard, location, payroll, or CSV import.
 - Transfer is manual through Android's Storage Access Framework.
 - System controls depend on notification permission and OEM restrictions; in-app tracking remains available.
-- The release APK is unsigned and not published on Google Play.
+- Signed releases are distributed through GitHub Releases, not Google Play.
 - No independent cryptographic audit, Google Play policy approval, or verified battery/performance benchmark is claimed.
 - Instrumentation tests are prepared for API 31 and 36 and run in CI; a local build alone is not evidence of physical-device execution.
 
