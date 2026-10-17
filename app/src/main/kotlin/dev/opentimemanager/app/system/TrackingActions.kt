@@ -15,7 +15,8 @@ object TrackingActions {
     const val STOP = "dev.opentimemanager.action.STOP"
 
     fun pendingIntent(context: Context, command: TrackingCommand): PendingIntent {
-        val intent = Intent(context, TrackingCommandReceiver::class.java)
+        // Команды пользователя не должны ждать фоновые broadcast, например BOOT_COMPLETED.
+        val intent = Intent(context, TrackingCommandReceiver::class.java).addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         val revision: Long
         val id: String
         when (command) {

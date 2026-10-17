@@ -76,6 +76,28 @@ class SystemSurfaceContractTest {
         assertNull(TrackingActions.decode(Intent(context, TrackingCommandReceiver::class.java).setAction(TrackingActions.STOP)))
     }
 
+    @Test fun allTimerActionsUseForegroundBroadcastsWithImmutableExplicitIdentity() {
+        val target = CommandTarget(EntryId("entry"), 1, CommandId("timer-command"))
+        val commands = listOf(
+            TrackingCommand.Start(CommandId("timer-start"), ProjectId("project"), 0),
+            TrackingCommand.Pause(target),
+            TrackingCommand.Resume(target),
+            TrackingCommand.Stop(target),
+        )
+        val pendingIntents = commands.map { command ->
+            val pending = TrackingActions.pendingIntent(context, command)
+            val intent = shadowOf(pending).savedIntent
+            assertTrue(pending.isBroadcast)
+            assertTrue(pending.isImmutable)
+            assertEquals(ComponentName(context, TrackingCommandReceiver::class.java), intent.component)
+            assertEquals(Intent.FLAG_RECEIVER_FOREGROUND, intent.flags and Intent.FLAG_RECEIVER_FOREGROUND)
+            assertEquals(command, TrackingActions.decode(intent))
+            assertEquals(pending, TrackingActions.pendingIntent(context, command))
+            pending
+        }
+        assertEquals(commands.size, pendingIntents.toSet().size)
+    }
+
     @Test fun notificationUsesSilentChannelChronometerAndPrivatePublicVersion() {
         val builder = TrackingNotification(context)
         val running = builder.build(fixture(), privacyMode = true, nowWallMillis = 20_000, nowElapsedMillis = 4000)

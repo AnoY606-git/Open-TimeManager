@@ -34,6 +34,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 ### Fixed
 
+- User-initiated system timer commands use the foreground broadcast queue instead of waiting behind unrelated background broadcasts.
 - Restore failures are visible inside the verified preview. Hide preserves it in process memory for retry after stopping a timer; explicit Cancel restore discards it. Busy restores reject duplicate actions and accidental dismissal.
 - Merge can retry after initially detected conflicts are resolved locally; live conflicts are rechecked transactionally rather than permanently disabling the action from an old preview.
 - CSV export reads one consistent, disk-spooled snapshot before opening a potentially slow document provider, without retaining the entire history in memory or holding the database transaction during external I/O.
