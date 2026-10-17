@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -140,8 +141,8 @@ fun ReportsScreen(
         contentAlignment = Alignment.TopCenter,
     ) {
         LazyColumn(
-            Modifier.widthIn(max = 880.dp).fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+            Modifier.widthIn(max = 880.dp).fillMaxSize().testTag("reports_list"),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item("heading") {
@@ -162,6 +163,30 @@ fun ReportsScreen(
             }
             if (slices.isNotEmpty() && totals.totalMillis > 0L) {
                 item("distribution") { ReportDistribution(slices) }
+            }
+            if (slices.isEmpty() || totals.totalMillis <= 0L) {
+                item("empty") {
+                    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
+                        AccentIcon(AppGlyph.Reports)
+                        Text(
+                            stringResource(R.string.no_report_data),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            stringResource(R.string.insights_reports_empty_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                item("breakdown-heading") {
+                    SectionHeading(stringResource(R.string.project_breakdown), modifier = Modifier.padding(top = 4.dp))
+                }
+                items(slices, key = { it.projectId }) { slice ->
+                    ReportProjectCard(slice)
+                }
             }
             item("export") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -199,30 +224,6 @@ fun ReportsScreen(
                     if (exportLaunchFailed) {
                         Text(stringResource(R.string.csv_export_error), color = MaterialTheme.colorScheme.error)
                     }
-                }
-            }
-            if (slices.isEmpty() || totals.totalMillis <= 0L) {
-                item("empty") {
-                    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
-                        AccentIcon(AppGlyph.Reports)
-                        Text(
-                            stringResource(R.string.no_report_data),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            stringResource(R.string.insights_reports_empty_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            } else {
-                item("breakdown-heading") {
-                    SectionHeading(stringResource(R.string.project_breakdown), modifier = Modifier.padding(top = 4.dp))
-                }
-                items(slices, key = { it.projectId }) { slice ->
-                    ReportProjectCard(slice)
                 }
             }
         }
@@ -353,15 +354,10 @@ private fun ReportDurationTotal(totalMillis: Long) {
 @Composable
 private fun ReportDistribution(slices: List<ReportProjectSlice>) {
     val description = stringResource(R.string.insights_distribution_description)
-    AppCard(Modifier.fillMaxWidth()) {
+    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         SectionHeading(stringResource(R.string.insights_distribution_heading))
-        Text(
-            stringResource(R.string.insights_distribution_caption),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Canvas(
-            Modifier.fillMaxWidth().height(18.dp).clip(RoundedCornerShape(9.dp))
+            Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .semantics { contentDescription = description },
         ) {
@@ -383,38 +379,48 @@ private fun ReportProjectCard(slice: ReportProjectSlice) {
     val durationDescription = stringResource(R.string.insights_duration_description, duration)
     val shareDescription = stringResource(R.string.insights_report_share_value, slice.percentage)
     AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(11.dp).background(slice.color, CircleShape)
-                    .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), CircleShape),
-            )
-            Text(slice.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        }
-        FlowRow(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                duration,
-                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { contentDescription = durationDescription },
-            )
-            Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val nameWidth = if (LocalDensity.current.fontScale >= 1.5f || maxWidth < 280.dp) maxWidth else maxWidth * 0.7f
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.widthIn(max = nameWidth),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(11.dp).background(slice.color, CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), CircleShape),
+                    )
+                    Text(slice.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                }
                 Text(
-                    slice.percentage,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp).semantics { contentDescription = shareDescription },
+                    duration,
+                    style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                    modifier = Modifier.semantics { contentDescription = durationDescription },
                 )
             }
         }
-        Box(
-            Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
-                .background(slice.color.copy(alpha = 0.12f)).clearAndSetSemantics {},
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.fillMaxWidth(slice.fraction).height(6.dp).background(slice.color))
+            Box(
+                Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp))
+                    .background(slice.color.copy(alpha = 0.12f)).clearAndSetSemantics {},
+            ) {
+                Box(Modifier.fillMaxWidth(slice.fraction).height(6.dp).background(slice.color))
+            }
+            Text(
+                slice.percentage,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { contentDescription = shareDescription },
+            )
         }
     }
 }

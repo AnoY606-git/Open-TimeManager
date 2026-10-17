@@ -137,7 +137,7 @@ fun TimerScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = if (compactTimer) 14.dp else 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = if (compactTimer) 14.dp else 24.dp),
         verticalArrangement = Arrangement.spacedBy(if (compactTimer) 12.dp else 16.dp),
     ) {
         item {
@@ -606,7 +606,7 @@ fun TodayPane(state: AppUiState, modifier: Modifier = Modifier) {
     val projection = state.todayProjection
     LazyColumn(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { ScreenHeading(stringResource(R.string.today_heading)) }

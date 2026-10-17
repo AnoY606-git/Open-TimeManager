@@ -10,9 +10,12 @@ import androidx.compose.ui.test.Locales
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.then
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.intl.LocaleList
@@ -84,6 +87,7 @@ class VisualRedesignTest {
         show(AppDestination.REPORTS, dark = true, fontScale = 1.3f)
         compose.onNodeWithText("0:00").assertIsDisplayed()
         compose.onNodeWithText("No confirmed time in this period").assertExists()
+        compose.onNodeWithTag("reports_list").performScrollToNode(hasText("Export this period as CSV"))
         compose.onNodeWithText("Export this period as CSV").assertIsNotEnabled()
     }
 

@@ -12,10 +12,12 @@ import androidx.test.core.app.ApplicationProvider
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Intent
+import android.os.Looper
 import android.view.View
 import android.widget.TextView
 import android.widget.Chronometer
 import androidx.room.Room
+import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.*
 import dev.opentimemanager.app.tracking.*
@@ -24,12 +26,28 @@ import dev.opentimemanager.core.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.robolectric.Shadows.shadowOf
+import org.junit.After
 import java.util.Locale
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class SystemSurfaceContractTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
+
+    @After fun cleanupApplication() = runBlocking {
+        val app = context as? OpenTimeManagerApplication ?: return@runBlocking
+        val job = app.applicationScope.coroutineContext[Job]!!
+        app.applicationScope.cancel()
+        // Complete cancellation before Robolectric resets Main: startup can hold the
+        // process settings boundary across Room IO and must release it on Main.
+        withTimeout(5_000) {
+            while (!job.isCompleted) {
+                shadowOf(Looper.getMainLooper()).idle()
+                yield()
+            }
+        }
+        app.container.database.close()
+    }
 
     private fun fixture(state: TrackingState = TrackingState.RUNNING, revision: Long = 1): SystemSnapshot {
         val segment = Segment(SegmentId("closed"), EntryId("entry"), ProjectId("project"), 1000, 5000)
