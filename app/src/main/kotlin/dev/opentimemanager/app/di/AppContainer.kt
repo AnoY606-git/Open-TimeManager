@@ -2,6 +2,7 @@ package dev.opentimemanager.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.*
 import dev.opentimemanager.app.backup.BackupFileCoordinator
@@ -13,7 +14,6 @@ import dev.opentimemanager.app.tracking.*
 import dev.opentimemanager.app.settings.UserSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import java.time.ZoneId
 
 /** Владелец process-scoped БД; зависимости передаются потребителям явно. */
 class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatchers.IO, clock: ClockSnapshotSource = AndroidClockSnapshotSource(context)) {
@@ -31,13 +31,14 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
         database,
         ResolverDocumentStore(context),
         dispatcher,
-        ZoneId.systemDefault(),
-        projectDisplayName = { id, storedName ->
-            if (id == ProjectRepository.DEFAULT_PROJECT_ID.value) {
-                context.applicationContext.getString(R.string.default_project_name)
-            } else {
-                storedName
+        cacheDirectory = context.applicationContext.cacheDir,
+        projectDisplayNameForSnapshot = {
+            // Resolve once per export, not once per process (or once per archived row).
+            val defaultName = ContextCompat.getString(context.applicationContext, R.string.default_project_name)
+            val displayName: (String, String) -> String = { id, storedName ->
+                if (id == ProjectRepository.DEFAULT_PROJECT_ID.value) defaultName else storedName
             }
+            displayName
         },
     )
     val backupFiles = BackupFileCoordinator(

@@ -22,10 +22,16 @@
 
 ### Копия и восстановление
 
-1. В «Настройках» задайте пароль и сохраните `.otmbackup`. Пароль не хранится и не восстанавливается.
+1. В «Настройках» задайте уникальную парольную фразу не короче 12 Unicode-символов и сохраните `.otmbackup`. Для новых копий действует предел 1024 байта пароля в UTF-8. Пароль не хранится и не восстанавливается; старые копии с короткими паролями по-прежнему можно открыть.
 2. Импорт сначала показывает проверенные счётчики и конфликты UUID. Предпросмотр остаётся доступен для повторной попытки, если восстановление заблокировано таймером или лимитом, обнаружило конфликт либо было отменено.
 3. «Объединить» сохраняет локальные записи и добавляет новые, но останавливается при разном содержимом одного UUID или при превышении итогового лимита 20 000 проектов. Зарезервированный проект «Без проекта» считается одной canonical-сущностью на разных установках; его локальная дата первичного создания не вызывает конфликт.
 4. «Заменить» без Undo заменяет локальную историю после успешного подтверждения. Сначала сделайте и проверьте отдельную копию. Сбой или отмена внутри транзакции откатывает все таблицы Room, но успешная замена не отменяется.
+
+Причина отказа видна прямо в предпросмотре. «Скрыть» позволяет перейти на вкладку
+«Таймер», завершить или проверить запись и вернуться к повтору без нового выбора
+файла и пароля; в настройках есть «Продолжить восстановление». Предпросмотр
+хранится только в памяти процесса. «Отменить восстановление» явно удаляет его;
+после завершения процесса Android файл тоже потребуется открыть заново.
 
 Приложение отклоняет backup больше 4 МиБ и восстановление при живом или требующем проверки таймере. БД не меняется до полной проверки файла и предпросмотра. Текущий формат сохраняет цвета, даты создания/архивации проектов, тему, dynamic color, privacy mode и дневную цель. Язык следует системной локали Android и не переносится. Перед созданием файла ожидающий журнал настроек завершается, а Room и DataStore считываются как одно полное последовательное состояние; ошибка строгого чтения отменяет экспорт до создания файла. Настройки хранятся отдельно от Room, поэтому между ними нет ложного обещания общей атомарной транзакции: после подтверждённой Room-транзакции небольшой журнал автоматически доводит настройки до согласованного состояния, в том числе после перезапуска. Более позднее ручное изменение настройки упорядочивается после ожидающего восстановления и получает собственное повторяемое намерение, поэтому старый journal не перезапишет выбор пользователя при следующем запуске. Если системное privacy-зеркало не сохранило уже записанную в DataStore настройку, приложение покажет предупреждение и повторит синхронизацию по журналу.
 
@@ -49,9 +55,15 @@ After a reboot or an untrustworthy monotonic-time reference, the entry changes t
 
 ### Backup and restore
 
-1. In Settings, choose a password and save an `.otmbackup` file. The password is neither stored nor recoverable.
+1. In Settings, choose a unique passphrase of at least 12 Unicode code points and save an `.otmbackup` file. New backups accept passwords up to 1024 UTF-8 bytes. The password is neither stored nor recoverable; existing backups with short passwords remain readable.
 2. Restore first displays verified counts and UUID conflicts. Its preview remains available to retry if restore is timer- or limit-blocked, conflicts, is cancelled, or rolls back.
 3. Merge preserves local records and adds new records, but stops on different content with the same UUID or if the resulting database would exceed 20,000 projects. The reserved No project row is one canonical entity across installations; its local initial-creation timestamp does not cause a conflict.
 4. Replace permanently replaces local history after successful confirmation. Create and verify a separate backup first. Failure or cancellation within the transaction rolls back every Room table; a successful replacement has no Undo.
+
+Failures are shown inside the preview. Hide for now lets you visit Timer, stop
+or resolve its entry, and return to retry without selecting the file or entering
+its password again; Settings also offers Resume restore preview. The preview
+lives only in process memory. Cancel restore explicitly discards it; if Android
+ends the process, open the file again.
 
 The Android app rejects backups larger than 4 MiB and blocks restore while a timer is live or awaiting review. The database is unchanged until cryptographic integrity, schema, resource limits, and preview are all validated. The current format preserves project colors and creation/archive timestamps plus theme, dynamic color, privacy mode, and the daily goal. Language continues to follow the Android locale and is not transferred. Before export, the settings journal is converged and Room plus DataStore are read as one complete serialized state; a strict settings-read failure aborts before a file is created. Settings live outside Room, so there is no false cross-store atomicity claim: after the committed Room transaction, a small durable journal automatically converges settings, including after process restart. A later manual settings change is ordered after any pending restore and receives its own retryable intent, so an older journal cannot overwrite the user's newer choice on a later launch. If DataStore committed a setting but its Android privacy mirror failed, the app reports the saved state with a warning and retries from the journal.

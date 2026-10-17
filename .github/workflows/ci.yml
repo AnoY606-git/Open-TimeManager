@@ -15,19 +15,22 @@ concurrency:
 jobs:
   verify:
     name: Policy, tests, lint, and APKs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Check out source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Set up JDK 17
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '17.0.20+101' # Adoptium SemVer for JDK 17.0.20.1+1
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
+          cmdline-tools-version: '13114758'
           packages: ''
       - name: Install pinned Android packages
         run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
@@ -53,7 +56,14 @@ jobs:
       - name: Recheck policy and generated Room schemas
         run: |
           python3 scripts/check_repository.py
+          python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
           git diff --exit-code -- app/schemas
+      - name: Record APK checksums and source commit
+        working-directory: app/build/outputs/apk
+        run: |
+          mkdir -p metadata
+          sha256sum debug/app-debug.apk release/app-release-unsigned.apk > metadata/SHA256SUMS
+          git rev-parse HEAD > metadata/SOURCE_COMMIT.txt
       - name: Upload debug and unsigned release APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -61,12 +71,26 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/metadata/SHA256SUMS
+            app/build/outputs/apk/metadata/SOURCE_COMMIT.txt
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload unit test and lint reports
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: open-timemanager-unit-tests-and-lint-reports
+          path: |
+            core/build/reports/
+            core/build/test-results/
+            app/build/reports/
+            app/build/test-results/
+          if-no-files-found: ignore
           retention-days: 14
 
   instrumentation:
     name: Instrumentation API ${{ matrix.api-level }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -75,14 +99,17 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Set up JDK 17
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '17.0.20+101' # Adoptium SemVer for JDK 17.0.20.1+1
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
+          cmdline-tools-version: '13114758'
           packages: ''
       - name: Free disk space for emulator
         run: |
@@ -110,3 +137,13 @@ jobs:
           disk-size: 2G
           disable-animations: true
           script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - name: Upload instrumentation reports
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: open-timemanager-instrumentation-api-${{ matrix.api-level }}-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+          retention-days: 14

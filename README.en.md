@@ -34,6 +34,26 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
 
 The bootstrap verifies SHA-256 checksums for the pinned JDK 17, Android command-line tools, and Gradle Wrapper. You may instead provide JDK 17 and Android SDK API 36 with platform-tools, then set `JAVA_HOME` and either `ANDROID_HOME` or `ANDROID_SDK_ROOT`. The wrapper below recognizes those standard variables; explicit `OTM_JAVA_HOME`/`OTM_ANDROID_HOME` values take precedence.
 
+The wrapper preserves standard `ANDROID_USER_HOME` and `GRADLE_USER_HOME` unless their `OTM_*` overrides are set. Bootstrap does not overwrite an existing `local.properties`: if it defines `sdk.dir`, keep that path consistent with the selected SDK so Gradle and wrapped `adb` use the same tools.
+
+### Windows / PowerShell
+
+The Linux bootstrap and `scripts/with-toolchain.sh` are not native Windows tools. Install JDK 17 and [Android command-line tools](https://developer.android.com/studio#command-tools), extracting the latter into `Android\Sdk\cmdline-tools\latest`. Keep the project in an ASCII-only path such as `C:\src\Open-TimeManager`: Android Gradle Plugin checks the project path on Windows.
+
+```powershell
+$env:JAVA_HOME = 'C:\path\to\jdk-17'
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\cmdline-tools\latest\bin;$env:Path"
+sdkmanager --sdk_root="$env:ANDROID_HOME" --licenses
+sdkmanager --sdk_root="$env:ANDROID_HOME" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+.\gradlew.bat --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+Replace `JAVA_HOME` with the actual JDK 17 directory. Gradle Wrapper downloads project dependencies; a separate Gradle installation is unnecessary. Python checks require Python 3.11+: `python -m unittest discover -s scripts/tests -p 'test_*.py' -v` and `python scripts/check_repository.py`. Only Bash execution tests are skipped on native Windows; use Linux or WSL to execute those tests.
+
+### Device check and installation
+
 Installation requires an Android 12+ emulator or a connected device with USB debugging enabled; accept the RSA authorization prompt on the device. After building, confirm that the wrapped `adb devices` command reports it in the `device` state, then install the exact debug artifact:
 
 ```bash
@@ -41,7 +61,16 @@ scripts/with-toolchain.sh adb devices
 scripts/with-toolchain.sh adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+On Windows, after configuring the environment above, use:
+
+```powershell
+& "$env:ANDROID_HOME\platform-tools\adb.exe" devices -l
+& "$env:ANDROID_HOME\platform-tools\adb.exe" install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
 The debug APK is signed with an automatically generated Android debug/test key and is for testing only. `app/build/outputs/apk/release/app-release-unsigned.apk` cannot be installed until its owner signs it with a release key.
+
+CI includes SHA-256 checksums and the exact source commit with its APKs. Before distributing a signed APK, follow the [release checklist](docs/RELEASING.md): signing changes the checksum, and recipients must have access to the corresponding source code.
 
 To run the repository's complete static and JVM build gate:
 
@@ -51,11 +80,14 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
   :core:test :app:testDebugUnitTest :app:testReleaseUnitTest \
   :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease \
   :app:compileDebugAndroidTestKotlin
+scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
 ```
+
+Release APK validation uses `aapt2` from Build Tools 36.0.0 via `ANDROID_HOME`/`ANDROID_SDK_ROOT` or explicit `--aapt2`. It checks the merged package/SDK/permissions, absence of debug/test-only flags, ZIP integrity, and exact offline legal assets; a signature is not required. The wrapper selects the build's SDK; with your own configured SDK you can invoke Python directly.
 
 ## Data and security
 
-Backup files use the compatible `OTMB1` container: PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated header. The current payload schema v2 preserves project colors and timestamps plus theme, dynamic color, privacy mode, and the daily goal; v1 remains readable with safe defaults. Language continues to follow the system locale and is not transferred. The Android app enforces a **4 MiB** operational limit and at most 20,000 projects, entries, and segments. The underlying format and core codec have hard ceilings of 50 MiB and 200,000 elements. Those larger ceilings define the format; they are not the limits accepted by the Android UI.
+Backup files use the compatible `OTMB1` container: PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated header. The current payload schema v2 preserves project colors and timestamps plus theme, dynamic color, privacy mode, and the daily goal; v1 remains readable with safe defaults. Language is selected in the app or inherited from the system; Android/AppCompat manages that choice, and it is not transferred in backups. The Android app enforces a **4 MiB** operational limit and at most 20,000 projects, entries, and segments. The underlying format and core codec have hard ceilings of 50 MiB and 200,000 elements. Those larger ceilings define the format; they are not the limits accepted by the Android UI.
 
 A forgotten backup password cannot be recovered. A wrong password and damaged ciphertext deliberately produce the same outcome. A successful Replace permanently removes current local projects and history before importing within one database transaction—create and verify a separate backup first. The Room transaction rolls back on failure or cancellation, but cannot undo a successfully confirmed replacement. DataStore preferences converge after the Room commit through a durable journal; the app does not claim one atomic transaction across both stores. Restore is blocked while a timer is running, paused, or awaiting review.
 

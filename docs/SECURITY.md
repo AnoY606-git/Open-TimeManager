@@ -9,6 +9,8 @@ Open TimeManager — offline-приложение без `INTERNET`, аккау�
 - `OTMB1`: PBKDF2-HMAC-SHA256, 310 000 итераций, salt 16 байт, nonce 12 байт, AES-256-GCM, tag 128 бит;
 - весь 42-байтовый заголовок аутентифицируется как AAD;
 - неверный пароль и повреждённый ciphertext дают одинаковый результат без provider-specific подробностей;
+- новые копии требуют минимум 12 Unicode code points и максимум 1024 байта пароля в UTF-8; используйте уникальную длинную парольную фразу, поскольку один лишь минимум длины не гарантирует стойкость к перебору;
+- этот минимум применяется только при создании: старые копии с короткими паролями открываются без изменения пароля и без Unicode-нормализации;
 - UI очищает пароль и собственные временные буферы, но JVM/provider могут создавать внутренние копии;
 - Android-путь ограничен 4 МиБ и 20 000 объектов каждого вида; hard limit core-формата — 50 МиБ и 200 000;
 - импорт не запускает активную сессию автоматически;
@@ -19,14 +21,21 @@ Open TimeManager — offline-приложение без `INTERNET`, аккау�
 
 ## Риски операций
 
-Replace — разрушительная операция: успешное подтверждение заменяет всю локальную историю без Undo. Suspendable SQLite-транзакция и контрольные точки между ограниченными пакетами исключают частичную замену при сбое или отмене, но не отменяют уже подтверждённое действие. Предпросмотр расходуется только после результата Applied и остаётся пригоден для повторной попытки после блокировки, конфликта, отмены или отката. Сначала создайте и проверьте отдельную копию. Restore блокируется при RUNNING, PAUSED и NEEDS_REVIEW.
+Replace — разрушительная операция: успешное подтверждение заменяет всю локальную историю без Undo. Suspendable SQLite-транзакция и контрольные точки между ограниченными пакетами исключают частичную замену при сбое или отмене, но не отменяют уже подтверждённое действие. Предпросмотр автоматически расходуется после результата Applied и остаётся пригоден для повторной попытки после блокировки, конфликта, отмены или отката. «Скрыть» сохраняет его только в памяти текущего процесса; явная команда «Отменить восстановление» уничтожает payload. Предпросмотр и пароль не записываются в saved state или на диск. Сначала создайте и проверьте отдельную копию. Restore блокируется при RUNNING, PAUSED и NEEDS_REVIEW.
 
 Настройки находятся в DataStore, а предметные данные — в Room, поэтому общая атомарная транзакция между ними не заявляется. Одна Room-транзакция записывает восстановленные данные и намерение применить настройки; после коммита устойчивый журнал доводит DataStore до согласованного состояния и повторяется при следующем запуске, если процесс был прерван. Ручные изменения переносимых настроек проходят через ту же последовательную границу: сначала завершается более старое намерение, затем новая полная настройка сама сохраняется как повторяемое намерение до успешной записи DataStore и privacy mirror. Запись privacy mirror выполняется не на main thread; если она не удалась уже после DataStore commit, целевой journal не удаляется, а UI отличает сохранённую настройку от ошибки действия. Частичное изменение использует строгое чтение текущего состояния: временная ошибка чтения завершает действие ошибкой до новых записей и не подменяет остальные настройки значениями по умолчанию. Экспорт доводит ожидающий journal, строго читает DataStore и удерживает ту же границу до завершения Room snapshot; при ошибке файл не создаётся.
 
 CSV не зашифрован и может содержать имена проектов и заметки. Формульные префиксы обезвреживаются, однако CSV остаётся чувствительным документом и не подходит для полного восстановления.
 
+Экспорт CSV формирует согласованный потоковый снимок в приватном cache-файле
+приложения до открытия внешнего document provider. Временный файл очищается при
+закрытии, включая ошибку и отмену; внешнее медленное I/O не удерживает
+Room-транзакцию и не блокирует изменение записей на всё время сохранения.
+
 ## English summary
 
 The app requests no network, location, broad-storage, advertising, or analytics capability. Local data relies on Android internal-storage and device-encryption guarantees; portable backups receive separate app-level encryption. Automatic platform backup is disabled. System actions carry entry identity, revision, and slot generation to reject stale replays, including after revision exhaustion.
+
+New backup creation requires 12 or more Unicode code points and at most 1024 UTF-8 bytes. Use a unique, strong passphrase: length alone is not an entropy guarantee. Existing backups remain readable with their original passwords, including short passwords; passwords are not normalized.
 
 Replace is intentionally destructive after confirmation. Room transaction rollback prevents partial replacement on failure or cancellation, not regret after success. Portable preferences converge through a durable post-commit journal; one atomic transaction across Room and DataStore is not claimed. Backup export first converges that journal, then strictly reads DataStore and holds the shared ordering boundary through the Room snapshot; failure aborts before a file is created. A failed post-commit privacy mirror remains retryable and is shown as a warning rather than a false action failure. Keep a separately verified backup. CSV is plaintext and sensitive. No independent security or cryptographic audit is claimed. Report vulnerabilities privately through [SECURITY.md](../SECURITY.md).

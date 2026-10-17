@@ -5,11 +5,26 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.service.quicksettings.TileService
+import androidx.core.app.LocaleManagerCompat
+import androidx.core.os.LocaleListCompat
 import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.app.widget.TrackingWidgetProvider
 import dev.opentimemanager.core.model.TrackingState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 enum class NotificationAvailability { AVAILABLE, BLOCKED }
+
+/** AppCompat's API 31/32 auto-storage is asynchronous; Core's non-Activity API reads that store. */
+internal suspend fun awaitStoredApplicationLocales(context: Context, expected: LocaleListCompat) {
+    withContext(Dispatchers.IO) {
+        withTimeout(5_000) {
+            while (LocaleManagerCompat.getApplicationLocales(context) != expected) delay(25)
+        }
+    }
+}
 
 /** Обновляет проекции только по фактам из Room; не владеет состоянием таймера. */
 class SystemSurfaceUpdater(private val context: Context) {

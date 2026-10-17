@@ -81,7 +81,10 @@
     <string name="create_backup">Create backup</string>
     <string name="restore_backup">Inspect and restore backup</string>
     <string name="backup_password">Backup password</string>
-    <string name="backup_password_hint">Required to encrypt or inspect this file. It is cleared after the operation.</string>
+    <string name="backup_password_hint">Enter the exact password used for this file, including spaces. Short passwords from older backups still work. It is cleared after the operation.</string>
+    <string name="backup_creation_password_hint">Choose a long, unpredictable password: at least 12 Unicode characters (code points), at most 1024 UTF-8 bytes. Spaces and character forms are preserved. Keep the password separately from the backup.</string>
+    <string name="backup_creation_password_too_short">Use at least 12 Unicode characters (code points) for a new backup. Choose a long, unpredictable password.</string>
+    <string name="backup_creation_password_too_long">The password exceeds 1024 UTF-8 bytes. Shorten it to create a backup; the entered password has not been truncated.</string>
     <string name="backup_password_content_description">Password for the encrypted backup</string>
     <string name="continue_action">Continue</string>
     <string name="data_operation_in_progress">Working… Keep Open TimeManager open.</string>
@@ -95,6 +98,15 @@
     <string name="backup_conflict_error">Restore stopped because matching UUIDs contain different data. Review the preview or use Replace.</string>
     <string name="backup_active_timer_error">Stop or resolve the current timer before restoring a backup.</string>
     <string name="backup_preview_title">Verified backup preview</string>
+    <string name="backup_preview_resume">Resume restore preview</string>
+    <string name="backup_preview_hide">Hide for now</string>
+    <string name="backup_preview_discard">Cancel restore</string>
+    <string name="backup_preview_hidden_hint">A verified preview is kept in memory. Resume it without opening the file or entering its password again.</string>
+    <string name="backup_preview_retention_hint">Hide keeps this preview only in app memory, not on disk. Return to Settings to retry without the password. Cancel restore discards it. If Android ends the app process, open the file again.</string>
+    <string name="backup_preview_active_timer_error">Restore is blocked by the current timer. Hide this preview, stop or resolve the timer on Timer, then return and retry.</string>
+    <string name="backup_preview_conflict_error">Merge is blocked because matching UUIDs contain different data. Review Replace, or hide this preview and resolve the conflict before retrying.</string>
+    <string name="backup_preview_limit_error">Restore would exceed the supported record limits. Hide this preview to adjust local data, or review Replace, then retry.</string>
+    <string name="backup_preview_io_error">Local data could not be read or saved. This preview is kept: retry, or hide it and return later.</string>
     <string name="backup_preview_counts">Projects: %1$d · Entries: %2$d · Confirmed segments: %3$d</string>
     <string name="backup_preview_conflicts">%1$d UUID conflicts with local data</string>
     <string name="backup_preview_conflict_item">%1$s · %2$s</string>

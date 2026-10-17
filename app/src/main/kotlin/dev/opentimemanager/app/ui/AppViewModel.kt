@@ -2,6 +2,7 @@ package dev.opentimemanager.app.ui
 
 import android.app.Application
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -505,12 +506,13 @@ class AppViewModel(
         val request = controls.value.manualProjectPicker
         manualProjectPickerJob = viewModelScope.launch {
             try {
+                val localizedContext = ContextCompat.getContextForLanguage(application)
                 val page = container.projects.manualEntryPage(
                     query = request.query,
                     cursor = if (append) request.nextCursor else null,
                     pinnedProjectId = request.pinnedProjectId,
                     pageSize = MANUAL_PROJECT_PAGE_SIZE,
-                    displayName = { application.projectName(it) },
+                    displayName = { localizedContext.projectName(it) },
                 )
                 updateControls {
                     val current = manualProjectPicker

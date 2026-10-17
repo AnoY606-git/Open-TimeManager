@@ -1,6 +1,13 @@
 # Локальные инструкции и внутренние материалы разработки
 AGENTS.md
-docs/superpowers/
+RESEARCH.md
+.agents/
+.codex/
+.claude/
+**/docs/internal/
+**/docs/superpowers/
+plans/
+specs/
 .superpowers/
 
 # Локальная Android/Gradle toolchain
@@ -17,7 +24,20 @@ __pycache__/
 *.iml
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.signing
 keystore.properties
+signing.properties
+.env
+.env.*
+
+# Личные резервные копии и собранные Android-пакеты вне build/
+*.otmbackup
+*.apk
+*.aab
 
 # OS/editor noise
 .DS_Store

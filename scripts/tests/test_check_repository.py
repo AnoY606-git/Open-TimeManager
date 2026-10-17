@@ -5,8 +5,46 @@ import unittest
 from pathlib import Path
 
 
-CHECKER = Path(__file__).resolve().parents[1] / "check_repository.py"
+ROOT = Path(__file__).resolve().parents[2]
+CHECKER = ROOT / "scripts/check_repository.py"
 PINNED_SHA = "0123456789abcdef0123456789abcdef01234567"
+# Reuse the shipped text rather than keeping another full license copy in tests.
+RUNTIME_NOTICES = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+ENVIRONMENT_FILES = (".env", ".env.local", ".env.example", "config/.env", "module/config/.env.release")
+PRIVATE_CONFIG_FILES = (
+    "signing.properties", "module/config/signing.properties",
+    "AGENTS.md", "RESEARCH.md", "module/docs/AGENTS.md", "module/docs/RESEARCH.md",
+)
+SIGNING_FILES = tuple(
+    f"{prefix}release{suffix}"
+    for prefix in ("", "module/keys/")
+    for suffix in (".pem", ".key", ".jks", ".keystore", ".p12", ".pfx")
+)
+INTERNAL_FILES = tuple(
+    f"{prefix}{directory}/private.txt"
+    for prefix in ("", "nested/module/")
+    for directory in (
+        ".agents", ".codex", ".claude", ".signing", ".superpowers",
+        ".gradle", ".kotlin", ".toolchain", "plans", "specs",
+        "docs/internal", "docs/plans", "docs/specs", "docs/superpowers",
+    )
+) + ("docs/internal/BUILDING.md", "module/docs/internal/ARCHITECTURE.md", "module/docs/specs/TESTING.md")
+USER_BACKUP_FILES = ("work.otmbackup", "module/exports/work.otmbackup")
+ANDROID_OUTPUT_FILES = ("app.apk", "app.aab", "distribution/nested/app.apk", "module/releases/app.aab")
+PUBLIC_FILES = {
+    **{
+        f"{prefix}{name}": b"# Public developer documentation\n"
+        for prefix in ("", "docs/", "module/docs/")
+        for name in ("BUILDING.md", "ARCHITECTURE.md", "TESTING.md")
+    },
+    "docs/RELEASING.md": b"# Release checklist\n",
+    "docs/internal-overview.md": b"# Public overview\n",
+    "gradle/wrapper/gradle-wrapper.jar": b"PK\x03\x04\x00\xff",
+    "app/src/main/res/drawable/public-icon.png": b"\x89PNG\r\n\x1a\n\x00\xff",
+    "core/src/test/resources/backup/golden-vector.bin": b"\x00\xff\x01\x02",
+    "core/src/test/resources/backup/public-key.json": b'{"synthetic": true}\n',
+    "app/src/main/kotlin/example/internal/Model.kt": b"package example.internal\n",
+}
 
 
 class RepositoryPolicyTest(unittest.TestCase):
@@ -54,6 +92,71 @@ class RepositoryPolicyTest(unittest.TestCase):
                 self.assert_rejected(expected)
                 self._git("reset", "--", path)
                 candidate.unlink()
+
+    def test_rejects_environment_files_at_any_depth(self) -> None:
+        self.assert_paths_rejected(ENVIRONMENT_FILES, "environment credentials")
+
+    def test_rejects_private_configuration_and_instruction_files_at_any_depth(self) -> None:
+        self.assert_paths_rejected(PRIVATE_CONFIG_FILES, "private/development file")
+
+    def test_rejects_signing_material_at_any_depth(self) -> None:
+        self.assert_paths_rejected(SIGNING_FILES + ("module/keys/release.PEM",), "signing material")
+
+    def test_rejects_internal_directories_at_any_depth(self) -> None:
+        self.assert_paths_rejected(INTERNAL_FILES, "private/toolchain directory")
+
+    def test_rejects_user_backups_at_any_depth(self) -> None:
+        self.assert_paths_rejected(USER_BACKUP_FILES + ("exports/work.OTMBACKUP",), "private backup")
+
+    def test_rejects_android_artifacts_outside_build_directories(self) -> None:
+        self.assert_paths_rejected(ANDROID_OUTPUT_FILES + ("exports/app.APK",), "Android build artifact")
+
+    def test_accepts_public_developer_docs_and_binary_assets(self) -> None:
+        for relative, contents in PUBLIC_FILES.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+            self._git("add", "-f", relative)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_gitignore_covers_private_paths_at_any_depth(self) -> None:
+        paths = (
+            ENVIRONMENT_FILES + PRIVATE_CONFIG_FILES + SIGNING_FILES + INTERNAL_FILES
+            + USER_BACKUP_FILES + ANDROID_OUTPUT_FILES
+        )
+        result = self.check_ignored_paths(paths)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(set(result.stdout.decode("utf-8").split("\0")) - {""}, set(paths))
+
+    def test_gitignore_keeps_public_developer_docs_and_assets_visible(self) -> None:
+        result = self.check_ignored_paths(tuple(PUBLIC_FILES))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, b"")
+
+    def test_gitattributes_enforces_lf_bat_crlf_and_binary_jar(self) -> None:
+        (self.root / ".gitattributes").write_bytes((ROOT / ".gitattributes").read_bytes())
+        paths = (
+            "README.md", "scripts/example.py", "gradlew", "gradlew.bat", "tools/install.bat",
+            "gradle/wrapper/gradle-wrapper.jar",
+        )
+        result = subprocess.run(
+            ["git", "-C", str(self.root), "check-attr", "-z", "--stdin", "text", "eol"],
+            input=("\0".join(paths) + "\0").encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+        fields = result.stdout.decode("utf-8").split("\0")[:-1]
+        attributes = {
+            (name, attribute): value
+            for name, attribute, value in zip(fields[0::3], fields[1::3], fields[2::3])
+        }
+        for relative in paths[:3]:
+            self.assertEqual(attributes[(relative, "eol")], "lf")
+        for relative in paths[3:5]:
+            self.assertEqual(attributes[(relative, "eol")], "crlf")
+        self.assertEqual(attributes[("README.md", "text")], "auto")
+        self.assertEqual(attributes[("gradle/wrapper/gradle-wrapper.jar", "text")], "unset")
 
     def test_rejects_missing_russian_translation_key(self) -> None:
         (self.root / "app/src/main/res/values-ru/strings.xml").write_text(
@@ -293,6 +396,43 @@ class RepositoryPolicyTest(unittest.TestCase):
         self._git("add", "THIRD_PARTY_NOTICES.md", packaged.relative_to(self.root).as_posix())
         self.assert_rejected("runtime legal notice")
 
+    def test_rejects_url_only_apache_notice_even_when_assets_match(self) -> None:
+        self.write_runtime_notices(
+            "# Third-party notices\nAndroidX\nOkio\nGuava ListenableFuture\nJSpecify\n"
+            "datastore-preferences-external-protobuf\nBSD-3-Clause\n"
+            "Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0.txt\n"
+        )
+        self.assert_rejected("complete Apache-2.0 license text")
+
+    def test_rejects_apache_text_missing_a_required_section_or_appendix(self) -> None:
+        for marker in (
+            "Version 2.0, January 2004",
+            "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+            "1. Definitions.", "2. Grant of Copyright License.", "3. Grant of Patent License.",
+            "4. Redistribution.", "5. Submission of Contributions.", "6. Trademarks.",
+            "7. Disclaimer of Warranty.", "8. Limitation of Liability.",
+            "9. Accepting Warranty or Additional Liability.", "END OF TERMS AND CONDITIONS",
+            "APPENDIX: How to apply the Apache License to your work.",
+            "limitations under the License.",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, RUNTIME_NOTICES)
+                self.write_runtime_notices(RUNTIME_NOTICES.replace(marker, "", 1))
+                self.assert_rejected("complete Apache-2.0 license text")
+
+    def test_accepts_complete_apache_text_with_wrapped_section_markers(self) -> None:
+        self.write_runtime_notices(RUNTIME_NOTICES.replace(
+            "2. Grant of Copyright License.", "2.\tGrant of\nCopyright License.",
+        ))
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_stale_packaged_runtime_notices_with_complete_apache_text(self) -> None:
+        path = self.root / "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md"
+        path.write_text(RUNTIME_NOTICES + "\n", encoding="utf-8")
+        self._git("add", path.relative_to(self.root).as_posix())
+        self.assert_rejected("does not match")
+
     def test_rejects_untracked_room_schema(self) -> None:
         path = self.root / "app/schemas/example/2.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -326,19 +466,11 @@ class RepositoryPolicyTest(unittest.TestCase):
             "NOTICE": "Open TimeManager\n",
             "AUTHORS.md": "# Authors\n",
             "ATTRIBUTION.md": "# Attribution\n",
-            "THIRD_PARTY_NOTICES.md": (
-                "# Third-party notices\n"
-                "AndroidX\nOkio\nGuava ListenableFuture\nJSpecify\n"
-                "datastore-preferences-external-protobuf\nBSD-3-Clause\n"
-            ),
+            "THIRD_PARTY_NOTICES.md": RUNTIME_NOTICES,
             "app/src/main/assets/legal/LICENSE.txt": "GNU GENERAL PUBLIC LICENSE Version 3\n",
             "app/src/main/assets/legal/NOTICE.txt": "Open TimeManager\n",
             "app/src/main/assets/legal/ATTRIBUTION.md": "# Attribution\n",
-            "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md": (
-                "# Third-party notices\n"
-                "AndroidX\nOkio\nGuava ListenableFuture\nJSpecify\n"
-                "datastore-preferences-external-protobuf\nBSD-3-Clause\n"
-            ),
+            "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md": RUNTIME_NOTICES,
             "app/schemas/example/1.json": "{}\n",
         }
         for relative, contents in files.items():
@@ -347,6 +479,37 @@ class RepositoryPolicyTest(unittest.TestCase):
             path.write_text(contents, encoding="utf-8")
         self._git("init", "-q")
         self._git("add", ".")
+
+    def assert_paths_rejected(self, paths: tuple[str, ...], expected: str) -> None:
+        for relative in paths:
+            with self.subTest(path=relative):
+                path = self.root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("synthetic private fixture\n", encoding="utf-8")
+                self._git("add", "-f", relative)
+                try:
+                    result = self.run_checker()
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(expected, result.stdout)
+                    self.assertIn(relative, result.stdout)
+                finally:
+                    self._git("reset", "--", relative)
+                    path.unlink()
+
+    def check_ignored_paths(self, paths: tuple[str, ...]) -> subprocess.CompletedProcess[bytes]:
+        (self.root / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
+        return subprocess.run(
+            ["git", "-C", str(self.root), "-c", f"core.excludesFile={self.root / '.git/info/exclude'}",
+             "check-ignore", "--no-index", "--stdin", "-z"],
+            input=("\0".join(paths) + "\0").encode("utf-8"),
+            capture_output=True,
+            check=False,
+        )
+
+    def write_runtime_notices(self, contents: str) -> None:
+        for relative in ("THIRD_PARTY_NOTICES.md", "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md"):
+            (self.root / relative).write_text(contents, encoding="utf-8")
+            self._git("add", relative)
 
     def _git(self, *args: str) -> None:
         subprocess.run(

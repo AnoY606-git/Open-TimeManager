@@ -16,6 +16,18 @@ README_ADB_COMMANDS = (
 )
 
 
+class ToolchainWrapperDocumentationTest(unittest.TestCase):
+    def test_both_readmes_use_the_toolchain_wrapper_for_adb(self) -> None:
+        for relative in ("README.md", "README.en.md"):
+            with self.subTest(readme=relative):
+                contents = (ROOT / relative).read_text(encoding="utf-8")
+                for command in README_ADB_COMMANDS:
+                    self.assertIn(command, contents)
+                self.assertNotIn("\nadb devices\n", contents)
+                self.assertNotIn("\nadb install -r ", contents)
+
+
+@unittest.skipUnless(os.name == "posix", "with-toolchain.sh requires a POSIX environment")
 class ToolchainWrapperTest(unittest.TestCase):
     def test_complete_bootstrap_toolchain_precedes_standard_environment(self) -> None:
         with self.isolated_wrapper() as (root, temporary):
@@ -85,14 +97,46 @@ class ToolchainWrapperTest(unittest.TestCase):
             self.assertIn("OTM_JAVA_HOME", selected[2])
             self.assertIn("JAVA_HOME", selected[2])
 
-    def test_both_readmes_use_the_toolchain_wrapper_for_adb(self) -> None:
-        for relative in ("README.md", "README.en.md"):
-            with self.subTest(readme=relative):
-                contents = (ROOT / relative).read_text(encoding="utf-8")
-                for command in README_ADB_COMMANDS:
-                    self.assertIn(command, contents)
-                self.assertNotIn("\nadb devices\n", contents)
-                self.assertNotIn("\nadb install -r ", contents)
+    def test_standard_user_homes_are_preserved_without_otm_overrides(self) -> None:
+        with self.isolated_wrapper() as (root, temporary):
+            self.create_toolchain(root / ".toolchain", "jdk", "android-sdk")
+            android_user = temporary / "shared android user"
+            gradle_user = temporary / "shared gradle user"
+
+            selected = self.run_selection(
+                root,
+                temporary,
+                OTM_ANDROID_USER_HOME="",
+                OTM_GRADLE_USER_HOME="",
+                ANDROID_USER_HOME=str(android_user),
+                GRADLE_USER_HOME=str(gradle_user),
+            )
+
+            self.assertEqual(selected[4:], [str(android_user), str(gradle_user)])
+            self.assertTrue(android_user.is_dir())
+            self.assertTrue(gradle_user.is_dir())
+
+    def test_otm_user_homes_override_standard_user_homes(self) -> None:
+        with self.isolated_wrapper() as (root, temporary):
+            self.create_toolchain(root / ".toolchain", "jdk", "android-sdk")
+            selected = self.run_selection(
+                root,
+                temporary,
+                ANDROID_USER_HOME=str(temporary / "other-android-user"),
+                GRADLE_USER_HOME=str(temporary / "other-gradle-user"),
+            )
+
+            self.assertEqual(selected[4:], [str(temporary / "android-user"), str(temporary / "gradle-home")])
+
+    def test_user_homes_default_to_local_toolchain(self) -> None:
+        with self.isolated_wrapper() as (root, temporary):
+            self.create_toolchain(root / ".toolchain", "jdk", "android-sdk")
+            selected = self.run_selection(root, temporary, OTM_ANDROID_USER_HOME="", OTM_GRADLE_USER_HOME="")
+
+            self.assertEqual(
+                selected[4:],
+                [str(root / ".toolchain/android-user"), str(root / ".toolchain/gradle-home")],
+            )
 
     @staticmethod
     def create_toolchain(parent: Path, java_name: str, android_name: str) -> tuple[Path, Path]:
@@ -130,6 +174,8 @@ class ToolchainWrapperTest(unittest.TestCase):
             "JAVA_HOME",
             "ANDROID_HOME",
             "ANDROID_SDK_ROOT",
+            "ANDROID_USER_HOME",
+            "GRADLE_USER_HOME",
         ):
             environment.pop(name, None)
         environment.update(
@@ -145,7 +191,7 @@ class ToolchainWrapperTest(unittest.TestCase):
                 str(root / "scripts/with-toolchain.sh"),
                 "sh",
                 "-c",
-                'printf "%s\\n%s\\n%s\\n%s\\n" "$JAVA_HOME" "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$PATH"',
+                'printf "%s\\n" "$JAVA_HOME" "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$PATH" "$ANDROID_USER_HOME" "$GRADLE_USER_HOME"',
             ],
             cwd=root,
             env=environment,
@@ -158,7 +204,7 @@ class ToolchainWrapperTest(unittest.TestCase):
         return result.stdout.splitlines()
 
     def assert_selection(self, selected: list[str], java_home: Path, android_home: Path) -> None:
-        self.assertEqual(len(selected), 4, selected)
+        self.assertEqual(len(selected), 6, selected)
         self.assertEqual(selected[:3], [str(java_home), str(android_home), str(android_home)])
         self.assertEqual(
             selected[3].split(os.pathsep)[:2],

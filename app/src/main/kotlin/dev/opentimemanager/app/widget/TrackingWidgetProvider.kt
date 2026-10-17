@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.system.*
@@ -40,12 +41,13 @@ class TrackingWidgetProvider : AppWidgetProvider() {
             if (ids.isNotEmpty()) manager.updateAppWidget(ids, views(context, snapshot, SystemSurfaceUpdater.privacyMode(context)))
         }
         fun views(context: Context, snapshot: SystemSnapshot, privacyMode: Boolean = true, nowElapsedMillis: Long = SystemClock.elapsedRealtime()): RemoteViews {
+            val strings = ContextCompat.getContextForLanguage(context)
             val state = snapshot.session.state
-            val title = if (privacyMode) context.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(context, snapshot)
+            val title = if (privacyMode) strings.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(strings, snapshot)
             return RemoteViews(context.packageName, R.layout.tracking_widget).apply {
                 setTextViewText(R.id.widget_status, title)
-                setTextViewText(R.id.widget_primary, context.getString(TrackingNotification.primaryString(state)))
-                setTextViewText(R.id.widget_stop, context.getString(R.string.tracking_stop))
+                setTextViewText(R.id.widget_primary, strings.getString(TrackingNotification.primaryString(state)))
+                setTextViewText(R.id.widget_stop, strings.getString(R.string.tracking_stop))
                 setChronometer(R.id.widget_timer, nowElapsedMillis - TrackingNotification.elapsedMillis(snapshot, nowElapsedMillis), null, state == TrackingState.RUNNING)
                 // Host может применить RemoteViews позднее: paused показывает только подтверждённое время.
                 if (state != TrackingState.RUNNING) setTextViewText(R.id.widget_timer, android.text.format.DateUtils.formatElapsedTime(TrackingNotification.elapsedMillis(snapshot, nowElapsedMillis) / 1000))

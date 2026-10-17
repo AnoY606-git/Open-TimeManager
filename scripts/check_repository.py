@@ -39,6 +39,23 @@ REQUIRED_RUNTIME_NOTICES = {
     "datastore-preferences-external-protobuf",
     "BSD-3-Clause",
 }
+APACHE_LICENSE_MARKERS = (
+    "Apache License",
+    "Version 2.0, January 2004",
+    "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION",
+    "1. Definitions.",
+    "2. Grant of Copyright License.",
+    "3. Grant of Patent License.",
+    "4. Redistribution.",
+    "5. Submission of Contributions.",
+    "6. Trademarks.",
+    "7. Disclaimer of Warranty.",
+    "8. Limitation of Liability.",
+    "9. Accepting Warranty or Additional Liability.",
+    "END OF TERMS AND CONDITIONS",
+    "APPENDIX: How to apply the Apache License to your work.",
+    "limitations under the License.",
+)
 FORBIDDEN_PERMISSIONS = {
     "android.permission.INTERNET",
     "android.permission.ACCESS_NETWORK_STATE",
@@ -49,16 +66,19 @@ FORBIDDEN_PERMISSIONS = {
     "android.permission.QUERY_ALL_PACKAGES",
 }
 FORBIDDEN_BASENAMES = {
-    "AGENTS.md",
+    "agents.md",
     "local.properties",
     "keystore.properties",
-    "BUILDING.md",
-    "ARCHITECTURE.md",
-    "TESTING.md",
-    "RESEARCH.md",
+    "signing.properties",
+    "research.md",
 }
-FORBIDDEN_SUFFIXES = {".jks", ".keystore", ".p12", ".pfx"}
-FORBIDDEN_DIRS = {".gradle", ".kotlin", ".toolchain", ".superpowers", "docs/superpowers"}
+FORBIDDEN_SUFFIXES = {".jks", ".keystore", ".p12", ".pfx", ".pem", ".key"}
+FORBIDDEN_ANDROID_ARTIFACT_SUFFIXES = {".apk", ".aab"}
+FORBIDDEN_DIRS = {
+    ".gradle", ".kotlin", ".toolchain", ".superpowers", ".agents", ".codex", ".claude",
+    ".signing", "plans", "specs",
+}
+FORBIDDEN_DOC_DIRS = {"internal", "superpowers"}
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
@@ -91,11 +111,22 @@ def policy_path_errors(root: Path, tracked: set[str]) -> list[str]:
     errors: list[str] = []
     for relative in sorted(tracked):
         path = PurePosixPath(relative)
-        if path.name in FORBIDDEN_BASENAMES:
+        parts = tuple(part.lower() for part in path.parts)
+        name = parts[-1]
+        if name in FORBIDDEN_BASENAMES:
             errors.append(f"tracked private/development file: {relative}")
+        if name == ".env" or name.startswith(".env."):
+            errors.append(f"tracked environment credentials: {relative}")
         if path.suffix.lower() in FORBIDDEN_SUFFIXES:
             errors.append(f"tracked signing material: {relative}")
-        if any(relative == directory or relative.startswith(directory + "/") for directory in FORBIDDEN_DIRS):
+        if path.suffix.lower() == ".otmbackup":
+            errors.append(f"tracked private backup: {relative}")
+        if path.suffix.lower() in FORBIDDEN_ANDROID_ARTIFACT_SUFFIXES:
+            errors.append(f"tracked Android build artifact: {relative}")
+        if any(part in FORBIDDEN_DIRS for part in parts) or any(
+            parent == "docs" and child in FORBIDDEN_DOC_DIRS
+            for parent, child in zip(parts, parts[1:])
+        ):
             errors.append(f"tracked private/toolchain directory: {relative}")
         disk_path = root / relative
         if disk_path.is_file() and disk_path.stat().st_size > MAX_TRACKED_FILE_BYTES:
@@ -492,6 +523,9 @@ def legal_errors(root: Path, tracked: set[str]) -> list[str]:
         for component in sorted(REQUIRED_RUNTIME_NOTICES):
             if component not in contents:
                 errors.append(f"missing runtime legal notice for {component}: {notice}")
+        normalized = " ".join(contents.split())
+        if any(marker not in normalized for marker in APACHE_LICENSE_MARKERS):
+            errors.append(f"missing complete Apache-2.0 license text: {notice}")
     return errors
 
 

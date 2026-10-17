@@ -20,9 +20,18 @@ scripts/with-toolchain.sh ./gradlew --no-daemon \
   :core:test :app:testDebugUnitTest :app:testReleaseUnitTest \
   :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease \
   :app:compileDebugAndroidTestKotlin
+scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
 With your own JDK/SDK, replace `scripts/with-toolchain.sh ./gradlew` with `./gradlew`.
+
+Native Windows uses `./gradlew.bat`; the README includes PowerShell setup and
+device commands. Python repository checks require Python 3.11+ (the optional
+Linux bootstrap requires 3.12+). Bash execution tests run on POSIX hosts or WSL
+and are explicitly skipped on native Windows; documentation and policy tests
+still run there. CI pins the same JDK and command-line tools revisions as
+`gradle/toolchain.json`; update the manifest, workflow, and toolchain regression
+checks together when intentionally upgrading.
 
 Keep English fallback and Russian resources in parity. Do not add dynamic versions, mutable Action tags, broad permissions, production signing keys, generated toolchains, or private planning/research material. Room schema changes include an exported schema and non-destructive migration.
 

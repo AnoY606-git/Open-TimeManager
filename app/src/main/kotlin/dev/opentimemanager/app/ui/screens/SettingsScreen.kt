@@ -26,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.window.DialogProperties
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
@@ -49,6 +51,9 @@ import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.ui.AppUiState
 import dev.opentimemanager.app.backup.BackupFileCoordinator
 import dev.opentimemanager.app.backup.BackupConflictKind
+import dev.opentimemanager.app.backup.BackupCreationPasswordError
+import dev.opentimemanager.app.backup.BackupCreationPasswordException
+import dev.opentimemanager.app.backup.BackupCreationPasswordPolicy
 import dev.opentimemanager.app.backup.BackupInspection
 import dev.opentimemanager.app.backup.BackupPreview
 import dev.opentimemanager.app.backup.BackupReadFailure
@@ -75,6 +80,8 @@ class BackupActions(
 
 internal enum class TransferUiStatus {
     BACKUP_RESTORED,
+    BACKUP_PASSWORD_TOO_SHORT,
+    BACKUP_PASSWORD_TOO_LONG,
     INVALID_PASSWORD_OR_FILE,
     LIMIT_EXCEEDED,
     UNSUPPORTED_VERSION,
@@ -101,32 +108,65 @@ fun SettingsScreen(
     val preferences = state.preferences
     val context = LocalContext.current
     var goal by remember(preferences.dailyGoalMinutes) { mutableStateOf(preferences.dailyGoalMinutes.toString()) }
-    val busy = state.controls.dataTransferBusy
+    var restoreInFlight by remember { mutableStateOf(false) }
+    var restoreAttempt by remember { mutableIntStateOf(0) }
+    val busy = state.controls.dataTransferBusy || restoreInFlight
     var status by remember(state.controls.lastRestoreResult) {
         mutableStateOf(state.controls.lastRestoreResult?.status())
     }
     var showBackupPassword by remember { mutableStateOf(false) }
     val restoreUri = state.controls.pendingRestoreUri?.let(Uri::parse)
-    var preview by remember { mutableStateOf(backupActions?.currentPreview?.invoke()) }
+    var preview by remember {
+        mutableStateOf(backupActions?.currentPreview?.invoke()?.takeIf { it.hasPayload })
+    }
+    var showPreview by remember { mutableStateOf(preview != null) }
+    var previewStatus by remember {
+        mutableStateOf(state.controls.lastRestoreResult?.status()?.takeUnless { it == TransferUiStatus.BACKUP_RESTORED })
+    }
     var confirmReplace by remember { mutableStateOf(false) }
     var selectedLegalDocument by remember { mutableStateOf<LegalDocument?>(null) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(state.controls.lastRestoreResult) {
+        val result = state.controls.lastRestoreResult ?: return@LaunchedEffect
+        val selected = preview ?: return@LaunchedEffect
+        // A process-owned restore may finish after the previous Settings composition was disposed.
+        if (result is RestoreResult.Applied) {
+            if (!selected.hasPayload) {
+                preview = null
+                showPreview = false
+                previewStatus = null
+                confirmReplace = false
+            }
+        } else {
+            previewStatus = result.status()
+        }
+    }
     fun restore(mode: RestoreMode) {
+        if (busy || restoreInFlight) return
         val selected = preview ?: return
         val actions = backupActions ?: return
         confirmReplace = false
+        restoreInFlight = true
+        restoreAttempt++
+        status = null
+        previewStatus = null
         scope.launch {
             try {
-                status = when (actions.restore(selected, mode)) {
-                    is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
-                    is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
-                    is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
-                    is RestoreResult.LimitExceeded -> TransferUiStatus.LIMIT_EXCEEDED
-                }.also { if (it == TransferUiStatus.BACKUP_RESTORED) preview = null }
+                val result = actions.restore(selected, mode)
+                status = result.status()
+                if (result is RestoreResult.Applied) {
+                    preview = null
+                    showPreview = false
+                } else {
+                    previewStatus = result.status()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 status = TransferUiStatus.IO_ERROR
+                previewStatus = TransferUiStatus.IO_ERROR
+            } finally {
+                restoreInFlight = false
             }
         }
     }
@@ -134,7 +174,7 @@ fun SettingsScreen(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }
     LazyColumn(
-        modifier.fillMaxSize().padding(horizontal = 20.dp),
+        modifier.fillMaxSize().padding(horizontal = 20.dp).testTag("settings_list"),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
@@ -233,6 +273,14 @@ fun SettingsScreen(
                         enabled = !busy && backupActions != null,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.restore_backup)) }
+                    if (preview != null && !showPreview) {
+                        Text(stringResource(R.string.backup_preview_hidden_hint))
+                        OutlinedButton(
+                            onClick = { if (!busy) showPreview = true },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth().testTag("backup_preview_resume"),
+                        ) { Text(stringResource(R.string.backup_preview_resume)) }
+                    }
                     if (busy) Text(stringResource(R.string.data_operation_in_progress))
                     status?.let { value ->
                         Text(
@@ -242,6 +290,7 @@ fun SettingsScreen(
                             } else {
                                 MaterialTheme.colorScheme.error
                             },
+                            modifier = Modifier.testTag("backup_transfer_status"),
                         )
                     }
                 }
@@ -274,6 +323,7 @@ fun SettingsScreen(
 
     if (showBackupPassword) PasswordDialog(
         title = stringResource(R.string.create_backup),
+        creatingBackup = true,
         onDismiss = { showBackupPassword = false },
         onSubmit = { password ->
             showBackupPassword = false
@@ -298,6 +348,7 @@ fun SettingsScreen(
     )
     if (restoreUri != null) PasswordDialog(
         title = stringResource(R.string.restore_backup),
+        creatingBackup = false,
         onDismiss = { backupActions?.clearSelectedDocument?.invoke() },
         onSubmit = { password ->
             val uri = restoreUri
@@ -310,7 +361,11 @@ fun SettingsScreen(
                     try {
                         when (val inspection = actions.inspect(uri, ownedPassword)) {
                             BackupInspection.Cancelled -> Unit
-                            is BackupInspection.Ready -> preview = inspection.preview
+                            is BackupInspection.Ready -> {
+                                preview = inspection.preview
+                                previewStatus = null
+                                showPreview = true
+                            }
                             is BackupInspection.Failed -> status = inspection.reason.status()
                         }
                     } catch (cancelled: CancellationException) {
@@ -322,28 +377,51 @@ fun SettingsScreen(
             }
         },
     )
-    preview?.let { selected ->
+    preview?.takeIf { showPreview }?.let { selected ->
         BackupPreviewDialog(
             preview = selected,
-            onDismiss = {
-                backupActions?.discardPreview?.invoke()
-                preview = null
+            status = previewStatus,
+            attempt = restoreAttempt,
+            busy = busy,
+            onHide = {
+                if (!busy && !restoreInFlight) {
+                    showPreview = false
+                    confirmReplace = false
+                }
+            },
+            onDiscard = {
+                if (!busy && !restoreInFlight) {
+                    backupActions?.discardPreview?.invoke() ?: selected.discard()
+                    preview = null
+                    showPreview = false
+                    previewStatus = null
+                    confirmReplace = false
+                    status = null
+                }
             },
             onMerge = { restore(RestoreMode.MERGE) },
-            onReplace = { confirmReplace = true },
+            onReplace = { if (!busy && !restoreInFlight) confirmReplace = true },
         )
     }
     if (confirmReplace) AlertDialog(
-        onDismissRequest = { confirmReplace = false },
+        onDismissRequest = { if (!busy) confirmReplace = false },
+        properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
+        modifier = Modifier.testTag("backup_replace_confirmation"),
         title = { Text(stringResource(R.string.replace_backup_title)) },
         text = { Text(stringResource(R.string.replace_backup_warning)) },
         confirmButton = {
-            Button(onClick = { restore(RestoreMode.REPLACE) }) {
+            Button(
+                onClick = { restore(RestoreMode.REPLACE) },
+                enabled = !busy,
+                modifier = Modifier.testTag("backup_replace_confirm"),
+            ) {
                 Text(stringResource(R.string.restore_replace))
             }
         },
         dismissButton = {
-            TextButton(onClick = { confirmReplace = false }) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = { if (!busy) confirmReplace = false }, enabled = !busy) {
+                Text(stringResource(R.string.cancel))
+            }
         },
     )
     selectedLegalDocument?.let { document ->
@@ -387,11 +465,18 @@ private fun LegalDocumentDialog(
 @Composable
 private fun PasswordDialog(
     title: String,
+    creatingBackup: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (CharArray) -> Unit,
 ) {
     var password by remember { mutableStateOf("") }
+    val input = backupPasswordInputState(password, creatingBackup)
     val passwordDescription = stringResource(R.string.backup_password_content_description)
+    val supportingResource = input.error?.status()?.resource() ?: if (creatingBackup) {
+        R.string.backup_creation_password_hint
+    } else {
+        R.string.backup_password_hint
+    }
     val dismiss = {
         password = ""
         onDismiss()
@@ -404,42 +489,86 @@ private fun PasswordDialog(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text(stringResource(R.string.backup_password)) },
-                supportingText = { Text(stringResource(R.string.backup_password_hint)) },
+                supportingText = { Text(stringResource(supportingResource)) },
+                isError = input.error != null,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = passwordDescription },
+                modifier = Modifier.fillMaxWidth().testTag("backup_password_input")
+                    .semantics { contentDescription = passwordDescription },
             )
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val secret = password.toCharArray()
-                    password = ""
-                    onSubmit(secret)
+                    if (input.canSubmit) {
+                        val secret = password.toCharArray()
+                        password = ""
+                        onSubmit(secret)
+                    }
                 },
-                enabled = password.isNotEmpty(),
+                enabled = input.canSubmit,
+                modifier = Modifier.testTag("backup_password_continue"),
             ) { Text(stringResource(R.string.continue_action)) }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
+internal data class BackupPasswordInputState(
+    val canSubmit: Boolean,
+    val error: BackupCreationPasswordError?,
+)
+
+internal fun backupPasswordInputState(
+    password: CharSequence,
+    creatingBackup: Boolean,
+): BackupPasswordInputState {
+    val error = if (creatingBackup) BackupCreationPasswordPolicy.validate(password) else null
+    return BackupPasswordInputState(
+        canSubmit = password.isNotEmpty() && error == null,
+        error = error?.takeIf { password.isNotEmpty() },
+    )
+}
+
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun BackupPreviewDialog(
     preview: BackupPreview,
-    onDismiss: () -> Unit,
+    status: TransferUiStatus?,
+    attempt: Int,
+    busy: Boolean,
+    onHide: () -> Unit,
+    onDiscard: () -> Unit,
     onMerge: () -> Unit,
     onReplace: () -> Unit,
 ) {
+    val scroll = rememberScrollState()
+    val failureResource = status?.previewFailureResource()
+    // Identical fast failures must scroll into view even if their intervening busy state was never drawn.
+    LaunchedEffect(failureResource, attempt) {
+        if (failureResource != null) scroll.scrollTo(0)
+    }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onHide() },
+        properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
+        modifier = Modifier.testTag("backup_preview_dialog"),
         title = { Text(stringResource(R.string.backup_preview_title)) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier.verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                failureResource?.let { resource ->
+                    Text(
+                        stringResource(resource),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("backup_preview_failure"),
+                    )
+                }
+                if (busy) {
+                    Text(stringResource(R.string.data_operation_in_progress), modifier = Modifier.testTag("backup_preview_busy"))
+                }
                 Text(stringResource(
                     R.string.backup_preview_counts,
                     preview.counts.projects,
@@ -483,17 +612,48 @@ private fun BackupPreviewDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    stringResource(R.string.backup_preview_retention_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("backup_preview_retention_hint"),
+                )
             }
         },
         confirmButton = {
-            Button(onClick = onMerge, enabled = preview.conflicts.isEmpty()) {
-                Text(stringResource(R.string.restore_merge))
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onReplace) { Text(stringResource(R.string.restore_replace)) }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Button(
+                        onClick = onMerge,
+                        enabled = !busy && preview.conflicts.isEmpty(),
+                        modifier = Modifier.testTag("backup_preview_merge"),
+                    ) { Text(stringResource(R.string.restore_merge)) }
+                    OutlinedButton(
+                        onClick = onReplace,
+                        enabled = !busy,
+                        modifier = Modifier.testTag("backup_preview_replace"),
+                    ) { Text(stringResource(R.string.restore_replace)) }
+                }
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(
+                        onClick = onHide,
+                        enabled = !busy,
+                        modifier = Modifier.testTag("backup_preview_hide"),
+                    ) { Text(stringResource(R.string.backup_preview_hide)) }
+                    TextButton(
+                        onClick = onDiscard,
+                        enabled = !busy,
+                        modifier = Modifier.testTag("backup_preview_discard"),
+                    ) { Text(stringResource(R.string.backup_preview_discard)) }
+                }
             }
         },
     )
@@ -508,7 +668,7 @@ private fun BackupReadFailure.status(): TransferUiStatus = when (this) {
     BackupReadFailure.IO -> TransferUiStatus.IO_ERROR
 }
 
-private fun RestoreResult.status(): TransferUiStatus = when (this) {
+internal fun RestoreResult.status(): TransferUiStatus = when (this) {
     is RestoreResult.Applied -> TransferUiStatus.BACKUP_RESTORED
     is RestoreResult.Conflicts -> TransferUiStatus.CONFLICT
     is RestoreResult.ActiveTimerBlocked -> TransferUiStatus.ACTIVE_TIMER
@@ -516,12 +676,28 @@ private fun RestoreResult.status(): TransferUiStatus = when (this) {
 }
 
 internal fun backupCreateFailureStatus(error: Throwable): TransferUiStatus = when (error) {
+    is BackupCreationPasswordException -> error.error.status()
     is BackupError.LimitError -> TransferUiStatus.LIMIT_EXCEEDED
     else -> TransferUiStatus.IO_ERROR
 }
 
+internal fun TransferUiStatus.previewFailureResource(): Int? = when (this) {
+    TransferUiStatus.ACTIVE_TIMER -> R.string.backup_preview_active_timer_error
+    TransferUiStatus.CONFLICT -> R.string.backup_preview_conflict_error
+    TransferUiStatus.LIMIT_EXCEEDED -> R.string.backup_preview_limit_error
+    TransferUiStatus.IO_ERROR -> R.string.backup_preview_io_error
+    else -> null
+}
+
+private fun BackupCreationPasswordError.status(): TransferUiStatus = when (this) {
+    BackupCreationPasswordError.TOO_SHORT -> TransferUiStatus.BACKUP_PASSWORD_TOO_SHORT
+    BackupCreationPasswordError.TOO_LONG -> TransferUiStatus.BACKUP_PASSWORD_TOO_LONG
+}
+
 private fun TransferUiStatus.resource(): Int = when (this) {
     TransferUiStatus.BACKUP_RESTORED -> R.string.backup_restored_success
+    TransferUiStatus.BACKUP_PASSWORD_TOO_SHORT -> R.string.backup_creation_password_too_short
+    TransferUiStatus.BACKUP_PASSWORD_TOO_LONG -> R.string.backup_creation_password_too_long
     TransferUiStatus.INVALID_PASSWORD_OR_FILE -> R.string.backup_invalid_or_password
     TransferUiStatus.LIMIT_EXCEEDED -> R.string.backup_limit_exceeded
     TransferUiStatus.UNSUPPORTED_VERSION -> R.string.backup_unsupported_version

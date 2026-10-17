@@ -93,6 +93,7 @@ class BackupFileCoordinator(
     suspend fun prepareBackup(password: CharArray): PreparedBackup {
         var prepared: PreparedBackup? = null
         try {
+            BackupCreationPasswordPolicy.requireValid(password)
             val snapshot = settings?.withStrictExportSnapshot { preferences ->
                 withContext(dispatcher) {
                     database.withTransaction { portableSnapshot(preferences.toPortable()) }

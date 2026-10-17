@@ -23,6 +23,7 @@ import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.ui.UtcBounds
 import dev.opentimemanager.core.backup.BackupCodec
+import dev.opentimemanager.core.backup.BackupError
 import dev.opentimemanager.core.backup.BackupLimits
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
@@ -68,6 +69,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -244,6 +246,153 @@ class BackupFileCoordinatorTest {
     }
 
     @Test
+    fun invalidCreationPasswordsFailBeforeSettingsSnapshotEncryptionOrDocumentAccess() = runBlocking {
+        val journal = RoomSettingsRecoveryJournal(database, Dispatchers.IO)
+        val pending = PendingUserPreferences("before-password-validation", UserPreferences(ThemeMode.DARK))
+        journal.save(pending)
+        var strictReads = 0
+        var mirrorWrites = 0
+        var entropyRequests = 0
+        val settings = UserSettings(
+            context = ApplicationProvider.getApplicationContext<Application>(),
+            name = "backup-password-validation-${System.nanoTime()}",
+            mutationBoundary = SettingsMutationBoundary(),
+            recoveryJournal = journal,
+            privacyMirror = PrivacyMirror { mirrorWrites += 1; true },
+            strictPreferencesReader = StrictPreferencesReader {
+                strictReads += 1
+                throw AssertionError("Invalid creation password must fail before reading settings")
+            },
+        )
+        val backup = BackupFileCoordinator(
+            database = database,
+            documents = documents,
+            restoreRepository = RestoreRepository(database, Dispatchers.IO, settings = settings, settingsJournal = journal),
+            dispatcher = Dispatchers.IO,
+            random = object : SecureRandom() {
+                override fun nextBytes(bytes: ByteArray) {
+                    entropyRequests += 1
+                    throw AssertionError("Invalid creation password must fail before encryption")
+                }
+            },
+            settings = settings,
+        )
+        val beforeProjects = database.trackingDao().projects()
+        val beforeEntries = database.trackingDao().entries()
+        val invalid = listOf(
+            "" to BackupCreationPasswordError.TOO_SHORT,
+            "short" to BackupCreationPasswordError.TOO_SHORT,
+            "\uD83D\uDE80".repeat(11) to BackupCreationPasswordError.TOO_SHORT,
+            "\u00e9".repeat(512) + "a" to BackupCreationPasswordError.TOO_LONG,
+        )
+
+        for ((value, expectedError) in invalid) {
+            val password = value.toCharArray()
+            val failure = assertThrows(BackupCreationPasswordException::class.java) {
+                runBlocking { backup.prepareBackup(password) }
+            }
+            assertEquals(expectedError, failure.error)
+            assertArrayEquals(CharArray(password.size), password)
+        }
+
+        assertEquals(0, strictReads)
+        assertEquals(0, mirrorWrites)
+        assertEquals(0, entropyRequests)
+        assertEquals(0, documents.openCalls)
+        assertTrue(documents.bytes.isEmpty())
+        assertTrue(documents.deleted.isEmpty())
+        assertEquals(pending, journal.pending())
+        assertEquals(beforeProjects, database.trackingDao().projects())
+        assertEquals(beforeEntries, database.trackingDao().entries())
+    }
+
+    @Test
+    fun invalidCreationPasswordFailsBeforeDatabaseAccessWithoutSettings() = runBlocking {
+        val unavailable = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            AppDatabase::class.java,
+        ).build()
+        unavailable.close()
+        val backup = BackupFileCoordinator(
+            unavailable,
+            documents,
+            RestoreRepository(unavailable, Dispatchers.IO),
+            Dispatchers.IO,
+        )
+        val password = "short".toCharArray()
+
+        val failure = assertThrows(BackupCreationPasswordException::class.java) {
+            runBlocking { backup.prepareBackup(password) }
+        }
+
+        assertEquals(BackupCreationPasswordError.TOO_SHORT, failure.error)
+        assertArrayEquals(CharArray(password.size), password)
+        assertEquals(0, documents.openCalls)
+    }
+
+    @Test
+    fun creationAcceptsTheCodePointMinimumAndExactUtf8ByteCeiling() = runBlocking {
+        val backup = coordinator()
+        val passwords = listOf(
+            "a".repeat(12),
+            "\uD83D\uDE80".repeat(12),
+            "\u00e9".repeat(512),
+            "\uD83D\uDE80".repeat(256),
+        )
+        for (value in passwords) {
+            val password = value.toCharArray()
+            val prepared = backup.prepareBackup(password)
+            assertArrayEquals(CharArray(password.size), password)
+            assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
+
+            val inspection = backup.inspectBackup(backupUri, value.toCharArray()) as BackupInspection.Ready
+            assertEquals(1, inspection.preview.counts.entries)
+            inspection.preview.discard()
+        }
+    }
+
+    @Test
+    fun creationEncryptsWithTheExactUnicodePasswordWithoutTrimmingNormalizingOrTruncating() = runBlocking {
+        val value = "  e\u0301".repeat(4) + "\uD83D\uDE80Aa  "
+        val backup = coordinator()
+        val prepared = backup.prepareBackup(value.toCharArray())
+        assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
+        val encrypted = documents.bytes.getValue(backupUri)
+
+        val decoded = BackupCodec.decrypt(encrypted, value.toCharArray(), BackupFileCoordinator.APP_LIMITS)
+        assertEquals("Client, phase 1", decoded.entries.single().note)
+        val changedPasswords = listOf(
+            value.trim(),
+            value.replace("e\u0301", "\u00e9"),
+            value.replace("Aa", "aa"),
+            value.dropLast(1),
+        )
+        for (changed in changedPasswords) {
+            assertThrows(BackupError.IntegrityError::class.java) {
+                BackupCodec.decrypt(encrypted, changed.toCharArray(), BackupFileCoordinator.APP_LIMITS)
+            }
+        }
+    }
+
+    @Test
+    fun legacyShortUnicodeAndOver1024BytePasswordsStillInspectAndRestoreUnchanged() = runBlocking {
+        val snapshot = portableSnapshot(segmentCount = 1)
+        val restore = RestoreRepository(database, Dispatchers.IO)
+        val backup = BackupFileCoordinator(database, documents, restore, Dispatchers.IO)
+        for (value in listOf("x", " e\u0301\uD83D\uDE80 ", "\u00e9".repeat(513))) {
+            // The unchanged core codec can still produce/read historical credentials.
+            documents.bytes[backupUri] = BackupCodec.encrypt(snapshot, value.toCharArray(), SecureRandom())
+            val password = value.toCharArray()
+
+            val inspection = backup.inspectBackup(backupUri, password) as BackupInspection.Ready
+            assertArrayEquals(CharArray(password.size), password)
+            assertTrue(restore.restore(inspection.preview, RestoreMode.REPLACE) is RestoreResult.Applied)
+            assertEquals("Project", database.trackingDao().projects().single().name)
+            assertEquals(snapshot.entries.single().id.value, database.trackingDao().entries().single().id)
+        }
+    }
+
+    @Test
     fun v2FileRoundTripRestoresCompleteProjectMetadataAndSettings() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val settings = UserSettings(context, "backup-v2-${System.nanoTime()}")
@@ -265,12 +414,12 @@ class BackupFileCoordinatorTest {
             Dispatchers.IO,
             settings = settings,
         )
-        val prepared = backup.prepareBackup("secret".toCharArray())
+        val prepared = backup.prepareBackup(EXPORT_PASSWORD.toCharArray())
         assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
         database.projectDao().deleteEmpty(custom.id)
         settings.replace(UserPreferences())
 
-        val inspection = backup.inspectBackup(backupUri, "secret".toCharArray()) as BackupInspection.Ready
+        val inspection = backup.inspectBackup(backupUri, EXPORT_PASSWORD.toCharArray()) as BackupInspection.Ready
         assertTrue(restore.restore(inspection.preview, RestoreMode.REPLACE) is RestoreResult.Applied)
 
         assertEquals(custom, database.trackingDao().project(custom.id))
@@ -312,7 +461,7 @@ class BackupFileCoordinatorTest {
             Dispatchers.IO,
             settings = settings,
         )
-        val password = "secret".toCharArray()
+        val password = EXPORT_PASSWORD.toCharArray()
 
         org.junit.Assert.assertThrows(IOException::class.java) {
             runBlocking { backup.prepareBackup(password) }
@@ -354,11 +503,11 @@ class BackupFileCoordinatorTest {
             settings = settings,
         )
 
-        val prepared = backup.prepareBackup("secret".toCharArray())
+        val prepared = backup.prepareBackup(EXPORT_PASSWORD.toCharArray())
         assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
         val decoded = BackupCodec.decrypt(
             documents.bytes.getValue(backupUri),
-            "secret".toCharArray(),
+            EXPORT_PASSWORD.toCharArray(),
             BackupFileCoordinator.APP_LIMITS,
         )
 
@@ -417,7 +566,7 @@ class BackupFileCoordinatorTest {
             settings = settings,
         )
 
-        val preparing = async { backup.prepareBackup("secret".toCharArray()) }
+        val preparing = async { backup.prepareBackup(EXPORT_PASSWORD.toCharArray()) }
         strictReadEntered.await()
         val restoring = async(start = CoroutineStart.UNDISPATCHED) {
             restore.restore(restorePreview, RestoreMode.REPLACE)
@@ -434,7 +583,7 @@ class BackupFileCoordinatorTest {
         assertEquals(BackupWriteResult.Success, backup.writeBackup(prepared, backupUri, true))
         val decoded = BackupCodec.decrypt(
             documents.bytes.getValue(backupUri),
-            "secret".toCharArray(),
+            EXPORT_PASSWORD.toCharArray(),
             BackupFileCoordinator.APP_LIMITS,
         )
 
@@ -449,7 +598,7 @@ class BackupFileCoordinatorTest {
     @Test
     fun wrongPasswordAndTamperAreIndistinguishable() = runBlocking {
         val coordinator = coordinator()
-        val prepared = coordinator.prepareBackup("secret".toCharArray())
+        val prepared = coordinator.prepareBackup(EXPORT_PASSWORD.toCharArray())
         coordinator.writeBackup(prepared, backupUri, newlyCreated = true)
 
         val wrong = coordinator.inspectBackup(backupUri, "wrong".toCharArray())
@@ -457,7 +606,7 @@ class BackupFileCoordinatorTest {
             it[it.lastIndex] = (it.last().toInt() xor 1).toByte()
         }
         documents.bytes[backupUri] = tampered
-        val changed = coordinator.inspectBackup(backupUri, "secret".toCharArray())
+        val changed = coordinator.inspectBackup(backupUri, EXPORT_PASSWORD.toCharArray())
 
         assertEquals(BackupInspection.Failed(BackupReadFailure.INTEGRITY), wrong)
         assertEquals(BackupInspection.Failed(BackupReadFailure.INTEGRITY), changed)
@@ -499,7 +648,7 @@ class BackupFileCoordinatorTest {
 
     @Test
     fun createUsesTheSameContainerLimitAsReadAndClearsPassword() = runBlocking {
-        val password = "secret".toCharArray()
+        val password = EXPORT_PASSWORD.toCharArray()
 
         try {
             coordinator(BackupLimits(maxBytes = 128)).prepareBackup(password)
@@ -513,7 +662,7 @@ class BackupFileCoordinatorTest {
 
     @Test
     fun databaseCountsAreRejectedBeforeSnapshotListsAreMaterialized() = runBlocking {
-        val password = "secret".toCharArray()
+        val password = EXPORT_PASSWORD.toCharArray()
         val limited = coordinator(
             operationalLimits = BackupOperationalLimits(
                 maxProjects = 0,
@@ -626,12 +775,12 @@ class BackupFileCoordinatorTest {
     @Test
     fun cancelledAndFailedBackupWritesDoNotRetainEncryptedPayload() = runBlocking {
         val coordinator = coordinator()
-        val cancelled = coordinator.prepareBackup("secret".toCharArray())
+        val cancelled = coordinator.prepareBackup(EXPORT_PASSWORD.toCharArray())
         assertEquals(BackupWriteResult.Cancelled, coordinator.writeBackup(cancelled, null, newlyCreated = true))
         assertTrue(cancelled.isCleared)
 
         documents.failWrites += backupUri
-        val failed = coordinator.prepareBackup("secret".toCharArray())
+        val failed = coordinator.prepareBackup(EXPORT_PASSWORD.toCharArray())
         assertEquals(
             BackupWriteResult.Failed(partialDocumentDeleted = true),
             coordinator.writeBackup(failed, backupUri, newlyCreated = true),
@@ -666,11 +815,11 @@ class BackupFileCoordinatorTest {
         )
         assertEquals(CsvExportResult.Success, transfers.finishCsv(csvUri))
 
-        val backupName = transfers.beginBackup("secret".toCharArray())
+        val backupName = transfers.beginBackup(EXPORT_PASSWORD.toCharArray())
         assertTrue(backupName.matches(Regex("open-timemanager-\\d{4}-\\d{2}-\\d{2}\\.otmbackup")))
         assertEquals(BackupWriteResult.Success, transfers.finishBackup(backupUri))
 
-        val inspection = backupCoordinator.inspectBackup(backupUri, "secret".toCharArray())
+        val inspection = backupCoordinator.inspectBackup(backupUri, EXPORT_PASSWORD.toCharArray())
         assertTrue(inspection is BackupInspection.Ready)
         val preview = (inspection as BackupInspection.Ready).preview
         transfers.retainPreview(preview)
@@ -708,7 +857,7 @@ class BackupFileCoordinatorTest {
 
         documents.cancelWrites += backupUri
         val backup = coordinator()
-        val prepared = backup.prepareBackup("secret".toCharArray())
+        val prepared = backup.prepareBackup(EXPORT_PASSWORD.toCharArray())
         try {
             backup.writeBackup(prepared, backupUri, newlyCreated = true)
             throw AssertionError("backup cancellation expected")
@@ -722,7 +871,7 @@ class BackupFileCoordinatorTest {
     fun cancellationInterruptsAnAlreadyStartedProviderOpenAndCleansThePartialBackup() = runBlocking {
         val control = documents.blockOutputOpen(backupUri)
         val backup = coordinator()
-        val prepared = backup.prepareBackup("secret".toCharArray())
+        val prepared = backup.prepareBackup(EXPORT_PASSWORD.toCharArray())
 
         val job = launch(Dispatchers.Default) { backup.writeBackup(prepared, backupUri, newlyCreated = true) }
         assertTrue(control.started.await(5, java.util.concurrent.TimeUnit.SECONDS))
@@ -739,7 +888,7 @@ class BackupFileCoordinatorTest {
     fun cancellationClosesAnAlreadyStartedSlowWriteLoopAndCleansThePartialBackup() = runBlocking {
         val control = documents.blockWrite(backupUri)
         val backup = coordinator()
-        val prepared = backup.prepareBackup("secret".toCharArray())
+        val prepared = backup.prepareBackup(EXPORT_PASSWORD.toCharArray())
 
         val job = launch(Dispatchers.Default) { backup.writeBackup(prepared, backupUri, newlyCreated = true) }
         assertTrue(control.started.await(5, java.util.concurrent.TimeUnit.SECONDS))
@@ -767,7 +916,7 @@ class BackupFileCoordinatorTest {
                 CsvExportCoordinator(database, documents, dispatcher, ZoneId.of("UTC")),
                 backup,
             )
-            transfers.beginBackup("secret".toCharArray())
+            transfers.beginBackup(EXPORT_PASSWORD.toCharArray())
 
             fun blockExecutor(): CountDownLatch {
                 val entered = CountDownLatch(1)
@@ -837,6 +986,10 @@ class BackupFileCoordinatorTest {
             dispatcher.close()
             executor.shutdownNow()
         }
+    }
+
+    private companion object {
+        const val EXPORT_PASSWORD = "correct horse"
     }
 
     private fun coordinator(
@@ -934,16 +1087,21 @@ private class MemoryDocumentStore : DocumentStore {
     val deleted = linkedSetOf<Uri>()
     val failWrites = linkedSetOf<Uri>()
     val cancelWrites = linkedSetOf<Uri>()
+    var openCalls = 0
+        private set
     private val blockedOutputOpens = linkedMapOf<Uri, BlockingOpen>()
     private val blockedWrites = linkedMapOf<Uri, BlockingWrite>()
 
     fun blockOutputOpen(uri: Uri): BlockingOpen = BlockingOpen().also { blockedOutputOpens[uri] = it }
     fun blockWrite(uri: Uri): BlockingWrite = BlockingWrite().also { blockedWrites[uri] = it }
 
-    override fun openInput(uri: Uri, cancellationSignal: CancellationSignal): InputStream? =
-        bytes[uri]?.let(::ByteArrayInputStream)
+    override fun openInput(uri: Uri, cancellationSignal: CancellationSignal): InputStream? {
+        openCalls += 1
+        return bytes[uri]?.let(::ByteArrayInputStream)
+    }
 
     override fun openOutput(uri: Uri, cancellationSignal: CancellationSignal): OutputStream? {
+        openCalls += 1
         blockedOutputOpens.remove(uri)?.let { control ->
             cancellationSignal.setOnCancelListener {
                 control.cancelled.countDown()

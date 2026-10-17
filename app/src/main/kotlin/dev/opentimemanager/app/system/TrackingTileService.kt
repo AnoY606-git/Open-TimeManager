@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.core.model.TrackingState
@@ -64,7 +65,7 @@ class TrackingTileService : TileService() {
     private fun openReviewOnLegacyAndroid(intent: Intent) = startActivityAndCollapse(intent)
     data class Presentation(val label: String, val state: Int)
     companion object {
-        fun presentation(context: Context, snapshot: SystemSnapshot) = Presentation(context.getString(TrackingNotification.statusString(snapshot.session.state)), if (snapshot.session.state == TrackingState.RUNNING) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE)
+        fun presentation(context: Context, snapshot: SystemSnapshot) = Presentation(ContextCompat.getString(context, TrackingNotification.statusString(snapshot.session.state)), if (snapshot.session.state == TrackingState.RUNNING) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE)
         fun reviewIntent(context: Context, snapshot: SystemSnapshot): Intent {
             require(snapshot.session.state == TrackingState.NEEDS_REVIEW)
             return openAppIntent(context)

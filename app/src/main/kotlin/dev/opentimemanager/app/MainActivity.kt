@@ -38,6 +38,7 @@ import dev.opentimemanager.app.ui.applicationLocales
 import dev.opentimemanager.app.system.SystemSurfaceUpdater
 import dev.opentimemanager.app.system.TrackingNotification
 import dev.opentimemanager.app.system.containSystemSurfaceFailure
+import dev.opentimemanager.app.system.awaitStoredApplicationLocales
 import dev.opentimemanager.app.ui.theme.OpenTimeManagerTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -137,6 +138,7 @@ class MainActivity : AppCompatActivity() {
                             AppCompatDelegate.setApplicationLocales(locales)
                             application.applicationScope.launch {
                                 containSystemSurfaceFailure {
+                                    awaitStoredApplicationLocales(application, locales)
                                     val latestSnapshot = application.container.trackingCoordinator
                                         .observeSystemSnapshot()
                                         .first()

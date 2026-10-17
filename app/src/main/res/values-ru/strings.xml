@@ -82,7 +82,10 @@
     <string name="create_backup">Создать копию</string>
     <string name="restore_backup">Проверить и восстановить копию</string>
     <string name="backup_password">Пароль копии</string>
-    <string name="backup_password_hint">Нужен для шифрования или проверки файла. Пароль очищается после операции.</string>
+    <string name="backup_password_hint">Введите исходный пароль этого файла, включая пробелы. Короткие пароли старых копий по-прежнему подходят. Пароль очищается после операции.</string>
+    <string name="backup_creation_password_hint">Выберите длинный непредсказуемый пароль: не менее 12 символов Unicode (кодовых точек), не более 1024 байт UTF-8. Пробелы и форма символов сохраняются. Храните пароль отдельно от копии.</string>
+    <string name="backup_creation_password_too_short">Для новой копии нужно не менее 12 символов Unicode (кодовых точек). Выберите длинный непредсказуемый пароль.</string>
+    <string name="backup_creation_password_too_long">Пароль превышает 1024 байта UTF-8. Сократите его для создания копии; введённый пароль не был обрезан.</string>
     <string name="backup_password_content_description">Пароль для зашифрованной резервной копии</string>
     <string name="continue_action">Продолжить</string>
     <string name="data_operation_in_progress">Операция выполняется… Не закрывайте Open TimeManager.</string>
@@ -96,6 +99,15 @@
     <string name="backup_conflict_error">Восстановление остановлено: совпадающие UUID содержат разные данные. Проверьте предпросмотр или используйте замену.</string>
     <string name="backup_active_timer_error">Остановите или разрешите текущий таймер перед восстановлением копии.</string>
     <string name="backup_preview_title">Проверенный предпросмотр копии</string>
+    <string name="backup_preview_resume">Продолжить восстановление</string>
+    <string name="backup_preview_hide">Скрыть</string>
+    <string name="backup_preview_discard">Отменить восстановление</string>
+    <string name="backup_preview_hidden_hint">Проверенный предпросмотр сохранён в памяти. Продолжите без повторного открытия файла и ввода пароля.</string>
+    <string name="backup_preview_retention_hint">Скрытие сохраняет предпросмотр только в памяти приложения, не на диске. Вернитесь в Настройки для повтора без пароля. «Отменить восстановление» удаляет предпросмотр. Если Android завершит процесс приложения, файл нужно открыть заново.</string>
+    <string name="backup_preview_active_timer_error">Восстановление заблокировано таймером. Скройте предпросмотр, завершите или проверьте запись на вкладке «Таймер», затем вернитесь и повторите попытку.</string>
+    <string name="backup_preview_conflict_error">Объединение заблокировано: совпадающие UUID содержат разные данные. Рассмотрите замену или скройте предпросмотр и устраните конфликт перед повтором.</string>
+    <string name="backup_preview_limit_error">Восстановление превысит допустимое число записей. Скройте предпросмотр и скорректируйте локальные данные либо рассмотрите замену, затем повторите попытку.</string>
+    <string name="backup_preview_io_error">Не удалось прочитать или сохранить локальные данные. Предпросмотр сохранён: повторите попытку или скройте его и вернитесь позже.</string>
     <string name="backup_preview_counts">Проекты: %1$d, записи: %2$d, подтверждённые сегменты: %3$d</string>
     <string name="backup_preview_conflicts">Конфликты UUID с локальными данными: %1$d</string>
     <string name="backup_preview_conflict_item">%1$s · %2$s</string>

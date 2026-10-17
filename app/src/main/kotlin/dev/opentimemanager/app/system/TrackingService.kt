@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.R
 import dev.opentimemanager.core.model.TrackingState
@@ -19,7 +20,7 @@ class TrackingService : Service() {
         val notification = TrackingNotification(this)
         // Срок startForeground не зависит от скорости Room; до чтения нет выдуманного timer state.
         val initial = Notification.Builder(this, TrackingNotification.CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_tracking).setContentTitle(getString(R.string.tracking_channel))
+            .setSmallIcon(R.drawable.ic_tracking).setContentTitle(ContextCompat.getString(this, R.string.tracking_channel))
             .setOngoing(true).setOnlyAlertOnce(true).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(TrackingNotification.ID, initial, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else startForeground(TrackingNotification.ID, initial)

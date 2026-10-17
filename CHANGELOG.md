@@ -2,6 +2,30 @@
 
 All notable user-facing changes are recorded here. Preview versions have no stable compatibility promise before 1.0.
 
+## [Unreleased]
+
+### Security and privacy
+
+- New backup creation requires at least 12 Unicode code points and at most 1024 UTF-8 bytes without trimming or normalization; existing backups retain their original password compatibility.
+- Full Apache License 2.0 text, including its Appendix, is available in the offline third-party notices.
+- Repository checks reject private backup files, signing and environment credentials, internal planning directories, and accidentally tracked Android packages.
+- Release APK checks validate merged manifest permissions, package/SDK metadata, non-debug status, ZIP integrity, and exact packaged legal documents.
+
+### Build and contribution workflow
+
+- CI pins the JDK and Android command-line tools revisions used by the local toolchain, and the app explicitly selects Build Tools 36.0.0.
+- CI does not persist checkout credentials and preserves test/lint reports on failures; APK artifacts include SHA-256 checksums and the source commit.
+- Added native Windows/PowerShell instructions and a release checklist covering signing, final checksums, and Corresponding Source.
+- Public developer documentation is permitted while private plans remain excluded; text files use LF with CRLF for Windows batch launchers.
+- Bash execution checks are explicitly POSIX-only, and the toolchain wrapper preserves standard Android and Gradle user-home settings unless explicitly overridden.
+
+### Fixed
+
+- Restore failures are visible inside the verified preview. Hide preserves it in process memory for retry after stopping a timer; explicit Cancel restore discards it. Busy restores reject duplicate actions and accidental dismissal.
+- CSV export reads one consistent, disk-spooled snapshot before opening a potentially slow document provider, without retaining the entire history in memory or holding the database transaction during external I/O.
+- CSV filenames use the current or explicitly supplied range timezone instead of the process startup timezone.
+- Notifications, widgets, tiles, CSV default-project labels, and project search honor the selected application language on Android 12/12L as well as newer Android versions.
+
 ## [0.1.0-preview] - 2026-10-15
 
 ### Added
