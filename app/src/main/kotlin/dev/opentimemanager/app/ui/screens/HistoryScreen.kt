@@ -271,6 +271,7 @@ private fun HistoryEntryCard(
     val color = project?.let { Color(it.colorArgb) } ?: MaterialTheme.colorScheme.primary
     AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val durationWidth = maxWidth / 2
             if (maxWidth < 300.dp || LocalDensity.current.fontScale >= 1.5f) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     HistoryEntryIdentity(name, color)
@@ -283,7 +284,7 @@ private fun HistoryEntryCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     HistoryEntryIdentity(name, color, Modifier.weight(1f))
-                    HistoryEntryDuration(durationMillis, Modifier.widthIn(max = maxWidth / 2))
+                    HistoryEntryDuration(durationMillis, Modifier.widthIn(max = durationWidth))
                 }
             }
         }
