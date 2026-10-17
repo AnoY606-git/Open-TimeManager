@@ -2,8 +2,10 @@ package dev.opentimemanager.app.ui.screens
 
 import android.content.res.Configuration
 import android.net.Uri
-import android.view.ContextThemeWrapper
 import android.view.KeyEvent
+import android.view.ViewGroup
+import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,21 +13,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
-import androidx.compose.ui.test.Locales
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -33,7 +30,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,12 +39,14 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.then
-import androidx.compose.ui.text.intl.Locale
-import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.core.app.LocaleManagerCompat
+import androidx.core.os.LocaleListCompat
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.opentimemanager.app.MainActivity
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.backup.BackupConflict
 import dev.opentimemanager.app.backup.BackupConflictKind
@@ -75,11 +74,13 @@ import dev.opentimemanager.core.model.TrackingState
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,7 +88,23 @@ import org.junit.runner.RunWith
 /** Real Settings/Timer composables in a test navigation host; all actions and records are synthetic. */
 @RunWith(AndroidJUnit4::class)
 class SettingsBackupPreviewTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private lateinit var originalApplicationLocales: LocaleListCompat
+
+    @Before
+    fun captureOriginalApplicationLocales() {
+        compose.activityRule.scenario.onActivity {
+            originalApplicationLocales = AppCompatDelegate.getApplicationLocales()
+        }
+        awaitHostApplicationLocales(originalApplicationLocales)
+    }
+
+    @After
+    fun restoreOriginalApplicationLocales() {
+        if (::originalApplicationLocales.isInitialized) {
+            setHostApplicationLocales(originalApplicationLocales)
+        }
+    }
 
     @Test
     fun blockedReasonIsVisibleAndHideTimerStopReturnRetriesWithoutInspectingAgain() {
@@ -370,28 +387,56 @@ class SettingsBackupPreviewTest {
     }
 
     private fun show(fixture: PreviewFixture, locale: String = "en", fontScale: Float = 1f) {
+        setHostApplicationLocales(LocaleListCompat.forLanguageTags(locale))
         val overrides = DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 640.dp)) then
-            DeviceConfigurationOverride.FontScale(fontScale) then
-            DeviceConfigurationOverride.Locales(LocaleList(Locale(locale)))
-        compose.setContent {
-            DeviceConfigurationOverride(overrides) {
-                val context = LocalContext.current
-                val configuration = LocalConfiguration.current
-                val localizedContext = remember(context, locale, configuration) {
-                    ContextThemeWrapper(context, context.theme).apply {
-                        applyOverrideConfiguration(Configuration(configuration).apply {
-                            setLocale(java.util.Locale.forLanguageTag(locale))
-                        })
-                    }
-                }
-                // Dialogs own a separate Window; configuration-only overrides do not
-                // change that Window's resource Context. Localize its Context as well.
-                CompositionLocalProvider(LocalContext provides localizedContext) {
+            DeviceConfigurationOverride.FontScale(fontScale)
+        compose.activityRule.scenario.onActivity { activity ->
+            // Rule.setContent rejects MainActivity's existing content. Activity.setContent
+            // reuses its ComposeView, whose real AppCompat Context also backs Dialog windows.
+            activity.setContent {
+                DeviceConfigurationOverride(overrides) {
                     OpenTimeManagerTheme(ThemeMode.LIGHT, dynamicColor = false) {
                         TestDestinations(fixture, if (locale == "ru") AppLanguage.RUSSIAN else AppLanguage.ENGLISH)
                     }
                 }
             }
+        }
+        compose.waitForIdle()
+    }
+
+    private fun setHostApplicationLocales(locales: LocaleListCompat) {
+        compose.activityRule.scenario.onActivity {
+            AppCompatDelegate.setApplicationLocales(locales)
+        }
+        awaitHostApplicationLocales(locales)
+        // Also recreate when the requested locale already matches the system/app locale:
+        // fixtures must be installed into a fresh, fully localized Activity, not a stale View.
+        val previousActivity = compose.activity
+        compose.activityRule.scenario.recreate()
+        awaitHostApplicationLocales(locales, previousActivity)
+        compose.waitForIdle()
+    }
+
+    private fun awaitHostApplicationLocales(
+        expected: LocaleListCompat,
+        previousActivity: MainActivity? = null,
+    ) {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        val expectedLanguage = checkNotNull(expected[0] ?: LocaleManagerCompat.getSystemLocales(app)[0]).language
+        compose.waitUntil(10_000) {
+            // API 31/32 auto-storage is asynchronous and reads a file; poll it off the UI thread.
+            val storedMatches = LocaleManagerCompat.getApplicationLocales(app) == expected
+            var ready = false
+            compose.activityRule.scenario.onActivity { activity ->
+                val viewLanguage = activity.findViewById<ViewGroup>(android.R.id.content)
+                    ?.getChildAt(0)?.context?.resources?.configuration?.locales?.get(0)?.language
+                ready = storedMatches && activity !== previousActivity && !activity.isChangingConfigurations &&
+                    activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                    AppCompatDelegate.getApplicationLocales() == expected &&
+                    activity.resources.configuration.locales[0].language == expectedLanguage &&
+                    viewLanguage == expectedLanguage
+            }
+            ready
         }
     }
 

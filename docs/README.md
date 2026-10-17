@@ -1,6 +1,7 @@
 # Документация / Documentation
 
 - [Руководство пользователя · User guide](USER_GUIDE.md)
+- [Скриншоты приложения · App screenshots](screenshots/README.md)
 - [Безопасность и приватность · Security and privacy](SECURITY.md)
 - [Формат backup и CSV](BACKUP_FORMAT.md)
 - [Подготовка APK к распространению · Release checklist](RELEASING.md)

@@ -16,6 +16,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 - CI pins the JDK and Android command-line tools revisions used by the local toolchain, and the app explicitly selects Build Tools 36.0.0.
 - CI does not persist checkout credentials and preserves test/lint reports on failures; APK artifacts include SHA-256 checksums and the source commit.
 - Added native Windows/PowerShell instructions and a release checklist covering signing, final checksums, and Corresponding Source.
+- Added Russian and English screenshots captured from the Android 16 emulator with synthetic records, plus galleries in both READMEs.
 - Public developer documentation is permitted while private plans remain excluded; text files use LF with CRLF for Windows batch launchers.
 - Bash execution checks are explicitly POSIX-only, and the toolchain wrapper preserves standard Android and Gradle user-home settings unless explicitly overridden.
 

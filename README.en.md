@@ -20,6 +20,17 @@ The app does not request the `INTERNET` permission. Projects, notes, settings, a
 
 Elapsed work is based on the device monotonic clock, while calendar boundaries use UTC and the recorded time zone. After a reboot or loss of a trustworthy monotonic reference, an unfinished entry requires explicit review instead of guessing the missing work time.
 
+## Screenshots
+
+The actual app running in an Android 16 / API 36 emulator, with synthetic demo data only.
+[Capture setup and example records](docs/screenshots/README.md).
+
+| Timer | History |
+| --- | --- |
+| <img src="docs/screenshots/en-timer.png" width="250" alt="Paused timer with a selected demo project"> | <img src="docs/screenshots/en-history.png" width="250" alt="History containing synthetic work entries"> |
+| **Reports** | **Settings** |
+| <img src="docs/screenshots/en-reports.png" width="250" alt="Report showing totals by demo project"> | <img src="docs/screenshots/en-settings.png" width="250" alt="Appearance, language, and privacy preferences"> |
+
 ## Install and build
 
 The minimum version is Android 12 (API 31); the target is Android 16 / API 36. Repository builds do not use a production signing key. GitHub Actions provides a debug APK and an unsigned release APK; the repository owner must sign a release APK separately before distribution.
