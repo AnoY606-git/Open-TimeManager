@@ -3,7 +3,11 @@ package dev.opentimemanager.app.ui.screens
 import android.content.res.Configuration
 import android.net.Uri
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowManager
+import android.view.inspector.WindowInspector
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Box
@@ -458,6 +462,29 @@ class SettingsBackupPreviewTest {
     }
 
     private fun pressBack() {
+        compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
+        val activityDecor = compose.runOnUiThread { compose.activity.window.decorView }
+        var imeHideRequestedFor: View? = null
+        // Compose idleness does not wait for the password -> preview window/IME hand-off.
+        // Use the sole native dialog, not the Activity decor or a departing password window.
+        compose.waitUntil(10_000) {
+            compose.runOnUiThread {
+                val dialogDecor = WindowInspector.getGlobalWindowViews().singleOrNull { root ->
+                    root !== activityDecor && root.isAttachedToWindow && root.isShown &&
+                        (root.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION
+                } ?: return@runOnUiThread false
+                if (!dialogDecor.hasWindowFocus()) return@runOnUiThread false
+                if (imeHideRequestedFor !== dialogDecor) {
+                    val controller = dialogDecor.windowInsetsController ?: return@runOnUiThread false
+                    controller.hide(WindowInsets.Type.ime())
+                    imeHideRequestedFor = dialogDecor
+                    // Observe the reported IME state on a later poll, after requesting the hide.
+                    false
+                } else {
+                    dialogDecor.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == false
+                }
+            }
+        }
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.waitForIdle()
     }

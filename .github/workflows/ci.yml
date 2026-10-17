@@ -136,6 +136,7 @@ jobs:
           profile: pixel_2
           disk-size: 2G
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
       - name: Upload instrumentation reports
         if: ${{ always() && !cancelled() }}
