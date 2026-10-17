@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="design_settings_subtitle">Make this space work for you.</string>
+    <string name="design_settings_dynamic_hint">Follow your Android color palette.</string>
+    <string name="design_settings_focus_heading">Focus &amp; privacy</string>
+    <string name="design_settings_goal_hint">A daily target for your tracked time.</string>
+    <string name="design_settings_minutes">Minutes</string>
+    <string name="design_settings_goal_range">%1$d–%2$d minutes</string>
+    <string name="design_settings_local_title">Private by design</string>
+</resources>

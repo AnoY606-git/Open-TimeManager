@@ -1,0 +1,18 @@
+<resources>
+    <string name="insights_history_subtitle">Все рабочие сессии в одном месте.</string>
+    <string name="insights_history_empty_hint">Здесь появятся завершённые сессии и записи, добавленные вручную.</string>
+    <string name="insights_history_no_matches">Записи не найдены</string>
+    <string name="insights_history_search_hint">Попробуйте другое название проекта или текст заметки.</string>
+    <string name="insights_clear_search">Очистить поиск</string>
+    <string name="insights_history_started">Начало в %1$s</string>
+    <string name="insights_reports_subtitle">Посмотрите, на что уходит ваше время.</string>
+    <string name="insights_report_date_range">%1$s – %2$s</string>
+    <string name="insights_duration_units">часы : минуты</string>
+    <string name="insights_duration_description">Длительность: %1$s (часы и минуты)</string>
+    <string name="insights_distribution_heading">Распределение времени</string>
+    <string name="insights_distribution_caption">Каждый цвет обозначает проект. Подробности — ниже.</string>
+    <string name="insights_distribution_description">Доли проектов в подтверждённом времени за выбранный период</string>
+    <string name="insights_reports_empty_hint">Выберите другой период или завершите сессию, чтобы увидеть разбивку по проектам.</string>
+    <string name="insights_report_small_share">&lt;%1$s</string>
+    <string name="insights_report_share_value">%1$s от общего времени</string>
+</resources>

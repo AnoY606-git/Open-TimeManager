@@ -1,0 +1,18 @@
+<resources>
+    <string name="insights_history_subtitle">Every session, in one place.</string>
+    <string name="insights_history_empty_hint">Completed sessions and manual entries will appear here.</string>
+    <string name="insights_history_no_matches">No matching entries</string>
+    <string name="insights_history_search_hint">Try another project name or note.</string>
+    <string name="insights_clear_search">Clear search</string>
+    <string name="insights_history_started">Started at %1$s</string>
+    <string name="insights_reports_subtitle">Understand where your time goes.</string>
+    <string name="insights_report_date_range">%1$s – %2$s</string>
+    <string name="insights_duration_units">hours : minutes</string>
+    <string name="insights_duration_description">Duration: %1$s (hours and minutes)</string>
+    <string name="insights_distribution_heading">Time distribution</string>
+    <string name="insights_distribution_caption">Each color represents a project. Full details are below.</string>
+    <string name="insights_distribution_description">Project shares of confirmed time for the selected period</string>
+    <string name="insights_reports_empty_hint">Choose another period or finish a session to see your project breakdown.</string>
+    <string name="insights_report_small_share">&lt;%1$s</string>
+    <string name="insights_report_share_value">%1$s of total</string>
+</resources>

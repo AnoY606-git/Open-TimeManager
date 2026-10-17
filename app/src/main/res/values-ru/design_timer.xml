@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_design_subtitle">Время для того, что важно.</string>
+    <string name="timer_design_session">Время сосредоточиться</string>
+    <string name="timer_design_choose_project">Выберите проект</string>
+    <string name="timer_design_note_placeholder">Над чем вы работаете?</string>
+    <string name="timer_design_today_confirmed">Подтверждено сегодня</string>
+    <string name="timer_design_today_sessions">Записи</string>
+    <string name="timer_design_today_empty">Здесь появится ваше подтверждённое время.</string>
+</resources>

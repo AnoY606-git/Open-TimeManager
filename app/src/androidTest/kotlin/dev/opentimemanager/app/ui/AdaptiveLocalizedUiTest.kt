@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.then
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.intl.LocaleList
@@ -102,5 +103,19 @@ class AdaptiveLocalizedUiTest {
         compose.onNode(hasTestTag("timer_today_pane")).assertExists()
         compose.onNodeWithText("Start", substring = false).assertIsDisplayed()
         assertPrimaryActionInsideShell()
+    }
+
+    @Test fun englishExpandedDarkKeepsBothPanesAndAccessiblePrimaryAction() {
+        show("en", ThemeMode.DARK, 1_000, 900, 1f)
+        compose.onNode(hasTestTag("expanded_navigation")).assertExists()
+        compose.onNode(hasTestTag("timer_today_pane")).assertExists()
+        compose.onNodeWithText("Start", substring = false).assertIsDisplayed()
+        assertPrimaryActionInsideShell()
+    }
+
+    @Test fun veryShortLandscapeWithLargeTextCanReachLastRailDestination() {
+        show("en", ThemeMode.DARK, 800, 280, 2f)
+        compose.onNode(hasTestTag("expanded_navigation")).assertExists()
+        compose.onNodeWithText("Settings", substring = false).performScrollTo().assertIsDisplayed()
     }
 }

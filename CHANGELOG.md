@@ -4,6 +4,11 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 ## [Unreleased]
 
+### Design
+
+- Redesigned all four screens with an ink-and-violet visual system, complete light/dark palettes, clearer typography, original line icons, and floating adaptive navigation.
+- Reworked timer controls, project selection, history entries, report distributions, and grouped preferences without changing the tracking or backup formats.
+
 ### Security and privacy
 
 - New backup creation requires at least 12 Unicode code points and at most 1024 UTF-8 bytes without trimming or normalization; existing backups retain their original password compatibility.

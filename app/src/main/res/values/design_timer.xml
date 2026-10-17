@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_design_subtitle">Make time for what matters.</string>
+    <string name="timer_design_session">Focus session</string>
+    <string name="timer_design_choose_project">Choose a project</string>
+    <string name="timer_design_note_placeholder">What are you working on?</string>
+    <string name="timer_design_today_confirmed">Confirmed today</string>
+    <string name="timer_design_today_sessions">Sessions</string>
+    <string name="timer_design_today_empty">Your confirmed work will appear here.</string>
+</resources>

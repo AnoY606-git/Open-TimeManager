@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="design_settings_subtitle">Настройте приложение под себя.</string>
+    <string name="design_settings_dynamic_hint">Палитра из настроек Android.</string>
+    <string name="design_settings_focus_heading">Цели и приватность</string>
+    <string name="design_settings_goal_hint">Ориентир для ежедневного учёта времени.</string>
+    <string name="design_settings_minutes">Минуты</string>
+    <string name="design_settings_goal_range">%1$d–%2$d минут</string>
+    <string name="design_settings_local_title">Данные только на устройстве</string>
+</resources>

@@ -1,22 +1,40 @@
 package dev.opentimemanager.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,11 +42,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.ui.AppUiState
 import dev.opentimemanager.app.ui.ReportPeriod
@@ -37,7 +70,18 @@ import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.app.ui.projectName
 import dev.opentimemanager.app.ui.validateCustomReportInput
 import dev.opentimemanager.app.ui.UtcBounds
+import dev.opentimemanager.app.ui.components.AccentIcon
+import dev.opentimemanager.app.ui.components.AppCard
+import dev.opentimemanager.app.ui.components.AppGlyph
+import dev.opentimemanager.app.ui.components.AppIcon
+import dev.opentimemanager.app.ui.components.ScreenHeading
+import dev.opentimemanager.app.ui.components.SectionHeading
+import dev.opentimemanager.app.ui.theme.LocalAppPalette
+import java.text.NumberFormat
+import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -51,97 +95,134 @@ fun ReportsScreen(
 ) {
     if (state.snapshot == null) return
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val zone = ZoneId.systemDefault()
     val today = rememberCurrentDate(zone)
     val bounds = state.controls.reportPeriod.validatedBounds(today, zone).value
         ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
     val totals = state.reportTotals
+    val dateFormatter = remember(locale) {
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+    }
+    val from = Instant.ofEpochMilli(bounds.fromUtcMillis).atZone(zone).toLocalDate()
+    val through = Instant.ofEpochMilli(bounds.toUtcMillis).minusMillis(1).atZone(zone).toLocalDate()
+    val dateRange = if (from == through) dateFormatter.format(from) else stringResource(
+        R.string.insights_report_date_range,
+        dateFormatter.format(from),
+        dateFormatter.format(through),
+    )
+    val fallbackColor = MaterialTheme.colorScheme.primary
+    val slices = remember(totals, state.reportProjects, context, locale, fallbackColor) {
+        val projects = state.reportProjects.associateBy { it.id }
+        val percentFormatter = NumberFormat.getPercentInstance(locale).apply { maximumFractionDigits = 1 }
+        totals.projectTotals.entries.sortedByDescending { it.value }.map { (projectId, duration) ->
+            val project = projects[projectId.value]
+            val fraction = if (totals.totalMillis > 0L) {
+                (duration.toDouble() / totals.totalMillis.toDouble()).coerceIn(0.0, 1.0)
+            } else 0.0
+            ReportProjectSlice(
+                projectId = projectId.value,
+                name = project?.let(context::projectName) ?: projectId.value,
+                color = project?.let { Color(it.colorArgb) } ?: fallbackColor,
+                durationMillis = duration,
+                fraction = fraction.toFloat(),
+                percentage = if (fraction > 0.0 && fraction < 0.001) {
+                    context.getString(R.string.insights_report_small_share, percentFormatter.format(0.001))
+                } else percentFormatter.format(fraction),
+            )
+        }
+    }
     var showCustom by remember { mutableStateOf(false) }
     var exportLaunchFailed by remember { mutableStateOf(false) }
     val exportBusy = state.controls.dataTransferBusy
-    LazyColumn(
-        modifier.fillMaxSize().padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    Box(
+        modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        item {
-            Text(
-                stringResource(R.string.reports_heading),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 18.dp),
-            )
-        }
-        item {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = state.controls.reportPeriod == ReportPeriod.WEEK,
-                    onClick = { onSelectPeriod(ReportPeriod.WEEK) },
-                    label = { Text(stringResource(R.string.report_week)) },
-                )
-                FilterChip(
-                    selected = state.controls.reportPeriod == ReportPeriod.MONTH,
-                    onClick = { onSelectPeriod(ReportPeriod.MONTH) },
-                    label = { Text(stringResource(R.string.report_month)) },
-                )
-                FilterChip(
-                    selected = state.controls.reportPeriod is ReportPeriod.Custom,
-                    onClick = { showCustom = true },
-                    label = { Text(stringResource(R.string.report_custom)) },
+        LazyColumn(
+            Modifier.widthIn(max = 880.dp).fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item("heading") {
+                ScreenHeading(
+                    title = stringResource(R.string.reports_heading),
+                    subtitle = stringResource(R.string.insights_reports_subtitle),
                 )
             }
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(stringResource(R.string.report_total), style = MaterialTheme.typography.labelLarge)
-                    Text(formatDuration(totals.totalMillis, false), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
-                }
+            item("periods") {
+                ReportPeriodTabs(
+                    period = state.controls.reportPeriod,
+                    onSelectPeriod = onSelectPeriod,
+                    onCustom = { showCustom = true },
+                )
             }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = {
-                        exportLaunchFailed = false
-                        try {
-                            val name = onBeginCsvExport?.invoke(bounds) ?: return@Button
-                            onLaunchCsvDocument(name)
-                        } catch (_: Exception) {
-                            onCancelCsvExport?.invoke()
-                            exportLaunchFailed = true
+            item("total") {
+                ReportTotalHero(totals.totalMillis, dateRange)
+            }
+            if (slices.isNotEmpty() && totals.totalMillis > 0L) {
+                item("distribution") { ReportDistribution(slices) }
+            }
+            item("export") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            exportLaunchFailed = false
+                            try {
+                                val name = onBeginCsvExport?.invoke(bounds) ?: return@OutlinedButton
+                                onLaunchCsvDocument(name)
+                            } catch (_: Exception) {
+                                onCancelCsvExport?.invoke()
+                                exportLaunchFailed = true
+                            }
+                        },
+                        enabled = !exportBusy && onBeginCsvExport != null,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        if (exportBusy) {
+                            CircularProgressIndicator(
+                                Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            AppIcon(AppGlyph.Download, modifier = Modifier.size(20.dp))
                         }
-                    },
-                    enabled = !exportBusy && onBeginCsvExport != null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(if (exportBusy) stringResource(R.string.export_in_progress) else stringResource(R.string.export_csv))
-                }
-                if (exportLaunchFailed) {
-                    Text(
-                        stringResource(R.string.csv_export_error),
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-        if (totals.projectTotals.isEmpty()) {
-            item { Text(stringResource(R.string.no_report_data), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else {
-            item { Text(stringResource(R.string.project_breakdown), style = MaterialTheme.typography.titleLarge) }
-            totals.projectTotals.entries.sortedByDescending { it.value }.forEach { (projectId, duration) ->
-                val project = state.reportProjects.firstOrNull { it.id == projectId.value }
-                val fraction = if (totals.totalMillis == 0L) 0f else duration.toFloat() / totals.totalMillis
-                item(key = projectId.value) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(project?.let(context::projectName) ?: projectId.value, fontWeight = FontWeight.Medium)
-                            Text(formatDuration(duration, false))
-                        }
-                        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().height(8.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (exportBusy) stringResource(R.string.export_in_progress) else stringResource(R.string.export_csv),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
                     }
+                    if (exportLaunchFailed) {
+                        Text(stringResource(R.string.csv_export_error), color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            if (slices.isEmpty() || totals.totalMillis <= 0L) {
+                item("empty") {
+                    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
+                        AccentIcon(AppGlyph.Reports)
+                        Text(
+                            stringResource(R.string.no_report_data),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            stringResource(R.string.insights_reports_empty_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                item("breakdown-heading") {
+                    SectionHeading(stringResource(R.string.project_breakdown), modifier = Modifier.padding(top = 4.dp))
+                }
+                items(slices, key = { it.projectId }) { slice ->
+                    ReportProjectCard(slice)
                 }
             }
         }
@@ -151,6 +232,191 @@ fun ReportsScreen(
         onDismiss = { showCustom = false },
         onApply = { onSelectPeriod(it); showCustom = false },
     )
+}
+
+private data class ReportProjectSlice(
+    val projectId: String,
+    val name: String,
+    val color: Color,
+    val durationMillis: Long,
+    val fraction: Float,
+    val percentage: String,
+)
+
+@Composable
+private fun ReportPeriodTabs(period: ReportPeriod, onSelectPeriod: (ReportPeriod) -> Unit, onCustom: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(6.dp)) {
+            if (maxWidth.value / LocalDensity.current.fontScale < 240f) {
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ReportPeriodOption(stringResource(R.string.report_week), period == ReportPeriod.WEEK, { onSelectPeriod(ReportPeriod.WEEK) }, Modifier.fillMaxWidth())
+                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.fillMaxWidth())
+                    ReportPeriodOption(stringResource(R.string.report_custom), period is ReportPeriod.Custom, onCustom, Modifier.fillMaxWidth())
+                }
+            } else {
+                Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ReportPeriodOption(stringResource(R.string.report_week), period == ReportPeriod.WEEK, { onSelectPeriod(ReportPeriod.WEEK) }, Modifier.weight(1f))
+                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.weight(1f))
+                    ReportPeriodOption(stringResource(R.string.report_custom), period is ReportPeriod.Custom, onCustom, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportPeriodOption(title: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ReportTotalHero(totalMillis: Long, dateRange: String) {
+    val palette = LocalAppPalette.current
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = palette.hero,
+        contentColor = palette.onHero,
+    ) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                AccentIcon(AppGlyph.Reports, tint = palette.heroAccent, containerColor = palette.heroAccentContainer)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.report_total), style = MaterialTheme.typography.labelLarge, color = palette.heroMuted)
+                    Text(dateRange, style = MaterialTheme.typography.bodyMedium, color = palette.onHero)
+                }
+            }
+            ReportDurationTotal(totalMillis)
+            Text(stringResource(R.string.insights_duration_units), style = MaterialTheme.typography.labelMedium, color = palette.heroMuted)
+        }
+    }
+}
+
+@Composable
+private fun ReportDurationTotal(totalMillis: Long) {
+    val text = formatDuration(totalMillis, false)
+    val description = stringResource(R.string.insights_duration_description, text)
+    val style = MaterialTheme.typography.displayLarge.copy(
+        fontSize = 52.sp,
+        lineHeight = 58.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-1.8).sp,
+        fontFeatureSettings = "tnum",
+    )
+    val textMeasurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Long totals and enlarged system fonts stay inside the card without clipping digits.
+        val availableWidth = constraints.maxWidth.coerceAtLeast(1)
+        val fittedStyle = remember(text, style, textMeasurer, availableWidth) {
+            var candidate = style
+            repeat(8) {
+                val width = textMeasurer.measure(text, candidate, softWrap = false, maxLines = 1).size.width
+                if (width <= availableWidth) return@remember candidate
+                val scale = (availableWidth.toFloat() / width).coerceIn(0.1f, 0.99f)
+                candidate = candidate.copy(
+                    fontSize = candidate.fontSize * scale,
+                    lineHeight = candidate.lineHeight * scale,
+                    letterSpacing = candidate.letterSpacing * scale,
+                )
+            }
+            candidate
+        }
+        Text(
+            text,
+            style = fittedStyle,
+            color = LocalAppPalette.current.onHero,
+            maxLines = 1,
+            modifier = Modifier.semantics { contentDescription = description },
+        )
+    }
+}
+
+@Composable
+private fun ReportDistribution(slices: List<ReportProjectSlice>) {
+    val description = stringResource(R.string.insights_distribution_description)
+    AppCard(Modifier.fillMaxWidth()) {
+        SectionHeading(stringResource(R.string.insights_distribution_heading))
+        Text(
+            stringResource(R.string.insights_distribution_caption),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Canvas(
+            Modifier.fillMaxWidth().height(18.dp).clip(RoundedCornerShape(9.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .semantics { contentDescription = description },
+        ) {
+            var offset = 0f
+            slices.forEach { slice ->
+                val width = size.width * slice.fraction
+                val left = if (layoutDirection == LayoutDirection.Rtl) size.width - offset - width else offset
+                drawRect(slice.color, topLeft = Offset(left, 0f), size = Size(width, size.height))
+                offset += width
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun ReportProjectCard(slice: ReportProjectSlice) {
+    val duration = formatDuration(slice.durationMillis, false)
+    val durationDescription = stringResource(R.string.insights_duration_description, duration)
+    val shareDescription = stringResource(R.string.insights_report_share_value, slice.percentage)
+    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(11.dp).background(slice.color, CircleShape)
+                    .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), CircleShape),
+            )
+            Text(slice.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                duration,
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { contentDescription = durationDescription },
+            )
+            Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Text(
+                    slice.percentage,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp).semantics { contentDescription = shareDescription },
+                )
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                .background(slice.color.copy(alpha = 0.12f)).clearAndSetSemantics {},
+        ) {
+            Box(Modifier.fillMaxWidth(slice.fraction).height(6.dp).background(slice.color))
+        }
+    }
 }
 
 @Composable
@@ -164,20 +430,42 @@ private fun CustomPeriodDialog(
     var invalid by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        icon = { AccentIcon(AppGlyph.Reports) },
         title = { Text(stringResource(R.string.report_custom)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(from, { from = it; invalid = false }, label = { Text(stringResource(R.string.report_from)) }, singleLine = true)
-                OutlinedTextField(through, { through = it; invalid = false }, label = { Text(stringResource(R.string.report_through)) }, singleLine = true)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    from,
+                    { from = it; invalid = false },
+                    label = { Text(stringResource(R.string.report_from)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    through,
+                    { through = it; invalid = false },
+                    label = { Text(stringResource(R.string.report_through)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 if (invalid) Text(stringResource(R.string.error_invalid_entry), color = MaterialTheme.colorScheme.error)
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                validateCustomReportInput(from, through, ZoneId.systemDefault()).value?.let(onApply)
-                    ?: run { invalid = true }
-            }) { Text(stringResource(R.string.apply)) }
+            TextButton(
+                onClick = {
+                    validateCustomReportInput(from, through, ZoneId.systemDefault()).value?.let(onApply)
+                        ?: run { invalid = true }
+                },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(stringResource(R.string.apply)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.cancel)) }
+        },
     )
 }

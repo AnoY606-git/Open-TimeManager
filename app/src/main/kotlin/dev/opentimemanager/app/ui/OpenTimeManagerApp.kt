@@ -3,8 +3,10 @@ package dev.opentimemanager.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,26 +15,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
@@ -45,6 +51,8 @@ import dev.opentimemanager.app.ui.screens.SettingsScreen
 import dev.opentimemanager.app.ui.screens.TimerScreen
 import dev.opentimemanager.app.ui.screens.TodayPane
 import dev.opentimemanager.app.ui.screens.BackupActions
+import dev.opentimemanager.app.ui.components.AppGlyph
+import dev.opentimemanager.app.ui.components.AppIcon
 
 @Composable
 fun OpenTimeManagerApp(
@@ -78,7 +86,7 @@ fun OpenTimeManagerApp(
             viewModel?.clearMessage()
         }
     }
-    BoxWithConstraints(modifier.fillMaxSize().testTag("adaptive_shell")) {
+    BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("adaptive_shell")) {
         val widthDp = maxWidth.value.toInt()
         val heightDp = maxHeight.value.toInt()
         val layout = navigationLayout(widthDp, heightDp)
@@ -91,16 +99,37 @@ fun OpenTimeManagerApp(
                 Scaffold(
                     modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                    containerColor = MaterialTheme.colorScheme.background,
                     snackbarHost = { SnackbarHost(snackbar) },
                     bottomBar = {
-                        NavigationBar(Modifier.testTag("compact_navigation")) {
-                            destinations.forEach { destination ->
-                                NavigationBarItem(
-                                    selected = state.controls.destination == destination,
-                                    onClick = { viewModel?.navigate(destination) },
-                                    icon = { DestinationMarker(destination) },
-                                    label = { Text(stringResource(destination.label())) },
-                                )
+                        Surface(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                            shadowElevation = 6.dp,
+                        ) {
+                            NavigationBar(
+                                modifier = Modifier.testTag("compact_navigation"),
+                                containerColor = Color.Transparent,
+                                tonalElevation = 0.dp,
+                                windowInsets = WindowInsets(0, 0, 0, 0),
+                            ) {
+                                destinations.forEach { destination ->
+                                    NavigationBarItem(
+                                        selected = state.controls.destination == destination,
+                                        onClick = { viewModel?.navigate(destination) },
+                                        icon = { DestinationMarker(destination) },
+                                        label = { Text(stringResource(destination.label()), style = MaterialTheme.typography.labelMedium) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                }
                             }
                         }
                     },
@@ -117,14 +146,29 @@ fun OpenTimeManagerApp(
             } else {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                     Row(Modifier.fillMaxSize()) {
-                        NavigationRail(Modifier.testTag("expanded_navigation")) {
-                            destinations.forEach { destination ->
-                                NavigationRailItem(
-                                    selected = state.controls.destination == destination,
-                                    onClick = { viewModel?.navigate(destination) },
-                                    icon = { DestinationMarker(destination) },
-                                    label = { Text(stringResource(destination.label())) },
-                                )
+                        NavigationRail(
+                            modifier = Modifier.testTag("expanded_navigation"),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ) {
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                destinations.forEach { destination ->
+                                    NavigationRailItem(
+                                        selected = state.controls.destination == destination,
+                                        onClick = { viewModel?.navigate(destination) },
+                                        icon = { DestinationMarker(destination) },
+                                        label = { Text(stringResource(destination.label()), style = MaterialTheme.typography.labelMedium) },
+                                        colors = NavigationRailItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                }
                             }
                         }
                         DestinationContent(
@@ -145,10 +189,15 @@ fun OpenTimeManagerApp(
 
 @Composable
 private fun DestinationMarker(destination: AppDestination) {
-    val description = stringResource(destination.description())
-    Box(
-        Modifier.size(18.dp).background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small)
-            .semantics { contentDescription = description },
+    AppIcon(
+        glyph = when (destination) {
+            AppDestination.TIMER -> AppGlyph.Timer
+            AppDestination.HISTORY -> AppGlyph.History
+            AppDestination.REPORTS -> AppGlyph.Reports
+            AppDestination.SETTINGS -> AppGlyph.Settings
+        },
+        contentDescription = stringResource(destination.description()),
+        modifier = Modifier.size(23.dp),
     )
 }
 
