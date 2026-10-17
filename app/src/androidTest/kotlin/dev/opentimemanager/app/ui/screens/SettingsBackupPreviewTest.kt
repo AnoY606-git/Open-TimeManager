@@ -2,6 +2,7 @@ package dev.opentimemanager.app.ui.screens
 
 import android.content.res.Configuration
 import android.net.Uri
+import android.view.ContextThemeWrapper
 import android.view.KeyEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
@@ -170,6 +174,57 @@ class SettingsBackupPreviewTest {
     }
 
     @Test
+    fun initialInspectionConflictsCanMergeAfterLocalResolutionWithoutAnotherInspection() {
+        val initialConflicts = listOf(
+            BackupConflict(BackupConflictKind.PROJECT, "81000000-0000-4000-8000-000000000001"),
+        )
+        val fixture = PreviewFixture(initialConflicts = initialConflicts)
+        var localConflictsResolved = false
+        fixture.timerActive = false
+        fixture.operation = {
+            if (localConflictsResolved) RestoreResult.Applied(0, 0, 0) else RestoreResult.Conflicts(initialConflicts)
+        }
+        show(fixture)
+        inspectOnce()
+        compose.runOnIdle {
+            assertEquals(initialConflicts, fixture.candidate.conflicts)
+            assertTrue(fixture.candidate.hasPayload)
+        }
+        compose.onNodeWithText(text("en", R.string.backup_preview_modes)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("backup_preview_merge").assertIsEnabled().performClick()
+        assertDialogFailure("en", R.string.backup_preview_conflict_error)
+        compose.runOnIdle {
+            assertSame(fixture.candidate, fixture.retained)
+            assertTrue(fixture.candidate.hasPayload)
+        }
+
+        compose.onNodeWithTag("backup_preview_hide").performClick()
+        compose.onNodeWithTag("test_timer_destination").performClick()
+        compose.runOnIdle {
+            localConflictsResolved = true
+            assertSame(fixture.candidate, fixture.retained)
+            assertEquals(initialConflicts, fixture.candidate.conflicts)
+        }
+        compose.onNodeWithTag("test_settings_destination").performClick()
+        compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
+        compose.onNodeWithTag("backup_password_input").assertDoesNotExist()
+        compose.onNodeWithTag("backup_preview_merge").assertIsEnabled().performClick()
+        compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
+        scrollToPageStatus()
+        compose.onNodeWithTag("backup_transfer_status").assertTextEquals(text("en", R.string.backup_restored_success))
+        compose.runOnIdle {
+            assertEquals(1, fixture.inspectCalls)
+            assertEquals(2, fixture.restoreCalls)
+            assertEquals(listOf(RestoreMode.MERGE, RestoreMode.MERGE), fixture.modes)
+            assertTrue(fixture.previewReads >= 2)
+            assertEquals(0, fixture.discardCalls)
+            assertEquals(initialConflicts, fixture.candidate.conflicts)
+            assertNull(fixture.retained)
+            assertFalse(fixture.candidate.hasPayload)
+        }
+    }
+
+    @Test
     fun conflictLimitAndIoReasonsAreVisibleInTheOpenDialogAndKeepItsPayload() {
         val fixture = PreviewFixture()
         show(fixture)
@@ -319,8 +374,21 @@ class SettingsBackupPreviewTest {
             DeviceConfigurationOverride.Locales(LocaleList(Locale(locale)))
         compose.setContent {
             DeviceConfigurationOverride(overrides) {
-                OpenTimeManagerTheme(ThemeMode.LIGHT, dynamicColor = false) {
-                    TestDestinations(fixture, if (locale == "ru") AppLanguage.RUSSIAN else AppLanguage.ENGLISH)
+                val context = LocalContext.current
+                val localizedContext = remember(context, locale, fontScale) {
+                    ContextThemeWrapper(context, context.theme).apply {
+                        applyOverrideConfiguration(Configuration(context.resources.configuration).apply {
+                            setLocale(java.util.Locale.forLanguageTag(locale))
+                            this.fontScale = fontScale
+                        })
+                    }
+                }
+                // Dialogs own a separate Window; configuration-only overrides do not
+                // change that Window's resource Context. Localize its Context as well.
+                CompositionLocalProvider(LocalContext provides localizedContext) {
+                    OpenTimeManagerTheme(ThemeMode.LIGHT, dynamicColor = false) {
+                        TestDestinations(fixture, if (locale == "ru") AppLanguage.RUSSIAN else AppLanguage.ENGLISH)
+                    }
                 }
             }
         }
@@ -415,11 +483,11 @@ private fun TestDestinations(fixture: PreviewFixture, language: AppLanguage) {
     }
 }
 
-private class PreviewFixture {
+private class PreviewFixture(initialConflicts: List<BackupConflict> = emptyList()) {
     val project = ProjectEntity("81000000-0000-4000-8000-000000000001", "Synthetic project", 0, 0)
     val candidate = BackupPreview(
         counts = BackupCounts(1, 0, 0),
-        conflicts = emptyList(),
+        conflicts = initialConflicts,
         skippedEntriesWithoutConfirmedTime = 0,
         activeStateWillBeStopped = false,
         payload = RestorePayload(listOf(project), emptyList(), emptyList(), PortablePreferences(), "synthetic-preview", 2),

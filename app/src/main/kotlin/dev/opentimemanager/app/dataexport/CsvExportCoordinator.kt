@@ -89,7 +89,7 @@ class CsvExportCoordinator(
         database,
         documents,
         dispatcher,
-        File(System.getProperty("java.io.tmpdir")),
+        File(checkNotNull(System.getProperty("java.io.tmpdir")) { "Temporary directory is not configured" }),
         zoneIdProvider = { zoneId },
         projectDisplayNameForSnapshot = { projectDisplayName },
     )

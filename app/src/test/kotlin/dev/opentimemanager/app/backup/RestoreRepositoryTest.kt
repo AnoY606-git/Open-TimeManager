@@ -205,6 +205,29 @@ class RestoreRepositoryTest {
     }
 
     @Test
+    fun mergeRechecksResolvedEntryConflictUsingTheSameInspectedPreview() = runBlocking {
+        val source = snapshot()
+        assertEquals(RestoreResult.Applied(1, 1, 1), repository.restore(repository.preview(source), RestoreMode.MERGE))
+        val dao = database.trackingDao()
+        val matchingEntry = requireNotNull(dao.entry(entryId.value))
+        dao.updateEntry(matchingEntry.copy(note = "Local edited note"))
+        val preview = repository.preview(source)
+        val initialConflicts = listOf(BackupConflict(BackupConflictKind.ENTRY, entryId.value))
+
+        assertEquals(initialConflicts, preview.conflicts)
+        assertEquals(RestoreResult.Conflicts(initialConflicts), repository.restore(preview, RestoreMode.MERGE))
+        assertEquals("Local edited note", dao.entry(entryId.value)?.note)
+        assertTrue(preview.hasPayload)
+
+        dao.updateEntry(matchingEntry)
+        assertEquals(RestoreResult.Applied(0, 0, 0), repository.restore(preview, RestoreMode.MERGE))
+        assertEquals(matchingEntry, dao.entry(entryId.value))
+        assertEquals(1, dao.entrySegments(entryId.value).size)
+        assertEquals(initialConflicts, preview.conflicts)
+        assertFalse(preview.hasPayload)
+    }
+
+    @Test
     fun replaceRollsBackDeletesAndInsertsWhenSqliteFails() = runBlocking {
         val local = ProjectEntity(
             "80000000-0000-4000-8000-000000000001",

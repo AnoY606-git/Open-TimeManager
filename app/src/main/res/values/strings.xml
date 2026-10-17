@@ -108,7 +108,7 @@
     <string name="backup_preview_limit_error">Restore would exceed the supported record limits. Hide this preview to adjust local data, or review Replace, then retry.</string>
     <string name="backup_preview_io_error">Local data could not be read or saved. This preview is kept: retry, or hide it and return later.</string>
     <string name="backup_preview_counts">Projects: %1$d · Entries: %2$d · Confirmed segments: %3$d</string>
-    <string name="backup_preview_conflicts">%1$d UUID conflicts with local data</string>
+    <string name="backup_preview_conflicts">UUID conflicts at initial inspection: %1$d</string>
     <string name="backup_preview_conflict_item">%1$s · %2$s</string>
     <string name="backup_preview_more_conflicts">Additional conflicts: %1$d</string>
     <string name="backup_conflict_project">Project</string>
@@ -116,7 +116,7 @@
     <string name="backup_conflict_segment">Segment</string>
     <string name="backup_preview_skipped">Entries without confirmed time to omit: %1$d</string>
     <string name="backup_preview_active_stopped">The backup contains an active session. It will be restored only as stopped, confirmed history.</string>
-    <string name="backup_preview_modes">Merge keeps local records and is available only without conflicts. Replace imports this verified backup in one database transaction and restores its project metadata and settings. If blocked or cancelled, this preview remains available to retry.</string>
+    <string name="backup_preview_modes">The conflict list reflects the original file inspection and may be outdated. Merge keeps local records and checks live conflicts again inside its database transaction; unresolved conflicts block changes. Replace imports this verified backup in one database transaction and restores its project metadata and settings. If blocked or cancelled, this preview remains available to retry.</string>
     <string name="restore_merge">Merge</string>
     <string name="restore_replace">Replace</string>
     <string name="replace_backup_title">Replace all local history?</string>

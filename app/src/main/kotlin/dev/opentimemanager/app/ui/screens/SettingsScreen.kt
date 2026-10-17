@@ -629,7 +629,7 @@ private fun BackupPreviewDialog(
                 ) {
                     Button(
                         onClick = onMerge,
-                        enabled = !busy && preview.conflicts.isEmpty(),
+                        enabled = !busy,
                         modifier = Modifier.testTag("backup_preview_merge"),
                     ) { Text(stringResource(R.string.restore_merge)) }
                     OutlinedButton(

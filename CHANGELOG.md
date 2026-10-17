@@ -22,6 +22,7 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 ### Fixed
 
 - Restore failures are visible inside the verified preview. Hide preserves it in process memory for retry after stopping a timer; explicit Cancel restore discards it. Busy restores reject duplicate actions and accidental dismissal.
+- Merge can retry after initially detected conflicts are resolved locally; live conflicts are rechecked transactionally rather than permanently disabling the action from an old preview.
 - CSV export reads one consistent, disk-spooled snapshot before opening a potentially slow document provider, without retaining the entire history in memory or holding the database transaction during external I/O.
 - CSV filenames use the current or explicitly supplied range timezone instead of the process startup timezone.
 - Notifications, widgets, tiles, CSV default-project labels, and project search honor the selected application language on Android 12/12L as well as newer Android versions.

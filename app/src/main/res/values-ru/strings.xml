@@ -109,7 +109,7 @@
     <string name="backup_preview_limit_error">Восстановление превысит допустимое число записей. Скройте предпросмотр и скорректируйте локальные данные либо рассмотрите замену, затем повторите попытку.</string>
     <string name="backup_preview_io_error">Не удалось прочитать или сохранить локальные данные. Предпросмотр сохранён: повторите попытку или скройте его и вернитесь позже.</string>
     <string name="backup_preview_counts">Проекты: %1$d, записи: %2$d, подтверждённые сегменты: %3$d</string>
-    <string name="backup_preview_conflicts">Конфликты UUID с локальными данными: %1$d</string>
+    <string name="backup_preview_conflicts">Конфликты UUID при первичной проверке: %1$d</string>
     <string name="backup_preview_conflict_item">%1$s · %2$s</string>
     <string name="backup_preview_more_conflicts">и ещё %1$d</string>
     <string name="backup_conflict_project">Проект</string>
@@ -117,7 +117,7 @@
     <string name="backup_conflict_segment">Сегмент</string>
     <string name="backup_preview_skipped">Записи без подтверждённого времени будут пропущены: %1$d</string>
     <string name="backup_preview_active_stopped">Копия содержит активную сессию. Она будет восстановлена только как остановленная подтверждённая история.</string>
-    <string name="backup_preview_modes">Объединение сохраняет локальные записи и доступно только без конфликтов. Замена импортирует проверенную копию в одной транзакции БД и восстанавливает метаданные проектов и настройки. При блокировке или отмене предпросмотр можно использовать повторно.</string>
+    <string name="backup_preview_modes">Список конфликтов относится к первичной проверке файла и может устареть. Объединение сохраняет локальные записи и заново проверяет актуальные конфликты внутри транзакции БД; неустранённые конфликты блокируют изменения. Замена импортирует проверенную копию в одной транзакции БД и восстанавливает метаданные проектов и настройки. При блокировке или отмене предпросмотр можно использовать повторно.</string>
     <string name="restore_merge">Объединить</string>
     <string name="restore_replace">Заменить</string>
     <string name="replace_backup_title">Заменить всю локальную историю?</string>
