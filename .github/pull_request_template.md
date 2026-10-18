@@ -1,23 +1,27 @@
-## User-visible outcome
+## Что изменилось / What changed?
 
-Describe the problem and resulting behavior.
+Коротко опишите задачу и результат. Если есть issue, добавьте ссылку.
+Briefly describe the problem and result; link an issue if there is one.
 
-## Safety and compatibility
+## На что это влияет / Impact
 
-- Data/storage impact:
-- Permission/privacy impact:
-- Android 12/API 31 compatibility:
-- RU/EN resource impact:
+Отметьте изменения данных, разрешений или интерфейса. Для поведения добавьте
+регрессионный тест; тексты интерфейса нужны на RU/EN.
+Note data, permission, or UI changes. Include a regression test for behavior
+changes and both interface languages where needed.
 
-## Verification
+## Проверки / Checks
 
-List exact commands and environments actually used. Distinguish compilation from emulator or physical-device execution.
+Перечислите выполненные проверки и то, что не запускали. Для Android укажите
+версию и эмулятор/устройство. Команды — в [инструкции сборки](https://github.com/AnoY606-git/Open-TimeManager/blob/main/docs/BUILDING.md).
+List what you checked and what you did not run. Include the Android version
+and emulator/device. See the [build guide](https://github.com/AnoY606-git/Open-TimeManager/blob/main/docs/BUILDING.md#english).
 
-- [ ] Repository policy tests and checker
-- [ ] Core and app JVM tests
-- [ ] Debug and release lint
-- [ ] Debug and unsigned release assembly
-- [ ] Instrumentation source compilation
-- [ ] Emulator/device run, or explicitly marked not run
+- [ ] Проверки документации и репозитория / Documentation and repository checks
+- [ ] JVM-тесты / JVM tests
+- [ ] Lint и сборка APK / Lint and APK builds
+- [ ] Запуск на Android или объяснение, почему не запускался / Android run or reason not run
 
-Security reports with sensitive details belong in a private Security Advisory, not this pull request.
+Не включайте личные данные. Уязвимости сообщайте
+[приватно](https://github.com/AnoY606-git/Open-TimeManager/security/advisories/new).
+Do not include private data. Report vulnerabilities privately.

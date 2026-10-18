@@ -10,20 +10,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = ROOT / "scripts/with-toolchain.sh"
-README_ADB_COMMANDS = (
-    "scripts/with-toolchain.sh adb devices",
+DOCUMENTED_ADB_COMMANDS = (
+    "scripts/with-toolchain.sh adb devices -l",
     "scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk",
 )
 
 
 class ToolchainWrapperDocumentationTest(unittest.TestCase):
-    def test_both_readmes_use_the_toolchain_wrapper_for_adb(self) -> None:
+    def test_both_readmes_link_to_the_build_guide(self) -> None:
         for relative in ("README.md", "README.en.md"):
             with self.subTest(readme=relative):
                 contents = (ROOT / relative).read_text(encoding="utf-8")
-                for command in README_ADB_COMMANDS:
+                self.assertIn("docs/BUILDING.md", contents)
+
+    def test_both_build_guide_languages_use_the_toolchain_wrapper_for_adb(self) -> None:
+        guide = (ROOT / "docs/BUILDING.md").read_text(encoding="utf-8")
+        russian, english = guide.split("\n## English\n", 1)
+        for language, contents in (("ru", russian), ("en", english)):
+            with self.subTest(language=language):
+                for command in DOCUMENTED_ADB_COMMANDS:
                     self.assertIn(command, contents)
-                self.assertNotIn("\nadb devices\n", contents)
+                self.assertNotIn("\nadb devices", contents)
                 self.assertNotIn("\nadb install -r ", contents)
                 self.assertNotIn("\nadb -s SERIAL install -r ", contents)
 

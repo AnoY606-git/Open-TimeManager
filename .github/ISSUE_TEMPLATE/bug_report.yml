@@ -1,47 +1,54 @@
-name: Bug report
-description: Report a reproducible defect without private work data
+name: "Ошибка / Bug report"
+description: "Расскажите, что не работает. Russian and English are welcome."
 title: "[Bug] "
 body:
   - type: markdown
     attributes:
-      value: "Do not attach real work logs, backups, passwords, or security exploit details. Report vulnerabilities privately through Security Advisories."
+      value: |
+        Пишите на русском или английском. Для примеров используйте вымышленные данные.
+        Не прикладывайте личные записи, копии, пароли и ключи. Об уязвимостях
+        сообщайте приватно через Security → Advisories.
+
+        Russian and English are welcome. Use made-up records, not personal files,
+        passwords, or keys. Report vulnerabilities privately through Security → Advisories.
   - type: textarea
     id: behavior
     attributes:
-      label: Observed behavior
-      description: What happened? Use synthetic project names and notes.
+      label: "Что произошло / What happened?"
+      description: "Опишите проблему; можно добавить снимок без личных данных. Describe the problem; a screenshot without private data can help."
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: "Как должно быть / What did you expect?"
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Reproduction steps
+      label: "Как повторить / Steps to reproduce"
+      description: "Перечислите действия по порядку. List the steps in order."
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: App version or commit
-      placeholder: 0.1.0-preview or commit SHA
+      label: "Версия приложения / App version"
+      placeholder: "1.1.0 или commit / or commit"
     validations:
       required: true
   - type: input
     id: android
     attributes:
-      label: Android version and device/emulator
-      placeholder: Android 12 / API 31, emulator
+      label: "Android и устройство / Android and device"
+      placeholder: "Android 16, модель или эмулятор / model or emulator"
     validations:
       required: true
   - type: checkboxes
     id: safety
     attributes:
-      label: Data safety
+      label: "Перед отправкой / Before sending"
       options:
-        - label: I removed private records, passwords, keys, and device identifiers.
+        - label: "Личных данных, паролей, ключей и идентификаторов устройства нет. No private records, passwords, keys, or device identifiers are included."
           required: true

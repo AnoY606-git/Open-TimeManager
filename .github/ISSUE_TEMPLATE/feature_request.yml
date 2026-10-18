@@ -1,35 +1,33 @@
-name: Feature request
-description: Propose a focused user-visible improvement
+name: "Идея / Feature request"
+description: "Предложите улучшение. Russian and English are welcome."
 title: "[Feature] "
 body:
   - type: textarea
     id: problem
     attributes:
-      label: User problem
-      description: Who has the problem and what cannot they do today?
+      label: "Какую задачу решаем / What problem would this solve?"
+      description: "Расскажите, чего сейчас не хватает и кому это поможет. What is missing today, and who would benefit?"
     validations:
       required: true
   - type: textarea
     id: outcome
     attributes:
-      label: Desired outcome
-      description: Describe observable behavior, not an implementation mandate.
+      label: "Как это могло бы работать / How should it work?"
+      description: "Опишите удобный для вас сценарий, без обязательных технических деталей. Describe the experience you want; technical details are optional."
     validations:
       required: true
   - type: dropdown
     id: data
     attributes:
-      label: Does this require new data access or Android permissions?
+      label: "Нужны ли новые данные или разрешения / Any new data access or permissions?"
       options:
-        - No
-        - Yes — explained below
-        - Unknown
+        - "Нет / No"
+        - "Да, объясню ниже / Yes, explained below"
+        - "Не знаю / Not sure"
     validations:
       required: true
   - type: textarea
     id: privacy
     attributes:
-      label: Privacy and alternatives
-      description: Explain needed data/permissions and the simplest alternative considered.
-    validations:
-      required: true
+      label: "Что ещё стоит учесть / Anything else?"
+      description: "Альтернативы, примеры или новые разрешения, если они нужны. Add alternatives, examples, or needed permissions. Не включайте личные данные / Do not include private data."

@@ -1,42 +1,89 @@
-# Contributing
+# Участие в проекте / Contributing
 
-Thank you for improving Open TimeManager. Contributions should preserve its local-first, no-account, no-network-permission model unless a separately discussed product decision explicitly changes that boundary.
+[Русский](#русский) · [English](#english)
 
-## Before opening a change
+## Русский
 
-- Search existing issues and keep one change focused on one observable problem.
-- For a bug, describe a reproducible user-visible scenario and expected behavior.
-- For a feature, explain who benefits, what data or permissions it needs, and why the simpler current behavior is insufficient.
-- Never attach real work logs, encrypted backups, passwords, signing material, or device identifiers.
+Спасибо, что помогаете Open TimeManager стать лучше. Полезны не только изменения
+кода: понятное описание ошибки, улучшение перевода или исправление инструкции
+тоже помогают.
 
-## Quality gate
+### Сообщить об ошибке или предложить идею
 
-Use JDK 17 and Android SDK API 36, or the pinned Linux bootstrap from the README. Behavioral changes need a regression test that fails for the defect or missing capability and passes with the implementation. Before a pull request, run:
+Проверьте [существующие обсуждения](https://github.com/AnoY606-git/Open-TimeManager/issues),
+затем создайте issue. Писать можно на русском или английском.
 
-```bash
-python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
-python3 scripts/check_repository.py
-scripts/with-toolchain.sh ./gradlew --no-daemon \
-  :core:test :app:testDebugUnitTest :app:testReleaseUnitTest \
-  :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease \
-  :app:compileDebugAndroidTestKotlin
-scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
-```
+- Для ошибки опишите, что вы сделали, чего ожидали и что получилось. Укажите
+  версию приложения и Android.
+- Для идеи расскажите, какую задачу она решает и почему текущего поведения
+  недостаточно. Детали реализации можно обсудить позже.
+- В примерах используйте вымышленные записи. Не прикладывайте личные копии,
+  CSV, пароли, ключи или идентификаторы устройств.
 
-With your own JDK/SDK, replace `scripts/with-toolchain.sh ./gradlew` with `./gradlew`.
+Уязвимости отправляйте [приватно](SECURITY.md), не через обычный issue.
 
-Native Windows uses `./gradlew.bat`; the README includes PowerShell setup and
-device commands. Python repository checks require Python 3.11+ (the optional
-Linux bootstrap requires 3.12+). Bash execution tests run on POSIX hosts or WSL
-and are explicitly skipped on native Windows; documentation and policy tests
-still run there. CI pins the same JDK and command-line tools revisions as
-`gradle/toolchain.json`; update the manifest, workflow, and toolchain regression
-checks together when intentionally upgrading.
+### Подготовить изменение
 
-Keep English fallback and Russian resources in parity. Do not add dynamic versions, mutable Action tags, broad permissions, production signing keys, generated toolchains, or private planning/research material. Room schema changes include an exported schema and non-destructive migration.
+1. Настройте проект по [инструкции сборки](docs/BUILDING.md).
+2. Для большой функции сначала обсудите идею. Небольшое исправление можно сразу
+   прислать отдельным pull request.
+3. Сохраняйте стиль соседнего кода. Для исправления поведения добавьте тест,
+   который воспроизводит ошибку.
+4. Запустите [проверки](docs/BUILDING.md#проверки-перед-отправкой-изменений).
+5. В pull request кратко объясните результат, риски и выполненные проверки.
+   Если что-то не проверяли, напишите об этом прямо.
 
-## Pull request
+### Что важно сохранить
 
-Explain behavior and risk, link the issue when one exists, list exact checks run, and identify anything not verified on an emulator or device. Compilation is not device execution. Contributions are accepted under GPL-3.0-only.
+- Работа без аккаунта и сетевого разрешения — основа приложения. Новые данные
+  и разрешения нужно заранее обсуждать.
+- Тексты интерфейса должны быть и на русском, и на английском.
+- Изменения схемы Room сопровождаются экспортированной схемой и миграцией
+  без потери данных.
+- Версии зависимостей закреплены. При обновлении инструментов согласуйте
+  `gradle/toolchain.json`, CI и тесты настройки окружения.
+- Не добавляйте в Git ключи подписи, локальные инструменты, сборки и личные файлы.
+  Инструкции разработчикам храните в публичной документации, рабочие заметки — вне неё.
 
-Report vulnerabilities privately according to [SECURITY.md](SECURITY.md), not through an issue or ordinary pull request.
+Изменения принимаются на условиях [GPL-3.0-only](LICENSE).
+Скриншоты для документации делайте на эмуляторе с вымышленными записями;
+[требования к изображениям](docs/screenshots/README.md#обновление-снимков).
+
+## English
+
+Thank you for helping improve Open TimeManager. Clear bug reports, translations,
+and documentation fixes are just as welcome as code.
+
+### Bugs and ideas
+
+Check [existing issues](https://github.com/AnoY606-git/Open-TimeManager/issues)
+before opening a new one. Russian and English are both welcome.
+
+- For a bug, include what you did, what you expected, what happened, and your app
+  and Android versions.
+- For an idea, explain the problem it solves and why current behavior is not enough.
+  Implementation can be discussed later.
+- Use made-up records. Do not attach personal backups, CSV, passwords, signing
+  keys, or device identifiers.
+
+Report vulnerabilities [privately](SECURITY.md#english), not in a normal issue.
+
+### Send a change
+
+1. Follow the [build instructions](docs/BUILDING.md#english).
+2. Discuss substantial features first; a small fix can go straight to a focused pull request.
+3. Follow the surrounding code style and add a regression test for behavior changes.
+4. Run the [checks](docs/BUILDING.md#check-your-changes).
+5. Describe the result, risks, and actual checks in your pull request. Say what
+   you did not test; compilation alone is not an emulator run.
+
+Keep the app usable without an account or network permission. Discuss new data
+access first, maintain both interface languages, and include a non-destructive
+migration with every Room schema change. Pin dependency versions; tool upgrades
+must keep `gradle/toolchain.json`, CI, and toolchain tests in sync.
+
+Never commit signing keys, local tools, generated builds, or personal data.
+Keep public instructions in the documentation and private working notes out of it.
+Documentation screenshots must use an emulator and made-up records;
+see the [capture notes](docs/screenshots/README.md#english).
+Contributions are accepted under [GPL-3.0-only](LICENSE).

@@ -1,23 +1,55 @@
-# Security policy
+# Сообщить об уязвимости / Security policy
 
-## Supported version
+[Русский](#русский) · [English](#english)
 
-Security fixes target the latest published stable release and the default branch.
-`1.1.0` is being prepared; until it is published, `1.0.0` remains the published
-stable version. Earlier `0.1.x` preview builds are no longer supported. Create and
-verify a separate encrypted backup before migrating from a differently signed
-installation; never uninstall or clear data to bypass a signing mismatch.
+## Русский
 
-## Report privately
+### Какие версии поддерживаются
 
-Do not open a public issue containing an exploit, private records, backup files, passwords, device identifiers, or other sensitive material.
+Исправления безопасности выпускаются для последней стабильной версии
+**1.1.0** и основной ветки разработки. Ранние тестовые версии не поддерживаются.
 
-Use GitHub's **Private vulnerability reporting** for this repository: open **Security → Advisories → Report a vulnerability**. If that control is unavailable, contact the repository owner privately through their GitHub profile and ask for a private channel without sending exploit details publicly.
+### Как написать приватно
 
-Include the affected revision/version, Android/API level, impact, minimal
-reproduction, and whether it involves a crafted `.otmbackup` or `.otmplain`, stale
-system/history action, local storage, or document provider. Use synthetic data
-only. Neither plaintext nor encrypted personal backups belong in public issues,
-Git, CI artifacts, or source archives; a plaintext checksum is not authenticity proof.
+Откройте [Report a vulnerability](https://github.com/AnoY606-git/Open-TimeManager/security/advisories/new)
+в разделе **Security → Advisories** этого репозитория. Не создавайте публичный
+issue с описанием эксплуатации. Если приватная форма недоступна, попросите
+владельца проекта через его профиль GitHub предложить закрытый канал связи,
+не публикуя детали уязвимости.
 
-Acknowledgement uses the same private channel. Triage and disclosure timing depend on severity and fix availability; this community-maintained project promises no fixed response SLA. The security model and limitations are documented in [docs/SECURITY.md](docs/SECURITY.md).
+В сообщении помогут:
+
+- версия приложения или commit;
+- версия Android и условия, в которых возникает проблема;
+- короткие шаги воспроизведения с вымышленными данными;
+- возможные последствия и, если есть, безопасный тестовый пример.
+
+Не отправляйте рабочие записи, личные `.otmbackup`/`.otmplain`, пароли, ключи
+и идентификаторы устройства. Ответ и обсуждение исправления останутся в том же
+приватном канале. У проекта нет гарантированного срока ответа; сроки исправления
+и раскрытия зависят от серьёзности проблемы.
+
+[Как приложение защищает данные](docs/SECURITY.md).
+
+## English
+
+### Supported versions
+
+Security fixes target the latest stable release, **1.1.0**, and the default
+development branch. Older preview builds are unsupported.
+
+### Report privately
+
+Use [Report a vulnerability](https://github.com/AnoY606-git/Open-TimeManager/security/advisories/new)
+under **Security → Advisories**. Do not post exploit details in a public issue.
+If private reporting is unavailable, ask the owner through their GitHub profile
+for a private contact method without publishing the vulnerability.
+
+Please include the app version or commit, Android version, short reproduction
+steps with made-up data, likely impact, and a safe test case if possible.
+Do not send personal backups, work records, passwords, keys, or device identifiers.
+
+Replies and fix discussions use the same private channel. This community project
+has no guaranteed response time; fix and disclosure timing depend on severity.
+
+[How the app protects data](docs/SECURITY.md#english).
