@@ -1,49 +1,50 @@
 # Скриншоты / Screenshots
 
 > [!NOTE]
-> **Съёмка 1.1.0 запланирована, но ещё не выполнена.** Сейчас в каталоге остаются
-> 10 прежних PNG; их нужно переснять, а шесть новых — добавить. Разметка галерей
-> в обоих README подготовлена заранее и не доказывает готовность релиза.
+> **Все 16 кадров пересняты с подписанной 1.1.0 на эмуляторе 18 октября 2026 года.**
+> Десять прежних PNG заменены, шесть новых сценариев добавлены. Телефон не использовался.
 
-## План съёмки 1.1.0
+## Параметры съёмки 1.1.0
 
-| Поле | План / запись после съёмки |
+| Поле | Фактическая съёмка |
 | --- | --- |
-| Приложение | Кандидат стабильной `1.1.0`, `versionCode = 3`; съёмка после smoke-проверки подписанного APK |
+| Приложение | Подписанная `1.1.0`, `versionCode = 3`, после успешной runtime-проверки |
 | Эмулятор | Android 16 / API 36, AOSP x86_64, профиль Pixel 5; AVD `OTM_Screenshots_API36` |
 | Разрешённая цель | Только принадлежащий владельцу проекта эмулятор `emulator-5554`; не личный телефон |
 | Размер | Захват 1080 × 2340; готовые PNG 720 × 1560 с сохранением пропорций |
 | Оформление | Портрет, жестовая навигация, стандартный масштаб текста, dynamic color выключен |
 | Набор | RU и EN: по семь светлых экранов и одному тёмному таймеру, всего 16 PNG |
-| Исходный код APK | **TODO владельца:** полный SHA итогового кодового коммита. `e6fe152…` — только ориентир кандидата; исправления могут его заменить |
-| Фактическая съёмка | **TODO владельца:** дата, точный APK и подтверждение проверки всех 16 файлов |
+| Исходный код снятого APK | `bd2c0e65bdd72dba49ddaba1fe0998771f31ffa9` |
+| Дата и APK | 2026-10-18, `Open-TimeManager-1.1.0.apk`, все 16 PNG проверены визуально |
+| SHA-256 снятого APK | `fe73c9aecad4bad9f449e42ee6794373321ca8ddc93332961241a11c29f800ba` |
 
-SHA нужно взять из источников фактически снятого APK, а не из последующего
-коммита галереи. Пока TODO не заполнены, здесь нет заявления о завершённой
-съёмке, публикации, проверке подписи или независимом аудите.
+Это SHA фактически снятого APK, а не последующего коммита галереи. После добавления
+изображений итоговый APK пересобирается для актуализации встроенных VCS-метаданных;
+байтовое совпадение исполняемого кода и ресурсов проверяется отдельно. Окончательная
+сумма находится в release assets. Снимки сами по себе не заменяют проверку релиза.
 
 ## Кадры и имена файлов
 
-Существующие 10 имён сохраняются, но **каждый кадр снимается заново с UI 1.1**.
+Существующие 10 имён сохранены, но **каждый кадр снят заново с UI 1.1**.
 Новые сценарии — руководство, выбор проекта по умолчанию и предупреждение перед
 созданием незащищённой копии `.otmplain`.
 
-| Экран / Scene | Русский | English | План |
+| Экран / Scene | Русский | English | Результат |
 | --- | --- | --- | --- |
-| Таймер / Timer, light | `ru-timer.png` | `en-timer.png` | Переснять / Reshoot |
-| История / History, light | `ru-history.png` | `en-history.png` | Переснять / Reshoot |
-| Отчёты / Reports, light | `ru-reports.png` | `en-reports.png` | Переснять / Reshoot |
-| Обзор пяти разделов настроек / Settings overview, light | `ru-settings.png` | `en-settings.png` | Переснять / Reshoot |
-| Руководство / Help, light | `ru-help.png` | `en-help.png` | Добавить / Add |
-| Выбор проекта по умолчанию / Default-project picker, light | `ru-default-project.png` | `en-default-project.png` | Добавить / Add |
-| Предупреждение о `.otmplain` / Plaintext-backup warning, light | `ru-backup-warning.png` | `en-backup-warning.png` | Добавить / Add |
-| Таймер / Timer, dark | `ru-timer-dark.png` | `en-timer-dark.png` | Переснять / Reshoot |
+| Таймер / Timer, light | `ru-timer.png` | `en-timer.png` | Переснято / Captured |
+| История / History, light | `ru-history.png` | `en-history.png` | Переснято / Captured |
+| Отчёты / Reports, light | `ru-reports.png` | `en-reports.png` | Переснято / Captured |
+| Обзор пяти разделов настроек / Settings overview, light | `ru-settings.png` | `en-settings.png` | Переснято / Captured |
+| Руководство / Help, light | `ru-help.png` | `en-help.png` | Добавлено / Captured |
+| Выбор проекта по умолчанию / Default-project picker, light | `ru-default-project.png` | `en-default-project.png` | Добавлено / Captured |
+| Предупреждение о `.otmplain` / Plaintext-backup warning, light | `ru-backup-warning.png` | `en-backup-warning.png` | Добавлено / Captured |
+| Таймер / Timer, dark | `ru-timer-dark.png` | `en-timer-dark.png` | Переснято / Captured |
 
 ## Только демонстрационные данные
 
-Для пересъёмки нужен тот же синтетический набор из стабильной 1.0, сохранённый
-при обновлении до 1.1 **без удаления приложения и очистки данных**. Не заменяйте
-его результатами тестов или новым пустым набором ради красивого кадра.
+Использован тот же синтетический набор из стабильной 1.0, сохранённый
+при обновлении до 1.1 **без удаления приложения и очистки данных**. Он не заменялся
+результатами тестов или новым пустым набором ради красивого кадра.
 
 Дата ручных записей — 17 октября 2026 года. Пользовательские проекты — только
 `Design Lab` и `Learning`; служебный «Без проекта» создаётся приложением.
@@ -59,6 +60,11 @@ SHA нужно взять из источников фактически сня�
 таймера показывает короткую сессию на паузе, это должна быть настоящая сессия;
 её подтверждённые секунды учитываются в итогах, а не дорисовываются. При другой
 текущей дате явно выберите период отчёта, включающий демонстрационные записи.
+
+В кадрах истории включён реальный поиск `c`: он находит все три исходные заметки
+и скрывает короткие проверочные сессии без заметок. Записи не изменялись и не
+удалялись. В отчёте за 12–18 октября видны 3:03 с подтверждённым временем реальных
+smoke-сессий; короткая текущая пауза показывает 0:00:02, а не дорисованную длительность.
 
 ## Порядок обновления владельцем проекта
 
@@ -88,19 +94,18 @@ Live Updates: на API 36 уведомление может оставаться
 
 ## English
 
-**The 1.1.0 reshoot is planned, not completed.** The ten existing PNG files still
-need replacement; six new workflow files await capture. Both main README
-galleries are prepared in advance, not evidence of release readiness.
+**All 16 screenshots were captured on 2026-10-18 from the signed 1.1.0 build.**
+Ten old files were replaced and six workflow scenes added. All files were visually reviewed.
 
-The project owner will capture the signed **1.1.0 / versionCode 3** candidate
-after its APK smoke check, using only the owned **Android 16 / API 36** emulator:
+The signed **1.1.0 / versionCode 3** build was captured after its APK smoke check,
+using only the owned **Android 16 / API 36** emulator:
 AVD **`OTM_Screenshots_API36`**, serial **`emulator-5554`**, AOSP x86_64 / Pixel 5
 profile. Native captures are **1080 × 2340**, resized proportionally to
 **720 × 1560**. Use portrait orientation, gesture navigation, normal font scale,
 and dynamic colors off. Each language has seven light-theme screens and one
 dark timer; all 16 filenames and scenes are listed above.
 
-Reuse the **synthetic stable-1.0 fixture preserved through the in-place upgrade**:
+The **synthetic stable-1.0 fixture was preserved through the in-place upgrade**:
 `Design Lab`, `Learning`, and the three dated entries/notes in the table. Do not
 uninstall, clear data, or replace that fixture with test results. Run destructive
 test setup separately. Choose a report period containing 17 October 2026; any
@@ -113,10 +118,9 @@ Photoshop, compositing, replacement text, or fabricated views. System UI demo mo
 may stabilize the status bar at 12:34 and hide notifications; it must not alter
 the app's clock or results. Never use a client/private phone or personal data.
 
-**Owner TODO:** record the full source SHA of the captured APK, capture date, and
-exact APK in the metadata table. `e6fe152…` is only a candidate-code reference and
-may be superseded by fixes; it is not a completed capture or publication/audit
-record. After verifying all 16 files and both galleries, remove the pending notes
-from these three documents. Screenshots do not establish physical-device testing,
-battery savings, or Live Update promotion; an ordinary notification on API 36 is
-not evidence of a failed capture.
+Captured APK source: `bd2c0e65bdd72dba49ddaba1fe0998771f31ffa9`; its SHA-256 is in
+the table above. The later gallery commit only changes documentation/images and
+embedded VCS metadata; executable/resource equivalence is checked before release.
+History uses the real `c` search to show the three original notes, not empty-note
+smoke sessions. No records were deleted. Screenshots do not establish physical-device
+testing, battery savings or Live Update promotion; base API 36 can retain ordinary presentation.

@@ -32,14 +32,9 @@ Open TimeManager keeps projects, notes, and history on your device—without an 
 
 ## Screenshots
 
-For the **upcoming stable 1.1.0** (`versionCode = 3`), 16 real captures are planned
+Sixteen fresh **stable 1.1.0** (`versionCode = 3`) captures
 from an **Android 16 / API 36 emulator**: eight each in English and Russian,
 using synthetic demo data only. [Capture setup and example records](docs/screenshots/README.md).
-
-> [!NOTE]
-> The 1.1 reshoot has not happened yet. The main screens and dark timer below
-> still show the previous 1.0 interface; six new workflow image files await capture.
-> This prepared gallery does not establish verification or publication of 1.1.
 
 | **01 · Timer** | **02 · History** |
 | :---: | :---: |
@@ -50,7 +45,7 @@ using synthetic demo data only. [Capture setup and example records](docs/screens
 <details>
 <summary><strong>New 1.1 workflows · help, default project, and backup safety</strong></summary>
 
-Planned real screens: these files will be added after emulator capture.
+Real screens from the new version, not mockups or painted-over controls.
 
 | **Offline help** | **Default project** | **Backup warning** |
 | :---: | :---: | :---: |
@@ -101,21 +96,19 @@ without private OEM APIs or a blanket battery exemption. See the [user guide](do
 
 ## Install
 
-**Upcoming stable version: `1.1.0` (`versionCode = 3`).** Requires **Android 12+
+**Stable version: `1.1.0` (`versionCode = 3`).** Requires **Android 12+
 (API 31)**; targets Android 16 / API 36. Read the [1.1.0 notes](docs/releases/1.1.0.md).
-The [v1.1.0 release page](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.1.0)
-is intended for final assets and verification results once published. These docs
-do not establish signing, CI success, or publication.
-
-Until then, the latest published stable version is **1.0.0**:
-**`Open-TimeManager-1.0.0.apk`** from the [1.0.0 release](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.0.0).
+Download **`Open-TimeManager-1.1.0.apk`** from the
+[v1.1.0 release page](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.1.0),
+with final checksums, public certificate details, corresponding source and actual verification results.
 This is not a Google Play release.
 
 Before migrating from a preview/debug installation, stop the timer and create and
 verify a separate encrypted backup. The production key differs from the debug
-key; do not uninstall or clear app data to force an update. Version 1.1 is planned
-to use the same production key as 1.0; the final assets must establish the matching
-certificate and data-preserving update check. See the [upgrade precautions](docs/releases/1.1.0.md).
+key; do not uninstall or clear app data to force an update. Version 1.1 retains
+1.0's production key. Final assets document the certificate comparison and
+data-preserving emulator upgrade; physical devices and all OEMs were not tested.
+See the [upgrade precautions](docs/releases/1.1.0.md).
 
 For development builds, open [GitHub Actions → CI](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml), select a successful run, and look under **Artifacts** for `open-timemanager-debug-and-unsigned-release-apks`. Downloading Actions artifacts may require signing in. These debug/unsigned files are not the signed official release. See the [CI workflow](.github/workflows/ci.yml) for the build steps.
 

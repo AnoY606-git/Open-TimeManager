@@ -4,11 +4,12 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 ## [Unreleased]
 
-## [1.1.0] - Upcoming
+## [1.1.0] - 2026-10-18
 
 ### Release status
 
-- Planned stable update with `versionCode = 3`; see the [bilingual 1.1.0 notes](docs/releases/1.1.0.md). Final signing identity, data-preserving upgrade verification, CI results, source revision, checksums, and publication status belong to the release assets, not this changelog.
+- Stable update with `versionCode = 3`; see the [bilingual 1.1.0 notes](docs/releases/1.1.0.md). Final signing identity, data-preserving upgrade verification, CI results, source revision, checksums, and publication status belong to the release assets, not this changelog.
+- Replaced all ten previous screenshots and added six new RU/EN workflow captures from the signed 1.1.0 Android 16 emulator build, preserving the original synthetic history during upgrade.
 
 ### Interface and guidance
 

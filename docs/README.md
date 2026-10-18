@@ -5,7 +5,7 @@
 - [Безопасность и приватность · Security and privacy](SECURITY.md)
 - [Формат backup и CSV](BACKUP_FORMAT.md)
 - [Подготовка APK к распространению · Release checklist](RELEASING.md)
-- [1.1.0 — готовящийся стабильный выпуск · Upcoming stable release](releases/1.1.0.md)
+- [1.1.0 — стабильный выпуск · Stable release](releases/1.1.0.md)
 - [1.0.0 — первый стабильный выпуск · Historical stable release](releases/1.0.0.md)
 - [История изменений · Changelog](../CHANGELOG.md)
 - [Лицензия · License](../LICENSE)
@@ -22,5 +22,5 @@
 
 The 1.1 guide covers five Settings screens, ten searchable offline topics, local
 default-project selection, native Android controls, and encrypted versus plaintext
-backup. Release notes remain upcoming until final assets and verification are
-published; documentation alone is not evidence of signing, CI success, or OEM testing.
+backup. Final assets document signing and verification; documentation alone
+is not evidence of CI success, measured battery savings or OEM testing.
