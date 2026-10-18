@@ -315,9 +315,14 @@ class TrackingCoordinatorTest {
         assertEquals(ProjectEditResult.APPLIED, projects.update(ProjectId("empty"), "Новое", 1))
         assertEquals(ProjectEditResult.APPLIED, projects.delete(ProjectId("empty"), 100))
         assertFalse(snapshot().projects.any { it.id == "empty" })
-        start()
-        assertEquals(ProjectEditResult.APPLIED, projects.delete(defaultProject, 100))
-        assertEquals(100L, snapshot().projects.single().archivedAtUtcMillis)
+        val referenced = ProjectId("referenced")
+        assertEquals(ProjectEditResult.APPLIED, projects.create(referenced, "Referenced", 0, 0))
+        tracker.execute(TrackingCommand.Start(CommandId("start-referenced"), referenced, snapshot().session.revision))
+        assertEquals(ProjectEditResult.NOT_FOUND, projects.delete(referenced, 100))
+        now = ClockSnapshot(1_500, 600, 7)
+        tracker.execute(TrackingCommand.Stop(target(snapshot(), "stop-referenced")))
+        assertEquals(ProjectEditResult.APPLIED, projects.delete(referenced, 2_000))
+        assertEquals(2_000L, snapshot().projects.single { it.id == referenced.value }.archivedAtUtcMillis)
         assertEquals(1, snapshot().entries.size)
     }
     @Test fun clockSamplingIsSerializedWithDatabaseTransitions() = runBlocking {

@@ -244,7 +244,7 @@ class PlainBackupFileCoordinatorTest {
         assertEquals(beforeEntries, database.trackingDao().entries())
     }
 
-    @Test fun plaintextEnforcesEveryOperationalLimitAndRestoreDomainRulesWithoutMutation() = runBlocking {
+    @Test fun plaintextEnforcesEveryOperationalLimitAndRestoreDomainRulesWithoutMutation() = runBlocking<Unit> {
         val before = database.trackingDao().entries()
         documents.bytes[uri] = PlainBackupCodec.encode(source())
         val policies = listOf(

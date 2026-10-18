@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -199,6 +200,7 @@ fun SettingsScreen(
         mutableStateOf((if (preview != null) SettingsPage.DATA else initialPage).name)
     }
     val page = SettingsPage.valueOf(pageName)
+    val listState = rememberSaveable(page, saver = LazyListState.Saver) { LazyListState() }
     var showDefaultProjectPicker by remember { mutableStateOf(false) }
     var confirmPlainBackup by remember { mutableStateOf(false) }
     BackHandler(
@@ -286,6 +288,7 @@ fun SettingsScreen(
         HelpScreen(onBack = { pageName = SettingsPage.OVERVIEW.name }, modifier = Modifier.widthIn(max = 760.dp))
     } else LazyColumn(
         Modifier.widthIn(max = 760.dp).fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("settings_list"),
+        state = listState,
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
