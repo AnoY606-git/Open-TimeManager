@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 enum class AppGlyph {
     Timer, History, Reports, Settings, Play, Pause, Stop, Plus, Search, ChevronRight,
     Edit, Delete, Download, Shield, Palette, Globe, Target, ArrowUpRight, Check,
-    Folder, Lock, Note, Close, Archive,
+    Folder, Lock, Note, Close, Archive, Notifications,
 }
 
 private val vectors: Map<AppGlyph, ImageVector> = AppGlyph.entries.associateWith { glyph ->
@@ -115,6 +115,12 @@ private val vectors: Map<AppGlyph, ImageVector> = AppGlyph.entries.associateWith
                     moveTo(3f, 3f); lineTo(21f, 3f); lineTo(21f, 7f); lineTo(3f, 7f); close()
                     moveTo(5f, 7f); lineTo(5f, 21f); lineTo(19f, 21f); lineTo(19f, 7f)
                     moveTo(9f, 12f); lineTo(15f, 12f)
+                }
+                AppGlyph.Notifications -> {
+                    moveTo(5f, 17f); lineTo(7f, 14f); lineTo(7f, 9f)
+                    curveTo(7f, 2f, 17f, 2f, 17f, 9f)
+                    lineTo(17f, 14f); lineTo(19f, 17f); close()
+                    moveTo(10f, 21f); lineTo(14f, 21f)
                 }
             }
         }

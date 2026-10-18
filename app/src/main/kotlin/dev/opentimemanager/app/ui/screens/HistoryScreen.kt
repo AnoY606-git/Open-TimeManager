@@ -22,9 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -61,6 +60,7 @@ import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.ui.AppUiState
 import dev.opentimemanager.app.ui.EntryFormState
 import dev.opentimemanager.app.ui.ManualEntryDraft
+import dev.opentimemanager.app.ui.MAX_HISTORY_LIMIT
 import dev.opentimemanager.app.ui.entryFormState
 import dev.opentimemanager.app.ui.entryDurationMillis
 import dev.opentimemanager.app.ui.formatDuration
@@ -70,8 +70,11 @@ import dev.opentimemanager.app.ui.components.AccentIcon
 import dev.opentimemanager.app.ui.components.AppCard
 import dev.opentimemanager.app.ui.components.AppGlyph
 import dev.opentimemanager.app.ui.components.AppIcon
+import dev.opentimemanager.app.ui.components.AppMessageCard
+import dev.opentimemanager.app.ui.components.FormErrorText
 import dev.opentimemanager.app.ui.components.ScreenHeading
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -82,7 +85,7 @@ fun HistoryScreen(
     state: AppUiState,
     onSearch: (String) -> Unit,
     onSave: (String?, Long?, ManualEntryDraft) -> Unit,
-    onDelete: (String, Long) -> Unit,
+    onDelete: (String, Long, String) -> Unit,
     onLoadMore: () -> Unit,
     onOpenProjectPicker: (String?) -> Unit,
     onSearchProjects: (String) -> Unit,
@@ -100,28 +103,34 @@ fun HistoryScreen(
     val timeFormatter = remember(locale) {
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)
     }
-    var edited by remember { mutableStateOf<EntryEntity?>(null) }
-    var addEntry by remember { mutableStateOf(false) }
-    var deleteCandidate by remember { mutableStateOf<EntryEntity?>(null) }
-    val groups = state.completedEntries(context::projectName).groupBy {
-        Instant.ofEpochMilli(it.startedAtUtcMillis).atZone(zone).toLocalDate()
+    var editor by remember { mutableStateOf<HistoryEditSession?>(null) }
+    var deleteCandidate by remember { mutableStateOf<HistoryDeleteRequest?>(null) }
+    val groups = remember(snapshot.entries, snapshot.projects, state.controls.historySearch, context, locale, zone) {
+        state.completedEntries(context::projectName).groupBy {
+            Instant.ofEpochMilli(it.startedAtUtcMillis).atZone(zone).toLocalDate()
+        }
     }
     val projects = remember(snapshot.projects) { snapshot.projects.associateBy(ProjectEntity::id) }
+    val searchScope = if (state.controls.historySearch.isNotBlank()) {
+        historySearchScopeResource(snapshot.hasMoreHistory, state.controls.historyLimit)?.let { resource ->
+            if (resource == R.string.ux_history_search_limit_hint) stringResource(resource, MAX_HISTORY_LIMIT) else stringResource(resource)
+        }
+    } else null
     Box(
         modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter,
     ) {
         LazyColumn(
-            Modifier.widthIn(max = 880.dp).fillMaxSize(),
+            Modifier.widthIn(max = 880.dp).fillMaxSize().testTag("history_list"),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item("heading") {
                 ScreenHeading(
                     title = stringResource(R.string.history_heading),
-                    subtitle = stringResource(R.string.insights_history_subtitle),
+                    subtitle = stringResource(R.string.ux_history_subtitle),
                     trailing = {
-                        FilledIconButton(onClick = { addEntry = true }, modifier = Modifier.size(48.dp)) {
+                        FilledIconButton(onClick = { editor = HistoryEditSession.open(state) }, modifier = Modifier.size(48.dp)) {
                             AppIcon(AppGlyph.Plus, contentDescription = stringResource(R.string.add_manual_entry))
                         }
                     },
@@ -132,6 +141,9 @@ fun HistoryScreen(
                     value = state.controls.historySearch,
                     onValueChange = onSearch,
                     label = { Text(stringResource(R.string.search_history)) },
+                    supportingText = if (searchScope != null) {
+                        { Text(searchScope) }
+                    } else null,
                     leadingIcon = { AppIcon(AppGlyph.Search) },
                     trailingIcon = if (state.controls.historySearch.isNotEmpty()) {
                         {
@@ -154,19 +166,14 @@ fun HistoryScreen(
             if (groups.isEmpty()) {
                 item("empty") {
                     val searching = state.controls.historySearch.isNotBlank()
-                    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
-                        AccentIcon(if (searching) AppGlyph.Search else AppGlyph.History)
-                        Text(
-                            stringResource(if (searching) R.string.insights_history_no_matches else R.string.no_history),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            stringResource(if (searching) R.string.insights_history_search_hint else R.string.insights_history_empty_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    AppMessageCard(
+                        title = stringResource(
+                            if (searching && searchScope != null) R.string.ux_history_loaded_no_matches
+                            else if (searching) R.string.insights_history_no_matches else R.string.no_history,
+                        ),
+                        message = if (searching && searchScope != null) searchScope else stringResource(if (searching) R.string.insights_history_search_hint else R.string.insights_history_empty_hint),
+                        glyph = if (searching) AppGlyph.Search else AppGlyph.History,
+                    )
                 }
             }
             groups.forEach { (date, entries) ->
@@ -195,12 +202,12 @@ fun HistoryScreen(
                             R.string.insights_history_started,
                             timeFormatter.format(Instant.ofEpochMilli(entry.startedAtUtcMillis).atZone(zone)),
                         ),
-                        onEdit = { edited = entry },
-                        onDelete = { deleteCandidate = entry },
+                        onEdit = { editor = HistoryEditSession.open(state, entry) },
+                        onDelete = { deleteCandidate = HistoryDeleteRequest.open(state, entry) },
                     )
                 }
             }
-            if (snapshot.hasMoreHistory && state.controls.historyLimit < dev.opentimemanager.app.ui.MAX_HISTORY_LIMIT) {
+            if (snapshot.hasMoreHistory && state.controls.historyLimit < MAX_HISTORY_LIMIT) {
                 item("load-more") {
                     OutlinedButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text(stringResource(R.string.load_more_history))
@@ -209,24 +216,22 @@ fun HistoryScreen(
             }
         }
     }
-    if (addEntry || edited != null) {
+    editor?.let { editing ->
         EntryDialog(
-            entry = edited,
+            session = editing,
             state = state,
-            onDismiss = { addEntry = false; edited = null },
+            onDismiss = { editor = null },
             onOpenProjectPicker = onOpenProjectPicker,
             onSearchProjects = onSearchProjects,
             onLoadMoreProjects = onLoadMoreProjects,
             onCloseProjectPicker = onCloseProjectPicker,
             onSave = { draft ->
-                val item = edited
-                onSave(item?.id, item?.revision, draft)
-                addEntry = false
-                edited = null
+                editing.save(draft, onSave)
+                editor = null
             },
         )
     }
-    deleteCandidate?.let { entry ->
+    deleteCandidate?.let { deletion ->
         AlertDialog(
             onDismissRequest = { deleteCandidate = null },
             shape = RoundedCornerShape(24.dp),
@@ -242,7 +247,7 @@ fun HistoryScreen(
             text = { Text(stringResource(R.string.delete_entry_question)) },
             confirmButton = {
                 TextButton(
-                    onClick = { onDelete(entry.id, entry.revision); deleteCandidate = null },
+                    onClick = { deletion.confirm(onDelete); deleteCandidate = null },
                     modifier = Modifier.heightIn(min = 48.dp),
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { Text(stringResource(R.string.delete_entry)) }
@@ -254,6 +259,52 @@ fun HistoryScreen(
             },
         )
     }
+}
+
+/** Frozen at the opening click, not rebound when a restore publishes another snapshot. */
+internal class HistoryEditSession private constructor(
+    val entry: EntryEntity?,
+    val expectedGeneration: String,
+    val initialForm: EntryFormState,
+) {
+    fun save(draft: ManualEntryDraft, onSave: (String?, Long?, ManualEntryDraft) -> Unit) {
+        onSave(entry?.id, entry?.revision, draft.copy(expectedGeneration = expectedGeneration))
+    }
+
+    companion object {
+        fun open(state: AppUiState, entry: EntryEntity? = null, zoneId: ZoneId = ZoneId.systemDefault()): HistoryEditSession {
+            val snapshot = requireNotNull(state.snapshot)
+            val form = entry?.let { entryFormState(it, entryDurationMillis(it.id, state), zoneId) } ?: run {
+                val initial = LocalDateTime.now(zoneId).minusHours(1).withSecond(0).withNano(0)
+                EntryFormState(
+                    projectId = state.selectedProjectId.orEmpty(),
+                    dateInput = initial.toLocalDate().toString(),
+                    timeInput = initial.toLocalTime().toString().take(5),
+                    durationMinutesInput = "60",
+                    noteInput = "",
+                    zoneId = zoneId.id,
+                )
+            }
+            return HistoryEditSession(entry, snapshot.generation, form)
+        }
+    }
+}
+
+internal class HistoryDeleteRequest private constructor(val entry: EntryEntity, val expectedGeneration: String) {
+    fun confirm(onDelete: (String, Long, String) -> Unit) {
+        onDelete(entry.id, entry.revision, expectedGeneration)
+    }
+
+    companion object {
+        fun open(state: AppUiState, entry: EntryEntity): HistoryDeleteRequest =
+            HistoryDeleteRequest(entry, requireNotNull(state.snapshot).generation)
+    }
+}
+
+internal fun historySearchScopeResource(hasMoreHistory: Boolean, historyLimit: Int): Int? = when {
+    !hasMoreHistory -> null
+    historyLimit < MAX_HISTORY_LIMIT -> R.string.ux_history_search_loaded_hint
+    else -> R.string.ux_history_search_limit_hint
 }
 
 @Composable
@@ -349,8 +400,9 @@ private fun HistoryEntryIdentity(name: String, color: Color, modifier: Modifier 
 
 @Composable
 private fun HistoryEntryDuration(durationMillis: Long, modifier: Modifier = Modifier) {
-    val duration = formatDuration(durationMillis, false)
-    val description = stringResource(R.string.insights_duration_description, duration)
+    val showSeconds = durationMillis in 1L..59_999L
+    val duration = formatDuration(durationMillis, includeSeconds = showSeconds)
+    val description = stringResource(if (showSeconds) R.string.ux_duration_seconds_description else R.string.insights_duration_description, duration)
     Text(
         duration,
         style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
@@ -362,7 +414,7 @@ private fun HistoryEntryDuration(durationMillis: Long, modifier: Modifier = Modi
 
 @Composable
 private fun EntryDialog(
-    entry: EntryEntity?,
+    session: HistoryEditSession,
     state: AppUiState,
     onDismiss: () -> Unit,
     onOpenProjectPicker: (String?) -> Unit,
@@ -371,22 +423,20 @@ private fun EntryDialog(
     onCloseProjectPicker: () -> Unit,
     onSave: (ManualEntryDraft) -> Unit,
 ) {
-    val zone = ZoneId.systemDefault()
-    val initialForm = remember(entry?.id, entry?.revision) {
-        entry?.let { entryFormState(it, entryDurationMillis(it.id, state), zone) } ?: run {
-            val initial = java.time.LocalDateTime.now().minusHours(1).withSecond(0).withNano(0)
-            EntryFormState(
-                projectId = state.selectedProjectId.orEmpty(),
-                dateInput = initial.toLocalDate().toString(),
-                timeInput = initial.toLocalTime().toString().take(5),
-                durationMinutesInput = "60",
-                noteInput = "",
-            )
-        }
-    }
-    var form by remember(entry?.id, entry?.revision) { mutableStateOf(initialForm) }
-    var invalid by remember(entry?.id, entry?.revision) { mutableStateOf(false) }
-    LaunchedEffect(entry?.id, entry?.revision) {
+    val entry = session.entry
+    val zone = remember(session) { ZoneId.of(requireNotNull(session.initialForm.zoneId)) }
+    val context = LocalContext.current
+    val initialForm = session.initialForm
+    var form by remember(session) { mutableStateOf(initialForm) }
+    var invalid by remember(session) { mutableStateOf(false) }
+    var showProjects by remember(session) { mutableStateOf(false) }
+    var chosenProject by remember(session) { mutableStateOf<ProjectEntity?>(null) }
+    val picker = state.controls.manualProjectPicker
+    val selectedProject = chosenProject?.takeIf { it.id == form.projectId }
+        ?: picker.pinnedProject?.takeIf { it.id == form.projectId }
+        ?: picker.projects.firstOrNull { it.id == form.projectId }
+        ?: state.snapshot?.projects?.firstOrNull { it.id == form.projectId }
+    LaunchedEffect(session) {
         onOpenProjectPicker(entry?.projectId ?: form.projectId.ifBlank { null })
     }
     DisposableEffect(Unit) {
@@ -404,47 +454,24 @@ private fun EntryDialog(
         title = { Text(stringResource(if (entry == null) R.string.add_manual_entry else R.string.edit_entry)) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item {
-                    Text(stringResource(R.string.selected_project), style = MaterialTheme.typography.labelLarge)
-                }
-                item("project-search") {
-                    OutlinedTextField(
-                        value = state.controls.manualProjectPicker.query,
-                        onValueChange = onSearchProjects,
-                        label = { Text(stringResource(R.string.search_projects)) },
-                        leadingIcon = { AppIcon(AppGlyph.Search) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                state.controls.manualProjectPicker.pinnedProject?.let { project ->
-                    item(key = "pinned-${project.id}") {
-                        ProjectChoice(project, form.projectId) {
-                            form = form.copy(projectId = project.id)
-                            invalid = false
+                item("project") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(stringResource(R.string.selected_project), style = MaterialTheme.typography.labelLarge)
+                        OutlinedButton(
+                            onClick = { showProjects = true },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("entry_project_picker"),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text(
+                                selectedProject?.let(context::projectName) ?: stringResource(R.string.ux_choose_project),
+                                modifier = Modifier.weight(1f),
+                            )
+                            AppIcon(AppGlyph.ChevronRight, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
-                items(
-                    items = state.controls.manualProjectPicker.projects.filterNot {
-                        it.id == state.controls.manualProjectPicker.pinnedProject?.id
-                    },
-                    key = ProjectEntity::id,
-                ) { project ->
-                    ProjectChoice(project, form.projectId) {
-                        form = form.copy(projectId = project.id)
-                        invalid = false
-                    }
-                }
-                if (state.controls.manualProjectPicker.hasMore) {
-                    item("load-more-projects") {
-                        Button(
-                            onClick = onLoadMoreProjects,
-                            enabled = !state.controls.manualProjectPicker.loading,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        ) { Text(stringResource(R.string.load_more_projects)) }
-                    }
+                item("zone") {
+                    Text(stringResource(R.string.entry_time_zone, zone.id), style = MaterialTheme.typography.bodySmall)
                 }
                 item {
                     OutlinedTextField(
@@ -500,7 +527,7 @@ private fun EntryDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                if (invalid) item { Text(stringResource(R.string.error_invalid_entry), color = MaterialTheme.colorScheme.error) }
+                if (invalid) item { FormErrorText(stringResource(R.string.error_invalid_entry)) }
             }
         },
         confirmButton = {
@@ -510,21 +537,23 @@ private fun EntryDialog(
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.cancel)) }
         },
     )
-}
-
-@Composable
-private fun ProjectChoice(project: ProjectEntity, selectedProjectId: String, onClick: () -> Unit) {
-    FilterChip(
-        selected = project.id == selectedProjectId,
-        onClick = onClick,
-        label = { Text(LocalContext.current.projectName(project)) },
-        leadingIcon = {
-            Box(Modifier.size(10.dp).background(Color(project.colorArgb), CircleShape))
-        },
-        trailingIcon = if (project.id == selectedProjectId) {
-            { AppIcon(AppGlyph.Check, modifier = Modifier.size(18.dp)) }
-        } else null,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-    )
+    if (showProjects) {
+        ProjectChooserDialog(
+            projects = picker.projects,
+            pinnedProject = selectedProject,
+            selectedProjectId = form.projectId,
+            query = picker.query,
+            onSearch = onSearchProjects,
+            hasMore = picker.hasMore,
+            loading = picker.loading,
+            onLoadMore = onLoadMoreProjects,
+            onSelect = { project ->
+                chosenProject = project
+                form = form.copy(projectId = project.id)
+                invalid = false
+                showProjects = false
+            },
+            onDismiss = { showProjects = false },
+        )
+    }
 }

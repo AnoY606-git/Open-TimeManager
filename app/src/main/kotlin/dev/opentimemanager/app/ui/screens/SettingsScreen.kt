@@ -1,11 +1,13 @@
 package dev.opentimemanager.app.ui.screens
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -23,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -46,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
@@ -80,12 +84,15 @@ import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.app.ui.AppUiState
+import dev.opentimemanager.app.ui.NotificationControlStatus
+import dev.opentimemanager.app.ui.projectName
 import dev.opentimemanager.app.backup.BackupFileCoordinator
 import dev.opentimemanager.app.backup.BackupConflictKind
 import dev.opentimemanager.app.backup.BackupCreationPasswordError
 import dev.opentimemanager.app.backup.BackupCreationPasswordException
 import dev.opentimemanager.app.backup.BackupCreationPasswordPolicy
 import dev.opentimemanager.app.backup.BackupInspection
+import dev.opentimemanager.app.backup.BackupFormatResult
 import dev.opentimemanager.app.backup.BackupPreview
 import dev.opentimemanager.app.backup.BackupReadFailure
 import dev.opentimemanager.app.ui.launchOwnedSecret
@@ -100,6 +107,7 @@ import dev.opentimemanager.app.ui.components.SectionHeading
 import dev.opentimemanager.app.backup.RestoreMode
 import dev.opentimemanager.app.backup.RestoreResult
 import dev.opentimemanager.core.backup.BackupError
+import dev.opentimemanager.core.backup.BackupFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -116,13 +124,26 @@ class BackupActions(
     val currentPreview: () -> BackupPreview?,
     val discardPreview: () -> Unit,
     val restore: suspend (BackupPreview, RestoreMode) -> RestoreResult,
+    val preparePlain: (suspend () -> String)? = null,
+    val format: (suspend (Uri?) -> BackupFormatResult)? = null,
+    val inspectPlain: (suspend (Uri?) -> BackupInspection)? = null,
 )
+
+enum class SettingsPage(val title: Int, val summary: Int, val glyph: AppGlyph) {
+    OVERVIEW(R.string.settings_heading, R.string.settings_overview_subtitle, AppGlyph.Settings),
+    APPEARANCE(R.string.appearance, R.string.settings_appearance_summary, AppGlyph.Palette),
+    TRACKING(R.string.settings_tracking_title, R.string.settings_tracking_summary, AppGlyph.Target),
+    DATA(R.string.settings_data_title, R.string.settings_data_summary, AppGlyph.Lock),
+    HELP(R.string.help_title, R.string.help_summary, AppGlyph.Note),
+    ABOUT(R.string.settings_about_title, R.string.settings_about_summary, AppGlyph.Shield),
+}
 
 internal enum class TransferUiStatus {
     BACKUP_RESTORED,
     BACKUP_PASSWORD_TOO_SHORT,
     BACKUP_PASSWORD_TOO_LONG,
     INVALID_PASSWORD_OR_FILE,
+    INVALID_FILE,
     LIMIT_EXCEEDED,
     UNSUPPORTED_VERSION,
     IO_ERROR,
@@ -143,6 +164,14 @@ fun SettingsScreen(
     backupActions: BackupActions? = null,
     onLaunchBackupDocument: (String) -> Unit = {},
     onLaunchOpenBackupDocument: (Array<String>) -> Unit = {},
+    initialPage: SettingsPage = SettingsPage.OVERVIEW,
+    onDefaultProject: (String?) -> Unit = {},
+    onOpenProjectPicker: (String?) -> Unit = {},
+    onSearchProjects: (String) -> Unit = {},
+    onLoadMoreProjects: () -> Unit = {},
+    onCloseProjectPicker: () -> Unit = {},
+    notificationStatus: NotificationControlStatus = NotificationControlStatus.AVAILABLE,
+    onManageNotifications: () -> Unit = {},
 ) {
     val preferences = state.preferences
     val context = LocalContext.current
@@ -155,16 +184,56 @@ fun SettingsScreen(
     }
     var showBackupPassword by remember { mutableStateOf(false) }
     val restoreUri = state.controls.pendingRestoreUri?.let(Uri::parse)
+    var restoreFormat by remember(restoreUri) { mutableStateOf<BackupFormat?>(null) }
+    var checkingFormat by remember(restoreUri) { mutableStateOf(false) }
     var preview by remember {
         mutableStateOf(backupActions?.currentPreview?.invoke()?.takeIf { it.hasPayload })
     }
-    var showPreview by remember { mutableStateOf(preview != null) }
+    var showPreview by remember { mutableStateOf(preview != null && restoreUri == null) }
     var previewStatus by remember {
         mutableStateOf(state.controls.lastRestoreResult?.status()?.takeUnless { it == TransferUiStatus.BACKUP_RESTORED })
     }
     var confirmReplace by remember { mutableStateOf(false) }
     var selectedLegalDocument by remember { mutableStateOf<LegalDocument?>(null) }
+    var pageName by rememberSaveable {
+        mutableStateOf((if (preview != null) SettingsPage.DATA else initialPage).name)
+    }
+    val page = SettingsPage.valueOf(pageName)
+    var showDefaultProjectPicker by remember { mutableStateOf(false) }
+    var confirmPlainBackup by remember { mutableStateOf(false) }
+    BackHandler(
+        enabled = page != SettingsPage.OVERVIEW && !showPreview && restoreUri == null &&
+            !showBackupPassword && !showDefaultProjectPicker && !confirmPlainBackup && selectedLegalDocument == null,
+    ) { pageName = SettingsPage.OVERVIEW.name }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(restoreUri) {
+        val uri = restoreUri ?: return@LaunchedEffect
+        pageName = SettingsPage.DATA.name
+        val detect = backupActions?.format
+        if (detect == null) {
+            // Compatibility for callers that only support encrypted backups.
+            restoreFormat = BackupFormat.ENCRYPTED
+            return@LaunchedEffect
+        }
+        checkingFormat = true
+        try {
+            when (val detected = detect(uri)) {
+                is BackupFormatResult.Detected -> restoreFormat = detected.format
+                is BackupFormatResult.Failed -> {
+                    status = detected.reason.status()
+                    backupActions?.clearSelectedDocument?.invoke()
+                }
+                BackupFormatResult.Cancelled -> backupActions?.clearSelectedDocument?.invoke()
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            status = TransferUiStatus.IO_ERROR
+            backupActions?.clearSelectedDocument?.invoke()
+        } finally {
+            checkingFormat = false
+        }
+    }
     LaunchedEffect(state.controls.lastRestoreResult) {
         val result = state.controls.lastRestoreResult ?: return@LaunchedEffect
         val selected = preview ?: return@LaunchedEffect
@@ -212,17 +281,34 @@ fun SettingsScreen(
     val version = remember {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }
-    LazyColumn(
-        modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("settings_list"),
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    if (page == SettingsPage.HELP) {
+        HelpScreen(onBack = { pageName = SettingsPage.OVERVIEW.name }, modifier = Modifier.widthIn(max = 760.dp))
+    } else LazyColumn(
+        Modifier.widthIn(max = 760.dp).fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("settings_list"),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        if (page != SettingsPage.OVERVIEW) item(key = "back") {
+            TextButton(
+                onClick = { pageName = SettingsPage.OVERVIEW.name },
+                modifier = Modifier.testTag("settings_back"),
+            ) { Text("‹  " + stringResource(R.string.back_to_settings)) }
+        }
         item(key = "heading") {
             ScreenHeading(
-                title = stringResource(R.string.settings_heading),
-                subtitle = stringResource(R.string.design_settings_subtitle),
+                title = stringResource(page.title),
+                subtitle = stringResource(page.summary),
             )
         }
+        if (page == SettingsPage.OVERVIEW) {
+            SettingsPage.entries.filter { it != SettingsPage.OVERVIEW }.forEach { destination ->
+                item(key = destination.name) {
+                    SettingsCategory(destination) { pageName = destination.name }
+                }
+            }
+        }
+        if (page == SettingsPage.APPEARANCE) {
         item(key = "appearance_heading") {
             SectionHeading(stringResource(R.string.appearance))
         }
@@ -245,6 +331,39 @@ fun SettingsScreen(
                 SettingsCardHeading(AppGlyph.Globe, stringResource(R.string.language))
                 Spacer(Modifier.height(12.dp))
                 LanguageChoices(selected = selectedLanguage, onSelect = onLanguage)
+            }
+        }
+        }
+        if (page == SettingsPage.TRACKING) {
+        item(key = "default_project") {
+            val preferred = state.snapshot?.projects?.firstOrNull {
+                it.id == state.defaultProjectId && it.archivedAtUtcMillis == null
+            }
+            SettingsCard {
+                SettingsCardHeading(AppGlyph.Folder, stringResource(R.string.default_project_title))
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    when {
+                        preferred != null -> context.projectName(preferred)
+                        state.defaultProjectId != null -> stringResource(R.string.default_project_unavailable)
+                        else -> stringResource(R.string.default_project_automatic)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.testTag("default_project_value"),
+                )
+                Text(stringResource(R.string.default_project_hint), style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(
+                    onClick = {
+                        onOpenProjectPicker(state.defaultProjectId)
+                        showDefaultProjectPicker = true
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("default_project_choose"),
+                ) { Text(stringResource(R.string.default_project_choose)) }
+                Text(
+                    stringResource(R.string.default_project_local_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item(key = "focus_heading") {
@@ -273,9 +392,25 @@ fun SettingsScreen(
                     glyph = AppGlyph.Shield,
                     checked = preferences.privacyMode,
                     onChecked = onPrivacy,
+                    description = stringResource(R.string.privacy_mode_hint),
                 )
             }
         }
+        item(key = "notifications") {
+            SettingsCard {
+                SettingsCardHeading(AppGlyph.Timer, stringResource(R.string.notifications_settings_title))
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(if (notificationStatus == NotificationControlStatus.AVAILABLE) {
+                    R.string.notifications_available_hint
+                } else R.string.notification_channel_blocked))
+                OutlinedButton(onClick = onManageNotifications, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.manage_notifications))
+                }
+            }
+        }
+        item(key = "platform") { PlatformIntegrationCard() }
+        }
+        if (page == SettingsPage.DATA) {
         item(key = "data_heading") {
             SectionHeading(
                 stringResource(R.string.data_management),
@@ -284,13 +419,15 @@ fun SettingsScreen(
         }
         item(key = "backup") {
             SettingsCard {
-                SettingsCardHeading(AppGlyph.Lock, stringResource(R.string.portable_backup))
+                SettingsCardHeading(AppGlyph.Lock, stringResource(R.string.backup_encrypted_title))
                 Spacer(Modifier.height(12.dp))
                 Text(
                     stringResource(R.string.portable_backup_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(R.string.backup_safe_snapshot_hint), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { status = null; showBackupPassword = true },
@@ -303,6 +440,15 @@ fun SettingsScreen(
                     Spacer(Modifier.width(10.dp))
                     Text(stringResource(R.string.create_backup), textAlign = TextAlign.Center)
                 }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { confirmPlainBackup = true },
+                    enabled = !busy && backupActions?.preparePlain != null,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("create_plain_backup"),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text(stringResource(R.string.backup_plain_create), textAlign = TextAlign.Center) }
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(R.string.backup_format_hint), style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = {
@@ -318,9 +464,9 @@ fun SettingsScreen(
                     Spacer(Modifier.width(10.dp))
                     Text(stringResource(R.string.restore_backup), textAlign = TextAlign.Center)
                 }
-                if (busy) {
+                if (busy || checkingFormat) {
                     Text(
-                        stringResource(R.string.data_operation_in_progress),
+                        stringResource(if (checkingFormat) R.string.backup_format_reading else R.string.data_operation_in_progress),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp),
@@ -374,6 +520,8 @@ fun SettingsScreen(
                 }
             }
         }
+        }
+        if (page == SettingsPage.ABOUT) {
         item(key = "legal_heading") {
             SectionHeading(
                 stringResource(R.string.legal_information),
@@ -435,7 +583,50 @@ fun SettingsScreen(
                 }
             }
         }
+        }
     }
+    }
+
+    if (showDefaultProjectPicker) DefaultProjectDialog(
+        state = state,
+        onSearch = onSearchProjects,
+        onLoadMore = onLoadMoreProjects,
+        onDismiss = { showDefaultProjectPicker = false; onCloseProjectPicker() },
+        onSelect = {
+            onDefaultProject(it)
+            showDefaultProjectPicker = false
+            onCloseProjectPicker()
+        },
+    )
+    if (confirmPlainBackup) AlertDialog(
+        onDismissRequest = { confirmPlainBackup = false },
+        modifier = Modifier.testTag("plain_backup_warning"),
+        title = { Text(stringResource(R.string.backup_plain_warning_title)) },
+        text = { Text(stringResource(R.string.backup_plain_warning), modifier = Modifier.verticalScroll(rememberScrollState())) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    confirmPlainBackup = false
+                    val actions = backupActions ?: return@TextButton
+                    scope.launch {
+                        try {
+                            actions.preparePlain?.invoke()?.let(onLaunchBackupDocument)
+                        } catch (cancelled: CancellationException) {
+                            actions.cancelPrepare()
+                            throw cancelled
+                        } catch (error: Exception) {
+                            actions.cancelPrepare()
+                            status = backupCreateFailureStatus(error)
+                        }
+                    }
+                },
+                modifier = Modifier.testTag("plain_backup_confirm"),
+            ) { Text(stringResource(R.string.backup_plain_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmPlainBackup = false }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 
     if (showBackupPassword) PasswordDialog(
         title = stringResource(R.string.create_backup),
@@ -462,7 +653,7 @@ fun SettingsScreen(
             }
         },
     )
-    if (restoreUri != null) PasswordDialog(
+    if (restoreUri != null && restoreFormat == BackupFormat.ENCRYPTED) PasswordDialog(
         title = stringResource(R.string.restore_backup),
         creatingBackup = false,
         onDismiss = { backupActions?.clearSelectedDocument?.invoke() },
@@ -493,7 +684,45 @@ fun SettingsScreen(
             }
         },
     )
-    preview?.takeIf { showPreview }?.let { selected ->
+    if (restoreUri != null && restoreFormat == BackupFormat.PLAINTEXT) AlertDialog(
+        onDismissRequest = { backupActions?.clearSelectedDocument?.invoke() },
+        modifier = Modifier.testTag("plain_backup_inspect_warning"),
+        title = { Text(stringResource(R.string.backup_plain_inspect_title)) },
+        text = {
+            Text(stringResource(R.string.backup_plain_inspect_warning), modifier = Modifier.verticalScroll(rememberScrollState()))
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val uri = restoreUri
+                    val actions = backupActions ?: return@TextButton
+                    actions.clearSelectedDocument()
+                    scope.launch {
+                        try {
+                            when (val inspection = actions.inspectPlain?.invoke(uri)) {
+                                is BackupInspection.Ready -> {
+                                    preview = inspection.preview
+                                    previewStatus = null
+                                    showPreview = true
+                                }
+                                is BackupInspection.Failed -> status = inspection.reason.status()
+                                else -> Unit
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            status = TransferUiStatus.IO_ERROR
+                        }
+                    }
+                },
+                modifier = Modifier.testTag("plain_backup_inspect_confirm"),
+            ) { Text(stringResource(R.string.backup_plain_inspect_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { backupActions?.clearSelectedDocument?.invoke() }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+    preview?.takeIf { showPreview && restoreUri == null && !checkingFormat && !showBackupPassword }?.let { selected ->
         BackupPreviewDialog(
             preview = selected,
             status = previewStatus,
@@ -519,7 +748,7 @@ fun SettingsScreen(
             onReplace = { if (!busy && !restoreInFlight) confirmReplace = true },
         )
     }
-    if (confirmReplace) AlertDialog(
+    if (confirmReplace && restoreUri == null) AlertDialog(
         onDismissRequest = { if (!busy) confirmReplace = false },
         properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         modifier = Modifier.testTag("backup_replace_confirmation"),
@@ -546,6 +775,106 @@ fun SettingsScreen(
             onDismiss = { selectedLegalDocument = null },
         )
     }
+}
+
+@Composable
+private fun SettingsCategory(page: SettingsPage, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().testTag("settings_category_${page.name.lowercase()}"),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp).heightIn(min = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AccentIcon(page.glyph)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(page.title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(page.summary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AppIcon(AppGlyph.ChevronRight, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun DefaultProjectDialog(
+    state: AppUiState,
+    onSearch: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onDismiss: () -> Unit,
+    onSelect: (String?) -> Unit,
+) {
+    val picker = state.controls.manualProjectPicker
+    val context = LocalContext.current
+    val projects = (listOfNotNull(picker.pinnedProject) + picker.projects)
+        .filter { it.archivedAtUtcMillis == null }.distinctBy { it.id }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("default_project_dialog"),
+        title = { Text(stringResource(R.string.default_project_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = picker.query,
+                    onValueChange = onSearch,
+                    label = { Text(stringResource(R.string.search_projects)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("default_project_search"),
+                )
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 360.dp).selectableGroup().testTag("default_project_list"),
+                ) {
+                    item(key = "automatic") {
+                        Column(
+                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                .selectable(
+                                    selected = state.defaultProjectId == null,
+                                    role = Role.RadioButton,
+                                    onClick = { onSelect(null) },
+                                ).padding(12.dp).testTag("default_project_automatic"),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(stringResource(R.string.default_project_automatic), style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.default_project_automatic_hint), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    projects.forEach { project ->
+                        item(key = project.id) {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                                    .selectable(
+                                        selected = state.defaultProjectId == project.id,
+                                        role = Role.RadioButton,
+                                        onClick = { onSelect(project.id) },
+                                    ).padding(12.dp).testTag("default_choice_${project.id}"),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(context.projectName(project), modifier = Modifier.weight(1f))
+                                if (state.defaultProjectId == project.id) AppIcon(AppGlyph.Check, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                    if (picker.loading) item("loading") { Text(stringResource(R.string.data_operation_in_progress)) }
+                    if (picker.hasMore) item("more") {
+                        TextButton(onClick = onLoadMore, enabled = !picker.loading, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.load_more_projects))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
 }
 
 @Composable
@@ -669,12 +998,19 @@ private fun BackupPreviewDialog(
         onDismissRequest = { if (!busy) onHide() },
         properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         modifier = Modifier.testTag("backup_preview_dialog"),
-        title = { Text(stringResource(R.string.backup_preview_title)) },
+        title = { Text(stringResource(if (preview.format == BackupFormat.PLAINTEXT) R.string.backup_plain_preview_title else R.string.backup_preview_title)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (preview.format == BackupFormat.PLAINTEXT) {
+                    Text(
+                        stringResource(R.string.backup_plain_preview_warning),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("plain_backup_preview_warning"),
+                    )
+                }
                 failureResource?.let { resource ->
                     Text(
                         stringResource(resource),
@@ -778,7 +1114,9 @@ private fun BackupPreviewDialog(
 private const val MAX_VISIBLE_CONFLICTS = 5
 
 private fun BackupReadFailure.status(): TransferUiStatus = when (this) {
-    BackupReadFailure.INTEGRITY, BackupReadFailure.INVALID_FORMAT -> TransferUiStatus.INVALID_PASSWORD_OR_FILE
+    BackupReadFailure.INTEGRITY -> TransferUiStatus.INVALID_PASSWORD_OR_FILE
+    BackupReadFailure.INVALID_FORMAT, BackupReadFailure.PLAIN_INTEGRITY,
+    BackupReadFailure.PASSWORD_REQUIRED -> TransferUiStatus.INVALID_FILE
     BackupReadFailure.LIMIT -> TransferUiStatus.LIMIT_EXCEEDED
     BackupReadFailure.UNSUPPORTED_VERSION -> TransferUiStatus.UNSUPPORTED_VERSION
     BackupReadFailure.IO -> TransferUiStatus.IO_ERROR
@@ -815,6 +1153,7 @@ private fun TransferUiStatus.resource(): Int = when (this) {
     TransferUiStatus.BACKUP_PASSWORD_TOO_SHORT -> R.string.backup_creation_password_too_short
     TransferUiStatus.BACKUP_PASSWORD_TOO_LONG -> R.string.backup_creation_password_too_long
     TransferUiStatus.INVALID_PASSWORD_OR_FILE -> R.string.backup_invalid_or_password
+    TransferUiStatus.INVALID_FILE -> R.string.backup_invalid_file
     TransferUiStatus.LIMIT_EXCEEDED -> R.string.backup_limit_exceeded
     TransferUiStatus.UNSUPPORTED_VERSION -> R.string.backup_unsupported_version
     TransferUiStatus.IO_ERROR -> R.string.data_io_error

@@ -281,6 +281,7 @@ data class ManualEntryDraft(
     val durationMillis: Long,
     val note: String,
     val preserveTiming: Boolean = false,
+    val expectedGeneration: String? = null,
 )
 
 data class EntryFormState(
@@ -294,6 +295,8 @@ data class EntryFormState(
     val dateEdited: Boolean = false,
     val timeEdited: Boolean = false,
     val durationEdited: Boolean = false,
+    /** Zone that produced the visible fields; null preserves legacy caller-supplied behavior. */
+    val zoneId: String? = null,
 )
 
 fun entryFormState(entry: EntryEntity, durationMillis: Long, zoneId: ZoneId): EntryFormState {
@@ -306,12 +309,14 @@ fun entryFormState(entry: EntryEntity, durationMillis: Long, zoneId: ZoneId): En
         noteInput = entry.note,
         originalStartUtcMillis = entry.startedAtUtcMillis,
         originalDurationMillis = durationMillis,
+        zoneId = zoneId.id,
     )
 }
 
 fun validateEntryForm(form: EntryFormState, zoneId: ZoneId): EntryValidation = try {
+    val formZone = form.zoneId?.let(ZoneId::of) ?: zoneId
     val originalLocal = form.originalStartUtcMillis?.let {
-        Instant.ofEpochMilli(it).atZone(zoneId).toLocalDateTime()
+        Instant.ofEpochMilli(it).atZone(formZone).toLocalDateTime()
     }
     val date = if (!form.dateEdited && originalLocal != null) originalLocal.toLocalDate()
         else LocalDate.parse(form.dateInput)
@@ -321,7 +326,7 @@ fun validateEntryForm(form: EntryFormState, zoneId: ZoneId): EntryValidation = t
     val start = if (!form.dateEdited && !form.timeEdited && form.originalStartUtcMillis != null) {
         form.originalStartUtcMillis
     } else {
-        LocalDateTime.of(date, time).atZone(zoneId).toInstant().toEpochMilli()
+        LocalDateTime.of(date, time).atZone(formZone).toInstant().toEpochMilli()
     }
     val duration = if (!form.durationEdited && form.originalDurationMillis != null) {
         form.originalDurationMillis

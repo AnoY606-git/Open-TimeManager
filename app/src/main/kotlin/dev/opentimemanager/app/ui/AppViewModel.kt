@@ -12,8 +12,11 @@ import dev.opentimemanager.app.data.EntryEntity
 import dev.opentimemanager.app.data.ProjectEditResult
 import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectPageCursor
+import dev.opentimemanager.app.data.ProjectRepository
+import dev.opentimemanager.app.data.ReportSummaryProjection
 import dev.opentimemanager.app.di.AppContainer
 import dev.opentimemanager.app.backup.BackupInspection
+import dev.opentimemanager.app.backup.BackupFormatResult
 import dev.opentimemanager.app.backup.BackupWriteResult
 import dev.opentimemanager.app.backup.BackupPreview
 import dev.opentimemanager.app.backup.DataTransferSession
@@ -32,6 +35,7 @@ import dev.opentimemanager.core.model.CommandId
 import dev.opentimemanager.core.model.EntryId
 import dev.opentimemanager.core.model.ProjectId
 import dev.opentimemanager.core.model.TrackingState
+import dev.opentimemanager.core.backup.BackupFormat
 import dev.opentimemanager.core.report.ReportAggregator
 import dev.opentimemanager.core.report.ReportTotals
 import java.time.LocalDate
@@ -52,6 +56,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -67,6 +72,7 @@ enum class UiMessage {
     SAVED,
     CSV_EXPORTED,
     BACKUP_CREATED,
+    PLAIN_BACKUP_CREATED,
     DATA_IO_ERROR,
     PARTIAL_FILE_CLEANUP_REQUIRED,
     SYSTEM_CONTROLS_UNAVAILABLE,
@@ -103,10 +109,13 @@ data class AppUiState(
     val preferences: UserPreferences = UserPreferences(),
     val controls: AppControls = AppControls(),
     val reportTotals: ReportTotals = ReportAggregator.aggregateTotals(emptyList(), 0, 0),
+    val reportBounds: UtcBounds? = null,
+    val reportLoading: Boolean = false,
     val todayProjection: ConfirmedDayProjection = ConfirmedDayProjection(0, 0, 0, emptyList()),
     val reportProjects: List<ProjectEntity> = emptyList(),
     val todayEntries: List<EntryEntity> = emptyList(),
     val todayProjects: List<ProjectEntity> = emptyList(),
+    val defaultProjectId: String? = snapshot?.defaultProjectId,
 ) {
     val availableProjects get() = snapshot?.projects.orEmpty().filter { it.archivedAtUtcMillis == null }
     val selectedProjectId: String? get() {
@@ -114,9 +123,11 @@ data class AppUiState(
             ?.takeIf { it.state != TrackingState.IDLE }
             ?.projectId
             ?.value
-        if (persistedActive != null && availableProjects.any { it.id == persistedActive }) return persistedActive
+        if (persistedActive != null) return persistedActive
         val requested = controls.selectedProjectId
         return requested?.takeIf { id -> availableProjects.any { it.id == id } }
+            ?: defaultProjectId?.takeIf { id -> availableProjects.any { it.id == id } }
+            ?: availableProjects.firstOrNull { it.id == ProjectRepository.DEFAULT_PROJECT_ID.value }?.id
             ?: availableProjects.firstOrNull()?.id
     }
 
@@ -155,12 +166,13 @@ class AppViewModel(
     private val transfers = DataTransferSession(container.csvExport, container.backupFiles)
     private val controls = MutableStateFlow(AppControls())
     private var manualProjectPickerJob: Job? = null
+    private var pendingBackupFormat: BackupFormat? = null
     private val snapshots = controls
         .map { current ->
             SnapshotRequest(
                 current.historyLimit,
                 current.projectLimit,
-                current.selectedProjectId ?: dev.opentimemanager.app.data.ProjectRepository.DEFAULT_PROJECT_ID.value,
+                current.selectedProjectId ?: ProjectRepository.DEFAULT_PROJECT_ID.value,
             )
         }
         .distinctUntilChanged()
@@ -178,12 +190,14 @@ class AppViewModel(
         controls.map { it.reportPeriod }.distinctUntilChanged(),
         localDays,
     ) { period, day ->
-        period.validatedBounds(day.date, day.zoneId).value
-            ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(day.date, day.zoneId).value)
+        period to (period.validatedBounds(day.date, day.zoneId).value
+            ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(day.date, day.zoneId).value))
         }
         .distinctUntilChanged()
-        .flatMapLatest { bounds ->
+        .flatMapLatest { (period, bounds) ->
             container.completedEntries.observeReportSummary(bounds.fromUtcMillis, bounds.toUtcMillis)
+                .map { ReportRangeProjection(period, bounds, it) }
+                .onStart { emit(ReportRangeProjection(period, bounds, null)) }
         }
     private val todayProjection = localDays.flatMapLatest { day ->
         val from = day.date.atStartOfDay(day.zoneId).toInstant().toEpochMilli()
@@ -203,15 +217,19 @@ class AppViewModel(
         reportProjection,
         todayProjection,
     ) { snapshot, preferences, current, report, today ->
+        val currentReport = report.takeIf { it.period == current.reportPeriod }?.summary
         AppUiState(
             snapshot = snapshot,
             preferences = preferences,
             controls = current,
-            reportTotals = report.totals,
+            reportTotals = currentReport?.totals ?: ReportAggregator.aggregateTotals(emptyList(), 0, 0),
+            reportBounds = report.bounds,
+            reportLoading = currentReport == null,
             todayProjection = today.projection,
-            reportProjects = report.projects,
+            reportProjects = currentReport?.projects.orEmpty(),
             todayEntries = today.entries,
             todayProjects = today.projects,
+            defaultProjectId = snapshot.defaultProjectId,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
@@ -315,6 +333,7 @@ class AppViewModel(
                     ProjectId(draft.projectId),
                     draft.note,
                     expectedRevision,
+                    expectedGeneration = draft.expectedGeneration,
                 )
             } else {
                 container.completedEntries.save(
@@ -324,20 +343,29 @@ class AppViewModel(
                     draft.startUtcMillis,
                     draft.durationMillis,
                     expectedRevision,
+                    expectedGeneration = draft.expectedGeneration,
                 )
             }
             result.toMessage()
         }
     }
 
-    fun deleteEntry(entryId: String, expectedRevision: Long) = launchWrite {
-        container.completedEntries.delete(EntryId(entryId), expectedRevision).toMessage()
+    fun deleteEntry(entryId: String, expectedRevision: Long, expectedGeneration: String? = null) = launchWrite {
+        container.completedEntries.delete(EntryId(entryId), expectedRevision, expectedGeneration).toMessage()
     }
 
     fun setTheme(value: ThemeMode) = changeSettings { container.settings.setTheme(value) }
     fun setDynamicColor(value: Boolean) = changeSettings { container.settings.setDynamicColor(value) }
     fun setPrivacy(value: Boolean) = changeSettings { container.settings.setPrivacy(value) }
     fun setDailyGoalMinutes(value: Int) = changeSettings { container.settings.setDailyGoalMinutes(value) }
+    /** Changes the durable idle/system default, not the current selection or live session. */
+    fun setDefaultProject(projectId: String?) = changeSettings {
+        require(projectId == null || container.projects.activeProject(ProjectId(projectId)) != null) {
+            "Default project must be available"
+        }
+        container.settings.setDefaultProjectId(projectId)
+        SettingsMutationResult.APPLIED
+    }
 
     fun beginCsvExport(range: UtcBounds): String = transfers.beginCsv(range).also {
         updateControls { copy(dataTransferBusy = true) }
@@ -370,7 +398,7 @@ class AppViewModel(
     suspend fun prepareBackup(password: CharArray): String {
         updateControls { copy(dataTransferBusy = true) }
         try {
-            return transfers.beginBackup(password)
+            return transfers.beginBackup(password).also { pendingBackupFormat = BackupFormat.ENCRYPTED }
         } catch (cancelled: CancellationException) {
             updateControls { copy(dataTransferBusy = false) }
             throw cancelled
@@ -380,21 +408,36 @@ class AppViewModel(
         }
     }
 
+    suspend fun preparePlainBackup(): String {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            return transfers.beginPlainBackup().also { pendingBackupFormat = BackupFormat.PLAINTEXT }
+        } catch (error: Exception) {
+            updateControls { copy(dataTransferBusy = false) }
+            throw error
+        }
+    }
+
     fun cancelBackup() {
         transfers.cancelBackup()
+        pendingBackupFormat = null
         updateControls { copy(dataTransferBusy = false) }
     }
 
-    fun selectBackupDocument(uri: Uri?) = updateControls { copy(pendingRestoreUri = uri?.toString()) }
+    fun selectBackupDocument(uri: Uri?) = updateControls {
+        copy(pendingRestoreUri = uri?.toString(), destination = if (uri != null) AppDestination.SETTINGS else destination)
+    }
 
     fun clearBackupDocument() = updateControls { copy(pendingRestoreUri = null) }
 
     fun completeBackup(uri: Uri?) {
+        val format = pendingBackupFormat
+        pendingBackupFormat = null
         updateControls { copy(dataTransferBusy = true) }
         viewModelScope.launch {
             try {
                 when (val result = transfers.finishBackup(uri)) {
-                    BackupWriteResult.Success -> show(UiMessage.BACKUP_CREATED)
+                    BackupWriteResult.Success -> show(if (format == BackupFormat.PLAINTEXT) UiMessage.PLAIN_BACKUP_CREATED else UiMessage.BACKUP_CREATED)
                     BackupWriteResult.Cancelled -> Unit
                     is BackupWriteResult.Failed -> show(transferFailureMessage(result.partialDocumentDeleted))
                 }
@@ -411,7 +454,7 @@ class AppViewModel(
     suspend fun inspectBackup(uri: Uri?, password: CharArray): BackupInspection {
         updateControls { copy(dataTransferBusy = true) }
         try {
-            val result = container.backupFiles.inspectBackup(uri, password)
+            val result = container.backupFiles.inspectBackup(uri, password, expectedFormat = BackupFormat.ENCRYPTED)
             if (result is BackupInspection.Ready) transfers.retainPreview(result.preview)
             return result
         } finally {
@@ -420,6 +463,26 @@ class AppViewModel(
     }
 
     fun currentBackupPreview(): BackupPreview? = transfers.currentPreview()
+
+    suspend fun backupFormat(uri: Uri?): BackupFormatResult {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            return container.backupFiles.backupFormat(uri)
+        } finally {
+            updateControls { copy(dataTransferBusy = false) }
+        }
+    }
+
+    suspend fun inspectPlainBackup(uri: Uri?): BackupInspection {
+        updateControls { copy(dataTransferBusy = true) }
+        try {
+            val result = container.backupFiles.inspectBackup(uri, expectedFormat = BackupFormat.PLAINTEXT)
+            if (result is BackupInspection.Ready) transfers.retainPreview(result.preview)
+            return result
+        } finally {
+            updateControls { copy(dataTransferBusy = false) }
+        }
+    }
 
     fun discardBackupPreview() = transfers.discardPreview()
 
@@ -433,10 +496,12 @@ class AppViewModel(
             transfers.onRestoreResult(preview, result)
             updateControls { copy(lastRestoreResult = result) }
             if (result is RestoreResult.Applied) {
-                systemSurfaceWarning {
+                val controlsWarning = systemSurfaceWarning {
                     val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-                    SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
-                }?.let(::show)
+                    SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
+                        snapshot.session.state == TrackingState.IDLE
+                }
+                restoreCompletionWarning(result, controlsWarning)?.let(::show)
             }
             result
         } finally {
@@ -486,15 +551,25 @@ class AppViewModel(
         }
         systemSurfaceWarning {
             val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-            SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
+            SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
+                snapshot.session.state == TrackingState.IDLE
         }?.let(::show)
     }
 
     fun reconcileSystemControls() = viewModelScope.launch {
-        systemSurfaceWarning {
+        val preferencesWarning = settingsMutationUiMessage { container.restore.reconcilePendingPreferences() }
+        val controlsWarning = systemSurfaceWarning {
             val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-            SystemSurfaceUpdater(application).ensureForegroundControls(snapshot)
-        }?.let(::show)
+            val updater = SystemSurfaceUpdater(application)
+            refreshAndEnsureSystemControls(
+                refresh = {
+                    updater.refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
+                        snapshot.session.state == TrackingState.IDLE
+                },
+                ensureForeground = { updater.ensureForegroundControls(snapshot) },
+            )
+        }
+        (preferencesWarning ?: controlsWarning)?.let(::show)
     }
 
     private fun launchWrite(block: suspend () -> UiMessage?) = viewModelScope.launch {
@@ -574,6 +649,11 @@ internal suspend fun settingsMutationUiMessage(
     UiMessage.ACTION_FAILED
 }
 
+internal fun restoreCompletionWarning(
+    result: RestoreResult.Applied,
+    systemWarning: UiMessage?,
+): UiMessage? = if (result.preferencesPending) UiMessage.SETTINGS_SYSTEM_PRIVACY_PENDING else systemWarning
+
 internal suspend fun systemSurfaceWarning(operation: suspend () -> Boolean): UiMessage? = try {
     if (operation()) null else UiMessage.SYSTEM_CONTROLS_UNAVAILABLE
 } catch (cancelled: CancellationException) {
@@ -613,6 +693,12 @@ internal fun projectEditMessage(result: ProjectEditResult): UiMessage = when (re
 }
 
 internal data class LocalDayContext(val date: LocalDate, val zoneId: ZoneId)
+
+internal data class ReportRangeProjection(
+    val period: ReportPeriod,
+    val bounds: UtcBounds,
+    val summary: ReportSummaryProjection?,
+)
 
 private data class SnapshotRequest(
     val historyLimit: Int,

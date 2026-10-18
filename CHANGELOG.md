@@ -4,6 +4,38 @@ All notable user-facing changes are recorded here. Preview versions have no stab
 
 ## [Unreleased]
 
+## [1.1.0] - Upcoming
+
+### Release status
+
+- Planned stable update with `versionCode = 3`; see the [bilingual 1.1.0 notes](docs/releases/1.1.0.md). Final signing identity, data-preserving upgrade verification, CI results, source revision, checksums, and publication status belong to the release assets, not this changelog.
+
+### Interface and guidance
+
+- Settings now opens five focused screens: Appearance, Tracking and projects, Backups and restore, Help, and About.
+- Added a searchable, fully offline English/Russian guide covering ten topics, including recovery, safe file handling, system controls, and background restrictions.
+- Added a local-only default project. Active-session and explicit idle selections take priority; a valid preference enables widget/tile quick Start, otherwise quick Start still requires exactly one eligible project. The preference is not part of portable settings or backup schema.
+- Expanded native Android controls: user-requested tile addition on Android 13+, manual fallback on Android 12, launcher-supported widget pinning with manual fallback, widget preview/cell sizing, app-details settings, and read-only Battery Saver/background-restriction status.
+- Added advisory HyperOS/MIUI, One UI, and ColorOS/OxygenOS/realme UI guidance. No private Super Island/HyperIsland API, blanket battery exemption, or higher minimum SDK is claimed.
+- Optional Android 16 Live Updates request promotion for a running timer using the standard platform API. Off by default, with per-session dismissal protection; Android and the OEM retain control of promotion. Uses the normal, non-runtime `POST_PROMOTED_NOTIFICATIONS` permission.
+- History mutations retain the generation captured when a dialog opens, so stale edits/deletes cannot target replacement data. Editors pin their opening time zone; reports hide stale totals while a new range loads.
+- Settings observers recover from transient I/O failures with capped backoff. Archive commands reject the active project transactionally; restore reports pending preference/privacy convergence after a committed database import.
+
+### Backup and privacy
+
+- Encrypted `.otmbackup` remains the default and retains `OTMB1` and payload schema v2 compatibility.
+- Added explicit opt-in `.otmplain` (`OTMP1`) using the same strict payload schema and limits. It has no encryption or authenticity protection; SHA-256 detects accidental damage only. Separate creation/import warnings distinguish structural inspection from trust.
+- Plaintext is not an automatic fallback after an encrypted-file or password error. Language and the local default project remain outside both portable backup payloads.
+- Repository policy and ignore rules now cover `.otmplain` as private data. RU/EN checks aggregate all values XML files, reject duplicate text resource names, and compare format arguments without requiring translated theme files or nontranslatable constants.
+
+### Fixed and reduced background work
+
+- Transient preference-read I/O failures retry while observed instead of permanently completing the settings stream; strict mutation/export reads still fail closed.
+- Project archiving rejects the reserved No project row and projects used by a live/review session at the database boundary.
+- Paused/review notifications show fixed confirmed duration instead of an aging timestamp.
+- Equal system projections no longer trigger repeated publications for unrelated Room invalidations; unchanged tile presentation is filtered, and static widget resizing no longer rereads Room or starts asynchronous broadcast work.
+- Timing remains monotonic and event-driven, with no counting timer, wake lock, or alarm scheduler added. Battery impact has not been measured; no battery-life percentage or performance result is claimed.
+
 ## [1.0.0] - 2026-10-17
 
 ### Release

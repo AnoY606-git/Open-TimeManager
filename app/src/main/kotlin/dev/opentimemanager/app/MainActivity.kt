@@ -127,8 +127,8 @@ class MainActivity : AppCompatActivity() {
                             }
                             NotificationControlAction.OPEN_APP_SETTINGS,
                             NotificationControlAction.OPEN_CHANNEL_SETTINGS ->
-                                notificationSettingsIntent(action, packageName)?.let(::startActivity)
-                            NotificationControlAction.NONE -> Unit
+                                openNotificationSettings(action)
+                            NotificationControlAction.NONE -> openNotificationSettings(NotificationControlAction.OPEN_CHANNEL_SETTINGS)
                         }
                     },
                     selectedLanguage = selectedLanguage,
@@ -149,6 +149,17 @@ class MainActivity : AppCompatActivity() {
                     },
                 )
             }
+        }
+    }
+
+    private fun openNotificationSettings(action: NotificationControlAction) {
+        val intent = notificationSettingsIntent(action, packageName) ?: return
+        try {
+            startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            dev.opentimemanager.app.ui.openAppSystemSettings(this)
+        } catch (_: SecurityException) {
+            dev.opentimemanager.app.ui.openAppSystemSettings(this)
         }
     }
 

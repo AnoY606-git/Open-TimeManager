@@ -19,10 +19,12 @@ import dev.opentimemanager.app.settings.UserPreferences
 import dev.opentimemanager.app.settings.RestorePreferenceTarget
 import dev.opentimemanager.app.settings.SettingsMutationBoundary
 import dev.opentimemanager.app.settings.SettingsRecoveryJournal
+import dev.opentimemanager.app.settings.SettingsMutationResult
 import dev.opentimemanager.app.settings.PendingUserPreferences
 import dev.opentimemanager.app.settings.reconcileSettingsJournalWithinMutationBoundary
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_COLOR_ARGB
+import dev.opentimemanager.core.backup.BackupFormat
 import dev.opentimemanager.core.backup.PortablePreferences
 import dev.opentimemanager.core.backup.PortableProject
 import dev.opentimemanager.core.backup.PortableSnapshot
@@ -44,15 +46,25 @@ class RestoreRepository(
     private val afterReplaceDelete: suspend () -> Unit = {},
 ) {
     private val settingsMutationBoundary = settings?.mutationBoundary ?: SettingsMutationBoundary.PROCESS
-    suspend fun preview(snapshot: PortableSnapshot): BackupPreview = withContext(dispatcher) {
-        val payload = snapshot.toRestorePayload(nowUtcMillis())
-        BackupPreview(
-            counts = BackupCounts(snapshot.projects.size, snapshot.entries.size, snapshot.segments.size),
-            conflicts = database.withTransaction { database.restoreDao().conflicts(payload) },
-            skippedEntriesWithoutConfirmedTime = snapshot.entries.size - payload.entries.size,
-            activeStateWillBeStopped = snapshot.activeEntry != null,
-            payload = payload,
-        )
+    /** Null format means an in-memory caller, never presumed authenticated. */
+    suspend fun preview(snapshot: PortableSnapshot, format: BackupFormat? = null): BackupPreview {
+        var preview: BackupPreview? = null
+        try {
+            return withContext(dispatcher) {
+                val payload = snapshot.toRestorePayload(nowUtcMillis())
+                BackupPreview(
+                    counts = BackupCounts(snapshot.projects.size, snapshot.entries.size, snapshot.segments.size),
+                    conflicts = database.withTransaction { database.restoreDao().conflicts(payload) },
+                    skippedEntriesWithoutConfirmedTime = snapshot.entries.size - payload.entries.size,
+                    activeStateWillBeStopped = snapshot.activeEntry != null,
+                    payload = payload,
+                    format = format,
+                ).also { preview = it }
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            preview?.discard()
+            throw cancelled
+        }
     }
 
     suspend fun restore(preview: BackupPreview, mode: RestoreMode): RestoreResult = preview.usePayload { payload ->
@@ -62,11 +74,15 @@ class RestoreRepository(
             }
             if (result is RestoreResult.Applied && mode == RestoreMode.REPLACE && settings != null) {
                 // Room is durable first. Preference convergence is retryable, not cross-store atomic.
-                try {
-                    withContext(NonCancellable + dispatcher) { reconcilePendingPreferencesWithinBoundary() }
+                val preferencesPending = try {
+                    withContext(NonCancellable + dispatcher) { reconcilePendingPreferencesWithinBoundary() } !=
+                        SettingsMutationResult.APPLIED
                 } catch (_: Exception) {
-                    // Durable recovery intent remains in Room for startup retry.
+                    // Do not turn an already committed Room restore into a database failure.
+                    // Recovery intent is only removed by successful preference/mirror convergence.
+                    true
                 }
+                return result.copy(preferencesPending = preferencesPending)
             }
             return result
         }
@@ -74,16 +90,17 @@ class RestoreRepository(
         else settingsMutationBoundary.serialized { restoreAndReconcile() }
     }
 
-    suspend fun reconcilePendingPreferences() {
-        if (settings == null) return
-        settingsMutationBoundary.serialized {
+    /** Explicit retry reports whether the durable preferences/privacy mirror still need recovery. */
+    suspend fun reconcilePendingPreferences(): SettingsMutationResult {
+        if (settings == null) return SettingsMutationResult.APPLIED
+        return settingsMutationBoundary.serialized {
             withContext(dispatcher) { reconcilePendingPreferencesWithinBoundary() }
         }
     }
 
-    private suspend fun reconcilePendingPreferencesWithinBoundary() {
-        val target = settings ?: return
-        reconcileSettingsJournalWithinMutationBoundary(settingsJournal, target)
+    private suspend fun reconcilePendingPreferencesWithinBoundary(): SettingsMutationResult {
+        val target = settings ?: return SettingsMutationResult.APPLIED
+        return reconcileSettingsJournalWithinMutationBoundary(settingsJournal, target)
     }
 
     private suspend fun applyPayload(payload: RestorePayload, mode: RestoreMode): RestoreResult {

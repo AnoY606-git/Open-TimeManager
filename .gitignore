@@ -36,6 +36,9 @@ signing.properties
 
 # Личные резервные копии и собранные Android-пакеты вне build/
 *.otmbackup
+*.otmplain
+*.[oO][tT][mM][bB][aA][cC][kK][uU][pP]
+*.[oO][tT][mM][pP][lL][aA][iI][nN]
 *.apk
 *.aab
 

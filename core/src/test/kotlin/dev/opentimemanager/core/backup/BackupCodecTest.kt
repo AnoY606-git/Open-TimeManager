@@ -49,6 +49,16 @@ class BackupCodecTest {
         assertEquals(PortablePreferences(), result.preferences)
     }
 
+    @Test fun `v2 encrypted writer remains byte exact with the original OTMB1 envelope`() {
+        val payload = """{"schemaVersion":2,"projects":[],"entries":[],"segments":[],"activeEntry":null,"preferences":{"theme":"SYSTEM","dynamicColor":true,"privacyMode":true,"dailyGoalMinutes":480}}"""
+        val bytes = BackupCodec.encrypt(PortableSnapshot(), password, random())
+
+        assertArrayEquals(authenticated(payload.toByteArray(Charsets.UTF_8)), bytes)
+        assertEquals(BackupFormat.ENCRYPTED, BackupCodec.detectFormat(bytes))
+        assertEquals(BackupFormat.ENCRYPTED, BackupCodec.detectFormat(golden))
+        assertThrows(BackupError.MagicError::class.java) { PlainBackupCodec.decode(golden) }
+    }
+
     @Test fun `v2 roundtrip retains complete project metadata and preferences`() {
         val source = PortableSnapshot(
             projects = listOf(

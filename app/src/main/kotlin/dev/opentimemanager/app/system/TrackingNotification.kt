@@ -2,7 +2,9 @@ package dev.opentimemanager.app.system
 
 import android.app.*
 import android.content.Context
+import android.os.Build
 import android.os.SystemClock
+import android.text.format.DateUtils
 import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.tracking.SystemSnapshot
@@ -31,12 +33,27 @@ class TrackingNotification(private val context: Context) {
             .setPublicVersion(Notification.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_tracking).setContentTitle(strings.getString(statusString(state))).build())
         TrackingActions.openApp(context)?.let(builder::setContentIntent)
         val elapsed = elapsedMillis(snapshot, nowElapsedMillis)
-        builder.setWhen(nowWallMillis - elapsed).setShowWhen(true).setUsesChronometer(state == TrackingState.RUNNING)
+        if (state == TrackingState.RUNNING) {
+            builder.setWhen(nowWallMillis - elapsed).setShowWhen(true).setUsesChronometer(true)
+        } else {
+            // A non-running notification's `when` is a timestamp, not a frozen chronometer.
+            // Show only the confirmed duration; it must not age while paused or awaiting review.
+            builder.setShowWhen(false).setUsesChronometer(false)
+                .setSubText(DateUtils.formatElapsedTime(elapsed / 1000))
+        }
         TrackingActions.primary(snapshot)?.let {
             builder.addAction(Notification.Action.Builder(null, strings.getString(primaryString(state)), TrackingActions.pendingIntent(context, it)).build())
         }
         if (state == TrackingState.RUNNING || state == TrackingState.PAUSED) {
             builder.addAction(Notification.Action.Builder(null, strings.getString(R.string.tracking_stop), TrackingActions.pendingIntent(context, TrackingActions.stop(snapshot))).build())
+        }
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                LiveUpdatePreferences(context).notificationPolicy(snapshot)?.let { policy ->
+                    builder.setDeleteIntent(LiveUpdateDismissReceiver.pendingIntent(context, policy.session))
+                    if (policy.requestPromotion) requestPromotedOngoing(builder)
+                }
+            } catch (_: Exception) { /* Optional presentation cannot break normal timer controls. */ }
         }
         return builder.build()
     }

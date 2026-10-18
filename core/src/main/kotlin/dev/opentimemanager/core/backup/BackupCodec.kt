@@ -52,9 +52,7 @@ object BackupCodec {
         random: SecureRandom,
         limits: BackupLimits,
     ): ByteArray {
-        checkCounts(snapshot, limits)
-        validate(snapshot)
-        val plain = encode(snapshot, limits.maxBytes - HEADER_SIZE - TAG_SIZE)
+        val plain = encodePayload(snapshot, limits, HEADER_SIZE + TAG_SIZE)
         try {
             val salt = ByteArray(16).also(random::nextBytes)
             val nonce = ByteArray(12).also(random::nextBytes)
@@ -82,8 +80,59 @@ object BackupCodec {
 
     /** Проверяет ограничения до KDF/аллокаций; записи выдаются только после GCM auth. */
     fun decrypt(bytes: ByteArray, password: CharArray, limits: BackupLimits): PortableSnapshot {
+        val plainSize = requireEncryptedContainer(bytes, limits)
+        val header = bytes.copyOfRange(0, HEADER_SIZE)
+        val plain = ByteArray(plainSize)
+        return try {
+            try {
+                cryptInto(
+                    mode = Cipher.DECRYPT_MODE,
+                    input = bytes,
+                    inputOffset = HEADER_SIZE,
+                    inputLength = bytes.size - HEADER_SIZE,
+                    output = plain,
+                    outputOffset = 0,
+                    password = password,
+                    salt = header.copyOfRange(10, 26),
+                    nonce = header.copyOfRange(26, 38),
+                    header = header,
+                )
+            } catch (_: AEADBadTagException) {
+                // Один публичный отказ без provider-specific cause или деталей пароля.
+                throw BackupError.IntegrityError()
+            }
+            decodePayload(plain, limits)
+        } finally {
+            plain.fill(0)
+        }
+    }
+
+    /**
+     * Selects only an explicit magic and validates the complete bounded container.
+     * This does not authenticate encrypted data or validate the snapshot schema.
+     * In particular, a decryption failure must never be retried as plaintext.
+     */
+    fun detectFormat(bytes: ByteArray, limits: BackupLimits = BackupLimits()): BackupFormat {
         if (bytes.size > limits.maxBytes) throw BackupError.LimitError()
-        if (bytes.size < magic.size || !bytes.copyOfRange(0, magic.size).contentEquals(magic)) throw BackupError.MagicError()
+        return when {
+            hasEncryptedMagic(bytes) -> {
+                requireEncryptedContainer(bytes, limits)
+                BackupFormat.ENCRYPTED
+            }
+            PlainBackupCodec.hasMagic(bytes) -> {
+                PlainBackupCodec.requireContainer(bytes, limits)
+                BackupFormat.PLAINTEXT
+            }
+            else -> throw BackupError.MagicError()
+        }
+    }
+
+    private fun hasEncryptedMagic(bytes: ByteArray): Boolean =
+        bytes.size >= magic.size && magic.indices.all { bytes[it] == magic[it] }
+
+    private fun requireEncryptedContainer(bytes: ByteArray, limits: BackupLimits): Int {
+        if (bytes.size > limits.maxBytes) throw BackupError.LimitError()
+        if (!hasEncryptedMagic(bytes)) throw BackupError.MagicError()
         if (bytes.size <= magic.size) throw BackupError.IntegrityError()
         if (bytes[5] != 1.toByte()) throw BackupError.VersionError()
         if (bytes.size < HEADER_SIZE + TAG_SIZE) throw BackupError.IntegrityError()
@@ -92,31 +141,7 @@ object BackupCodec {
         val plainSize = input.getInt(38)
         if (plainSize > limits.maxBytes) throw BackupError.LimitError()
         if (plainSize < 0 || plainSize.toLong() + HEADER_SIZE + TAG_SIZE != bytes.size.toLong()) throw BackupError.IntegrityError()
-        val header = bytes.copyOfRange(0, HEADER_SIZE)
-        val plain = ByteArray(plainSize)
-        try {
-            cryptInto(
-                mode = Cipher.DECRYPT_MODE,
-                input = bytes,
-                inputOffset = HEADER_SIZE,
-                inputLength = bytes.size - HEADER_SIZE,
-                output = plain,
-                outputOffset = 0,
-                password = password,
-                salt = header.copyOfRange(10, 26),
-                nonce = header.copyOfRange(26, 38),
-                header = header,
-            )
-        } catch (_: AEADBadTagException) {
-            plain.fill(0)
-            // Один публичный отказ без provider-specific cause или деталей пароля.
-            throw BackupError.IntegrityError()
-        }
-        return try {
-            decode(plain, limits)
-        } finally {
-            plain.fill(0)
-        }
+        return plainSize
     }
 
     private fun cryptInto(
@@ -148,7 +173,12 @@ object BackupCodec {
         }
     }
 
-    private fun encode(snapshot: PortableSnapshot, maxBytes: Int): ByteArray {
+    /** Shared schema only; callers must supply and validate their explicit container. */
+    internal fun encodePayload(snapshot: PortableSnapshot, limits: BackupLimits, containerOverhead: Int): ByteArray {
+        checkCounts(snapshot, limits)
+        validate(snapshot)
+        val maxBytes = limits.maxBytes - containerOverhead
+        if (maxBytes < 0) throw BackupError.LimitError()
         val payload = SnapshotJson(
             2,
             snapshot.projects.map {
@@ -173,8 +203,13 @@ object BackupCodec {
         return text.toByteArray(Charsets.UTF_8)
     }
 
-    private fun decode(plain: ByteArray, limits: BackupLimits): PortableSnapshot = schemaBoundary {
-        val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plain)).toString()
+    internal fun decodePayload(
+        plain: ByteArray,
+        limits: BackupLimits,
+        offset: Int = 0,
+        length: Int = plain.size - offset,
+    ): PortableSnapshot = schemaBoundary {
+        val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plain, offset, length)).toString()
         val payload = json.decodeFromString(SnapshotJson.serializer(), text)
         if (payload.schemaVersion !in 1..2) throw BackupError.SchemaError()
         if (payload.segments.size > limits.maxSegments) throw BackupError.LimitError()

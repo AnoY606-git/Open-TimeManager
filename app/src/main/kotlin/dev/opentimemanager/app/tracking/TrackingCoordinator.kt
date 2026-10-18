@@ -1,8 +1,15 @@
 package dev.opentimemanager.app.tracking
 
 import dev.opentimemanager.app.data.*
+import dev.opentimemanager.app.settings.canonicalDefaultProjectIdOrNull
 import dev.opentimemanager.core.model.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 fun interface ClockSnapshotSource { fun now(): ClockSnapshot }
 
@@ -41,7 +48,7 @@ data class SystemSnapshot(
     val session: TrackingSession,
     val generation: String,
     val activeProject: ProjectEntity?,
-    /** Non-null only when exactly one non-archived project is eligible for quick Start. */
+    /** Valid preferred project, or the sole non-archived project when no valid override exists. */
     val quickStartProject: ProjectEntity?,
 )
 
@@ -55,14 +62,30 @@ data class AppSnapshot(
     /** Exact totals for the bounded history entries; completed segment rows are not retained. */
     val entryDurations: Map<String, Long> = emptyMap(),
     val hasMoreProjects: Boolean = false,
+    /** Local override; an eligible preferred project is pinned in the same snapshot. */
+    val defaultProjectId: String? = null,
 )
 
-class TrackingCoordinator(private val repository: RoomTrackingRepository) {
-    suspend fun execute(command: TrackingCommand): TrackingResult = repository.execute(command)
-    fun observeSystemSnapshot(): Flow<SystemSnapshot> = repository.observeSystemSnapshot()
+@OptIn(ExperimentalCoroutinesApi::class)
+class TrackingCoordinator(
+    private val repository: RoomTrackingRepository,
+    defaultProjectId: Flow<String?> = flowOf(null),
+) {
+    private val defaultProjectIds = defaultProjectId
+        .map(::canonicalDefaultProjectIdOrNull)
+        .distinctUntilChanged()
+
+    suspend fun execute(command: TrackingCommand): TrackingResult =
+        repository.execute(command, defaultProjectIds.first())
+
+    fun observeSystemSnapshot(): Flow<SystemSnapshot> = defaultProjectIds.flatMapLatest { preferred ->
+        repository.observeSystemSnapshot(preferred)
+    }
     fun observeSnapshot(
         historyLimit: Int = 100,
         projectLimit: Int = 100,
         pinnedProjectId: String = ProjectRepository.DEFAULT_PROJECT_ID.value,
-    ): Flow<AppSnapshot> = repository.observeSnapshot(historyLimit, projectLimit, pinnedProjectId)
+    ): Flow<AppSnapshot> = defaultProjectIds.flatMapLatest { preferred ->
+        repository.observeSnapshot(historyLimit, projectLimit, pinnedProjectId, preferred)
+    }
 }

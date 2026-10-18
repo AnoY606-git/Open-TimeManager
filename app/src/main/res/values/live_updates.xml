@@ -1,0 +1,19 @@
+<resources>
+    <string name="live_updates_title">Android 16 Live Updates</string>
+    <string name="live_updates_description">Optional, off by default. Request a more visible system notification for a running timer, with its existing elapsed-time counter and controls. Android decides whether to promote it and may demote it. No proprietary island integration or manufacturer certification is promised.</string>
+    <string name="live_updates_requires_android16">Available only on supported Android 16 system builds. On Android 12–15, the ordinary notification, widget and tile remain available.</string>
+    <string name="live_updates_enable">Request Live Updates for the running timer</string>
+    <string name="live_updates_request_api_unavailable">This Android 16 build does not expose the newer promotion-request API. It may keep an ordinary notification; a supported system update is needed for the newer presentation.</string>
+    <string name="live_updates_android_allows">Android allows promotion requests. Notification permission, channel settings and system or manufacturer criteria still apply; a chip is not guaranteed.</string>
+    <string name="live_updates_android_blocks">Android currently blocks promoted notifications for this app. The ordinary timer controls remain available when notifications are allowed.</string>
+    <string name="live_updates_status_unknown">Android promotion eligibility could not be read. This is not a guarantee of Live Update availability.</string>
+    <string name="live_updates_layout_eligible">The current notification has promotable characteristics. This does not prove that Android will promote it.</string>
+    <string name="live_updates_layout_ineligible">The current notification does not meet Android’s promotion characteristics. It stays an ordinary notification.</string>
+    <string name="live_updates_manage">Android Live Update settings</string>
+    <string name="live_updates_dismissal_hint">This choice stays on this device and is not included in backups. Dismissing a timer notification suppresses further promotion requests for that entry, including after pause and resume. A new entry is eligible again. To explicitly reset dismissal, turn this option off and on. No battery-life improvement is claimed.</string>
+    <string name="live_updates_saving">Saving the local choice…</string>
+    <string name="live_updates_saved">Choice saved. Android controls the final presentation.</string>
+    <string name="live_updates_save_failed">The choice could not be saved. Try again; the normal timer is unchanged.</string>
+    <string name="live_updates_refresh_failed">Choice saved, but the notification could not be refreshed. Reopen the app or try again. Do not stop or recreate the timer just to refresh its appearance.</string>
+    <string name="live_updates_settings_unavailable">Android Live Update and app settings could not be opened on this device.</string>
+</resources>

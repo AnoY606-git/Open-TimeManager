@@ -20,12 +20,15 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val database: AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "open-time-manager.db")
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .build()
-    val trackingCoordinator = TrackingCoordinator(RoomTrackingRepository(database, clock, dispatcher))
     val projects = ProjectRepository(database, dispatcher)
     val completedEntries = CompletedEntryRepository(database, dispatcher)
     val activeNotes = ActiveEntryNoteRepository(database, dispatcher)
     private val settingsJournal = RoomSettingsRecoveryJournal(database, dispatcher)
     val settings = UserSettings(context, recoveryJournal = settingsJournal)
+    val trackingCoordinator = TrackingCoordinator(
+        RoomTrackingRepository(database, clock, dispatcher),
+        defaultProjectId = settings.defaultProjectId,
+    )
     val restore = RestoreRepository(database, dispatcher, settings = settings, settingsJournal = settingsJournal)
     val csvExport = CsvExportCoordinator(
         database,

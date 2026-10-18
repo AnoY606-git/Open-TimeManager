@@ -8,10 +8,13 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import androidx.core.content.ContextCompat
 import dev.opentimemanager.app.OpenTimeManagerApplication
+import dev.opentimemanager.app.R
 import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.core.model.TrackingState
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 class TrackingTileService : TileService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -21,10 +24,19 @@ class TrackingTileService : TileService() {
         listening?.cancel()
         listening = scope.launch {
             containSystemSurfaceFailure(onFailure = ::showUnavailable) {
-                coordinator().observeSystemSnapshot().collect { snapshot ->
-                    val projection = presentation(this@TrackingTileService, snapshot)
-                    qsTile?.apply { label = projection.label; state = projection.state; updateTile() }
-                }
+                coordinator().observeSystemSnapshot()
+                    .map { presentation(this@TrackingTileService, it) }
+                    .distinctUntilChanged()
+                    .collect { projection ->
+                        qsTile?.apply {
+                            label = ContextCompat.getString(this@TrackingTileService, R.string.app_name)
+                            subtitle = projection.label
+                            contentDescription = "$label, ${projection.label}"
+                            stateDescription = projection.label
+                            state = projection.state
+                            updateTile()
+                        }
+                    }
             }
         }
     }

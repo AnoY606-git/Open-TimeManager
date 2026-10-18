@@ -58,13 +58,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.ui.AppUiState
+import dev.opentimemanager.app.ui.DateInputError
 import dev.opentimemanager.app.ui.ReportPeriod
 import dev.opentimemanager.app.ui.defaultCustomReport
 import dev.opentimemanager.app.ui.formatDuration
@@ -75,6 +75,9 @@ import dev.opentimemanager.app.ui.components.AccentIcon
 import dev.opentimemanager.app.ui.components.AppCard
 import dev.opentimemanager.app.ui.components.AppGlyph
 import dev.opentimemanager.app.ui.components.AppIcon
+import dev.opentimemanager.app.ui.components.AppMessageCard
+import dev.opentimemanager.app.ui.components.FittedDurationText
+import dev.opentimemanager.app.ui.components.FormErrorText
 import dev.opentimemanager.app.ui.components.ScreenHeading
 import dev.opentimemanager.app.ui.components.SectionHeading
 import dev.opentimemanager.app.ui.theme.LocalAppPalette
@@ -102,6 +105,8 @@ fun ReportsScreen(
     val bounds = state.controls.reportPeriod.validatedBounds(today, zone).value
         ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
     val totals = state.reportTotals
+    // Never label a previous query's totals with the newly selected period or time zone.
+    val reportLoading = state.reportLoading || state.reportBounds?.let { it != bounds } == true
     val dateFormatter = remember(locale) {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
     }
@@ -148,7 +153,7 @@ fun ReportsScreen(
             item("heading") {
                 ScreenHeading(
                     title = stringResource(R.string.reports_heading),
-                    subtitle = stringResource(R.string.insights_reports_subtitle),
+                    subtitle = stringResource(R.string.ux_reports_subtitle),
                 )
             }
             item("periods") {
@@ -159,28 +164,25 @@ fun ReportsScreen(
                 )
             }
             item("total") {
-                ReportTotalHero(totals.totalMillis, dateRange)
+                if (reportLoading) {
+                    AppCard(modifier = Modifier.testTag("report_loading")) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                        Text(stringResource(R.string.data_operation_in_progress))
+                    }
+                } else ReportTotalHero(totals.totalMillis, dateRange)
             }
-            if (slices.isNotEmpty() && totals.totalMillis > 0L) {
+            if (!reportLoading && slices.isNotEmpty() && totals.totalMillis > 0L) {
                 item("distribution") { ReportDistribution(slices) }
             }
-            if (slices.isEmpty() || totals.totalMillis <= 0L) {
+            if (!reportLoading && (slices.isEmpty() || totals.totalMillis <= 0L)) {
                 item("empty") {
-                    AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
-                        AccentIcon(AppGlyph.Reports)
-                        Text(
-                            stringResource(R.string.no_report_data),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            stringResource(R.string.insights_reports_empty_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    AppMessageCard(
+                        title = stringResource(R.string.no_report_data),
+                        message = stringResource(R.string.ux_reports_empty_hint),
+                        glyph = AppGlyph.Reports,
+                    )
                 }
-            } else {
+            } else if (!reportLoading) {
                 item("breakdown-heading") {
                     SectionHeading(stringResource(R.string.project_breakdown), modifier = Modifier.padding(top = 4.dp))
                 }
@@ -201,7 +203,7 @@ fun ReportsScreen(
                                 exportLaunchFailed = true
                             }
                         },
-                        enabled = !exportBusy && onBeginCsvExport != null,
+                        enabled = !exportBusy && !reportLoading && onBeginCsvExport != null,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         shape = RoundedCornerShape(16.dp),
                     ) {
@@ -222,7 +224,7 @@ fun ReportsScreen(
                         )
                     }
                     if (exportLaunchFailed) {
-                        Text(stringResource(R.string.csv_export_error), color = MaterialTheme.colorScheme.error)
+                        FormErrorText(stringResource(R.string.csv_export_error))
                     }
                 }
             }
@@ -307,15 +309,20 @@ private fun ReportTotalHero(totalMillis: Long, dateRange: String) {
                 }
             }
             ReportDurationTotal(totalMillis)
-            Text(stringResource(R.string.insights_duration_units), style = MaterialTheme.typography.labelMedium, color = palette.heroMuted)
+            Text(
+                stringResource(if (totalMillis in 1L..59_999L) R.string.ux_duration_seconds_units else R.string.insights_duration_units),
+                style = MaterialTheme.typography.labelMedium,
+                color = palette.heroMuted,
+            )
         }
     }
 }
 
 @Composable
 private fun ReportDurationTotal(totalMillis: Long) {
-    val text = formatDuration(totalMillis, false)
-    val description = stringResource(R.string.insights_duration_description, text)
+    val showSeconds = totalMillis in 1L..59_999L
+    val text = formatDuration(totalMillis, includeSeconds = showSeconds)
+    val description = stringResource(if (showSeconds) R.string.ux_duration_seconds_description else R.string.insights_duration_description, text)
     val style = MaterialTheme.typography.displayLarge.copy(
         fontSize = 52.sp,
         lineHeight = 58.sp,
@@ -323,32 +330,12 @@ private fun ReportDurationTotal(totalMillis: Long) {
         letterSpacing = (-1.8).sp,
         fontFeatureSettings = "tnum",
     )
-    val textMeasurer = rememberTextMeasurer()
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        // Long totals and enlarged system fonts stay inside the card without clipping digits.
-        val availableWidth = constraints.maxWidth.coerceAtLeast(1)
-        val fittedStyle = remember(text, style, textMeasurer, availableWidth) {
-            var candidate = style
-            repeat(8) {
-                val width = textMeasurer.measure(text, candidate, softWrap = false, maxLines = 1).size.width
-                if (width <= availableWidth) return@remember candidate
-                val scale = (availableWidth.toFloat() / width).coerceIn(0.1f, 0.99f)
-                candidate = candidate.copy(
-                    fontSize = candidate.fontSize * scale,
-                    lineHeight = candidate.lineHeight * scale,
-                    letterSpacing = candidate.letterSpacing * scale,
-                )
-            }
-            candidate
-        }
-        Text(
-            text,
-            style = fittedStyle,
-            color = LocalAppPalette.current.onHero,
-            maxLines = 1,
-            modifier = Modifier.semantics { contentDescription = description },
-        )
-    }
+    FittedDurationText(
+        text,
+        style = style,
+        color = LocalAppPalette.current.onHero,
+        description = description,
+    )
 }
 
 @Composable
@@ -375,8 +362,9 @@ private fun ReportDistribution(slices: List<ReportProjectSlice>) {
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun ReportProjectCard(slice: ReportProjectSlice) {
-    val duration = formatDuration(slice.durationMillis, false)
-    val durationDescription = stringResource(R.string.insights_duration_description, duration)
+    val showSeconds = slice.durationMillis in 1L..59_999L
+    val duration = formatDuration(slice.durationMillis, includeSeconds = showSeconds)
+    val durationDescription = stringResource(if (showSeconds) R.string.ux_duration_seconds_description else R.string.insights_duration_description, duration)
     val shareDescription = stringResource(R.string.insights_report_share_value, slice.percentage)
     AppCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -433,7 +421,7 @@ private fun CustomPeriodDialog(
 ) {
     var from by remember { mutableStateOf(initial.from.toString()) }
     var through by remember { mutableStateOf(initial.through.toString()) }
-    var invalid by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<DateInputError?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
@@ -444,28 +432,30 @@ private fun CustomPeriodDialog(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     from,
-                    { from = it; invalid = false },
+                    { from = it; error = null },
                     label = { Text(stringResource(R.string.report_from)) },
                     singleLine = true,
+                    isError = error != null,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     through,
-                    { through = it; invalid = false },
+                    { through = it; error = null },
                     label = { Text(stringResource(R.string.report_through)) },
                     singleLine = true,
+                    isError = error != null,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (invalid) Text(stringResource(R.string.error_invalid_entry), color = MaterialTheme.colorScheme.error)
+                error?.let { FormErrorText(stringResource(customPeriodErrorResource(it))) }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    validateCustomReportInput(from, through, ZoneId.systemDefault()).value?.let(onApply)
-                        ?: run { invalid = true }
+                    val validation = validateCustomReportInput(from, through, ZoneId.systemDefault())
+                    validation.value?.let(onApply) ?: run { error = validation.error }
                 },
                 modifier = Modifier.heightIn(min = 48.dp),
             ) { Text(stringResource(R.string.apply)) }
@@ -474,4 +464,11 @@ private fun CustomPeriodDialog(
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.cancel)) }
         },
     )
+}
+
+internal fun customPeriodErrorResource(error: DateInputError): Int = when (error) {
+    DateInputError.REVERSED_RANGE -> R.string.ux_report_reversed_dates
+    DateInputError.RANGE_TOO_LARGE -> R.string.ux_report_range_too_large
+    DateInputError.OUT_OF_SUPPORTED_RANGE, DateInputError.OVERFLOW -> R.string.ux_date_out_of_range
+    DateInputError.MALFORMED -> R.string.ux_report_invalid_dates
 }

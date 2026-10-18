@@ -132,11 +132,15 @@ class TrackingCoordinatorTest {
         assertEquals(500L, snapshot().segments.single().durationMillis)
     }
     @Test fun archiveRejectsStartAndPreservesHistory() = runBlocking {
-        start()
+        snapshot()
+        val project = ProjectId("archivable-project")
+        val projects = ProjectRepository(db, Dispatchers.IO)
+        assertEquals(ProjectEditResult.APPLIED, projects.create(project, "Archivable", 0, 1_000))
+        tracker.execute(TrackingCommand.Start(CommandId("start"), project, 0))
         now = ClockSnapshot(1_500, 600, 7)
         tracker.execute(TrackingCommand.Stop(target(snapshot(), "stop")))
-        ProjectRepository(db, Dispatchers.IO).archive(defaultProject, 2_000)
-        assertEquals(TrackingResult.Rejected(TrackingFailure.ARCHIVED_PROJECT), tracker.execute(TrackingCommand.Start(CommandId("again"), defaultProject, snapshot().session.revision)))
+        assertEquals(ProjectEditResult.APPLIED, projects.archive(project, 2_000))
+        assertEquals(TrackingResult.Rejected(TrackingFailure.ARCHIVED_PROJECT), tracker.execute(TrackingCommand.Start(CommandId("again"), project, snapshot().session.revision)))
         assertEquals(500L, snapshot().segments.single().durationMillis)
     }
     @Test fun manualEntryCrudAndHalfOpenReportQueryDoNotTouchLiveAnchor() = runBlocking {

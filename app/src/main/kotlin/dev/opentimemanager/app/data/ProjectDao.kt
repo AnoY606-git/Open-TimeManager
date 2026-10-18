@@ -17,7 +17,16 @@ abstract class ProjectDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) abstract fun insert(project: ProjectEntity): Long
     @Query("SELECT COUNT(*) FROM projects") abstract fun projectCount(): Long
     @Query("UPDATE projects SET name = :name, colorArgb = :color WHERE id = :id") abstract fun update(id: String, name: String, color: Int): Int
-    @Query("UPDATE projects SET archivedAtUtcMillis = :at WHERE id = :id") abstract fun archive(id: String, at: Long): Int
+    @Query("""
+        UPDATE projects SET archivedAtUtcMillis = :at
+        WHERE id = :id AND id != '$DEFAULT_PROJECT_UUID'
+          AND NOT EXISTS (
+              SELECT 1 FROM tracking_slot
+              JOIN entries ON entries.id = tracking_slot.entryId
+              WHERE entries.projectId = :id AND tracking_slot.state != 'IDLE'
+          )
+    """)
+    abstract fun archive(id: String, at: Long): Int
     @Query("SELECT COUNT(*) FROM entries WHERE projectId = :id") abstract fun entryCount(id: String): Int
     @Query("DELETE FROM projects WHERE id = :id") abstract fun deleteEmpty(id: String): Int
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
@@ -70,8 +79,14 @@ class ProjectRepository(private val database: AppDatabase, private val dispatche
         val normalized = normalizedName(name) ?: return@withContext ProjectEditResult.INVALID_NAME
         changed(database.projectDao().update(id.value, normalized, colorArgb))
     }
-    suspend fun archive(id: ProjectId, atUtcMillis: Long): ProjectEditResult = withContext(dispatcher) { changed(database.projectDao().archive(id.value, atUtcMillis)) }
+    suspend fun archive(id: ProjectId, atUtcMillis: Long): ProjectEditResult = withContext(dispatcher) {
+        if (id == DEFAULT_PROJECT_ID) return@withContext ProjectEditResult.NOT_FOUND
+        changed(database.projectDao().archive(id.value, atUtcMillis))
+    }
     suspend fun delete(id: ProjectId, nowUtcMillis: Long): ProjectEditResult = withContext(dispatcher) { changed(database.projectDao().deleteOrArchive(id.value, nowUtcMillis)) }
+    suspend fun activeProject(id: ProjectId): ProjectEntity? = withContext(dispatcher) {
+        database.projectDao().project(id.value)?.takeIf { it.archivedAtUtcMillis == null }
+    }
     suspend fun manualEntryPage(
         query: String,
         cursor: ProjectPageCursor?,

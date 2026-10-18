@@ -15,10 +15,15 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -117,11 +122,30 @@ class UserSettings(
         PreferenceDataStoreFactory.create(scope = scope) { appContext.preferencesDataStoreFile(name) }
     }
 
-    val values: Flow<UserPreferences> = store.data
-        .catch { error ->
-            if (error is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw error
+    private val observedPreferences = store.data.recoverPreferenceReadFailures()
+
+    val values: Flow<UserPreferences> = observedPreferences.map(::decode)
+
+    /**
+     * Local-only project override; null keeps automatic selection. This key is
+     * deliberately outside UserPreferences, restore journals and portable backups.
+     * Restoring other preferences preserves it; a missing/archived project is
+     * ignored by tracking until it becomes eligible again or the override is cleared.
+     */
+    val defaultProjectId: Flow<String?> = observedPreferences
+        .map { canonicalDefaultProjectIdOrNull(it[DEFAULT_PROJECT]) }
+        .distinctUntilChanged()
+
+    suspend fun setDefaultProjectId(projectId: String?) {
+        require(projectId == null || canonicalDefaultProjectIdOrNull(projectId) != null) {
+            "Default project must be a canonical UUID"
         }
-        .map(::decode)
+        mutationBoundary.serialized {
+            store.edit { preferences ->
+                if (projectId == null) preferences.remove(DEFAULT_PROJECT) else preferences[DEFAULT_PROJECT] = projectId
+            }
+        }
+    }
 
     suspend fun setTheme(value: ThemeMode) = mutatePartial { it.copy(theme = value) }
     suspend fun setDynamicColor(value: Boolean) = mutatePartial { it.copy(dynamicColor = value) }
@@ -134,9 +158,9 @@ class UserSettings(
     suspend fun current(): UserPreferences = values.first()
 
     /**
-     * Replaces the DataStore record in one edit, then mirrors privacy for system
-     * surfaces. A Room journal provides retryable convergence; the two stores
-     * are intentionally not described as atomically committed together.
+     * Replaces portable preference fields in one edit, preserving local-only
+     * keys, then mirrors privacy for system surfaces. A Room journal provides
+     * retryable convergence; the two stores are not atomically committed together.
      */
     suspend fun replace(value: UserPreferences): SettingsMutationResult =
         mutationBoundary.serialized {
@@ -230,9 +254,38 @@ class UserSettings(
         private val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         private val PRIVACY = booleanPreferencesKey("privacy")
         private val DAILY_GOAL = intPreferencesKey("daily_goal_minutes")
+        private val DEFAULT_PROJECT = stringPreferencesKey("default_project_id")
         private val stores = ConcurrentHashMap<String, DataStore<Preferences>>()
     }
 }
 
 private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
     enumValues<T>().firstOrNull { it.name == this }
+
+/** Read-only fallback with subscriber-scoped retries; strict mutation/export reads bypass it. */
+internal fun Flow<Preferences>.recoverPreferenceReadFailures(
+    waitBeforeRetry: suspend (Long) -> Unit = { delay(it) },
+): Flow<Preferences> = flow {
+    var backoffMillis = 100L
+    emitAll(
+        this@recoverPreferenceReadFailures
+            .onEach { backoffMillis = 100L }
+            .retryWhen { error, _ ->
+                if (error !is IOException) return@retryWhen false
+                emit(androidx.datastore.preferences.core.emptyPreferences())
+                waitBeforeRetry(backoffMillis)
+                backoffMillis = (backoffMillis * 2).coerceAtMost(5_000L)
+                true
+            },
+    )
+}
+
+/** UUID.fromString alone also accepts abbreviated groups, which are not project keys. */
+internal fun canonicalDefaultProjectIdOrNull(value: String?): String? {
+    if (value == null || value.length != 36) return null
+    return try {
+        value.takeIf { UUID.fromString(it).toString() == it }
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}

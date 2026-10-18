@@ -29,7 +29,10 @@ INTERNAL_FILES = tuple(
         "docs/internal", "docs/plans", "docs/specs", "docs/superpowers",
     )
 ) + ("docs/internal/BUILDING.md", "module/docs/internal/ARCHITECTURE.md", "module/docs/specs/TESTING.md")
-USER_BACKUP_FILES = ("work.otmbackup", "module/exports/work.otmbackup")
+USER_BACKUP_FILES = (
+    "work.otmbackup", "module/exports/work.otmbackup",
+    "work.otmplain", "module/exports/work.otmplain", "exports/work.OTMPLAIN",
+)
 ANDROID_OUTPUT_FILES = ("app.apk", "app.aab", "distribution/nested/app.apk", "module/releases/app.aab")
 PUBLIC_FILES = {
     **{
@@ -165,6 +168,84 @@ class RepositoryPolicyTest(unittest.TestCase):
         )
         self._git("add", "app/src/main/res/values-ru/strings.xml")
         self.assert_rejected("translation")
+
+    def test_accepts_translation_names_aggregated_across_differently_named_xml_files(self) -> None:
+        self.write_resource("values/workflow.xml", '<string name="help">Guide %1$s</string>')
+        self.write_resource("values-ru/platform.xml", '<string name="help">Руководство %1$s</string>')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_missing_translation_from_any_resource_xml(self) -> None:
+        for name in ("workflow", "platform", "ux_refinements"):
+            with self.subTest(file=name):
+                self.write_resource(f"values/{name}.xml", f'<string name="{name}">English</string>')
+                self.assert_rejected(f"Russian translation is missing: string/{name}")
+                self.write_resource(f"values-ru/{name}.xml", f'<string name="{name}">Русский</string>')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_translation_without_a_source_key_outside_strings_xml(self) -> None:
+        self.write_resource("values-ru/workflow.xml", '<string name="orphan">Нет оригинала</string>')
+        self.assert_rejected("English translation is missing: string/orphan")
+
+    def test_does_not_require_translations_for_theme_xml_or_nontranslatable_resources(self) -> None:
+        self.write_resource("values/themes.xml", '<style name="Theme.App">'
+                            '<item name="android:windowLightStatusBar">true</item></style>')
+        self.write_resource("values/constants.xml", '<string name="protocol" translatable="false">OTMP1</string>'
+                            '<plurals name="fixed_count" translatable="false"><item quantity="other">%d</item></plurals>'
+                            '<string-array name="fixed_labels" translatable="false"><item>Protocol</item></string-array>')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_duplicate_translation_names_within_or_across_xml_files(self) -> None:
+        for folder in ("values", "values-ru"):
+            with self.subTest(folder=folder):
+                self.write_resource(f"{folder}/duplicates.xml", '<string name="legal">Duplicate</string>')
+                self.assert_rejected("duplicate translation resource: string/legal")
+                self.write_resource(f"{folder}/duplicates.xml", '<string name="inside">One</string><string name="inside">Two</string>')
+                self.assert_rejected("duplicate translation resource: string/inside")
+                self.write_resource(f"{folder}/duplicates.xml", "")
+
+    def test_rejects_malformed_xml_outside_strings_xml(self) -> None:
+        self.write_resource("values/workflow.xml", '<string name="broken">')
+        self.assert_rejected("translation resource could not be parsed: app/src/main/res/values/workflow.xml")
+
+    def test_rejects_changed_or_missing_format_arguments_in_extra_xml(self) -> None:
+        self.write_resource("values/workflow.xml", '<string name="count">%1$s: %2$d%%</string>')
+        for translated in ("%1$s: %2$s%%", "%1$s", "%1$s: %3$d%%"):
+            with self.subTest(translated=translated):
+                self.write_resource("values-ru/workflow.xml", f'<string name="count">{translated}</string>')
+                self.assert_rejected("translation format arguments mismatch: string/count")
+
+    def test_accepts_reordered_reused_and_literal_format_arguments(self) -> None:
+        self.write_resource("values/workflow.xml", '<string name="count">%1$s: %2$d%%</string>'
+                            '<string name="literal" formatted="false">%s is literal</string>')
+        self.write_resource("values-ru/workflow.xml", '<string name="count">%2$d%%: %1$s (%1$s)</string>'
+                            '<string name="literal" formatted="false">Буквальный %s</string>')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_accepts_locale_specific_plural_quantities_and_string_arrays(self) -> None:
+        self.write_resource("values/workflow.xml", '<plurals name="count"><item quantity="one">%d item</item>'
+                            '<item quantity="other">%d items</item></plurals>'
+                            '<string-array name="labels"><item>%1$s</item><item>Plain</item></string-array>')
+        self.write_resource("values-ru/platform.xml", '<plurals name="count"><item quantity="one">%d запись</item>'
+                            '<item quantity="few">%d записи</item><item quantity="many">%d записей</item>'
+                            '<item quantity="other">%d записи</item></plurals>'
+                            '<string-array name="labels"><item>%1$s</item><item>Текст</item></string-array>')
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_changed_plural_format_arguments(self) -> None:
+        self.write_resource("values/workflow.xml", '<plurals name="count"><item quantity="other">%d items</item></plurals>')
+        self.write_resource("values-ru/workflow.xml", '<plurals name="count"><item quantity="other">%s записей</item></plurals>')
+        self.assert_rejected("translation format arguments mismatch: plurals/count[other]")
+
+    def test_rejects_changed_string_array_length_and_format_arguments(self) -> None:
+        self.write_resource("values/workflow.xml", '<string-array name="labels"><item>%1$d</item><item>Plain</item></string-array>')
+        self.write_resource("values-ru/workflow.xml", '<string-array name="labels"><item>%1$s</item></string-array>')
+        self.assert_rejected("translation array length mismatch: string-array/labels")
+        self.assert_rejected("translation format arguments mismatch: string-array/labels[0]")
 
     def test_rejects_mutable_github_action_reference(self) -> None:
         workflow = self.root / ".github/workflows/ci.yml"
@@ -510,6 +591,12 @@ class RepositoryPolicyTest(unittest.TestCase):
         for relative in ("THIRD_PARTY_NOTICES.md", "app/src/main/assets/legal/THIRD_PARTY_NOTICES.md"):
             (self.root / relative).write_text(contents, encoding="utf-8")
             self._git("add", relative)
+
+    def write_resource(self, relative: str, contents: str) -> None:
+        path = self.root / "app/src/main/res" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"<resources>{contents}</resources>\n", encoding="utf-8")
+        self._git("add", path.relative_to(self.root).as_posix())
 
     def _git(self, *args: str) -> None:
         subprocess.run(

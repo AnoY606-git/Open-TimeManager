@@ -177,6 +177,48 @@ class SettingsBackupPreviewTest {
     }
 
     @Test
+    fun recreatedStateShowsPendingDocumentPasswordBeforeRetainedPreviewAndResumesAfterCancel() {
+        val fixture = PreviewFixture()
+        // Fresh composition with verified preview A retained and the fixture's new document URI B pending.
+        fixture.retained = fixture.candidate
+        show(fixture)
+
+        compose.onNodeWithTag("backup_password_input").assertIsDisplayed()
+        compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
+        compose.onNodeWithTag("backup_replace_confirmation").assertDoesNotExist()
+        compose.runOnIdle {
+            assertTrue(fixture.state().controls.pendingRestoreUri != null)
+            assertSame(fixture.candidate, fixture.retained)
+            assertTrue(fixture.candidate.hasPayload)
+            assertEquals(0, fixture.inspectCalls)
+            assertEquals(0, fixture.restoreCalls)
+            assertEquals(0, fixture.discardCalls)
+        }
+
+        compose.onNodeWithText(text("en", R.string.cancel)).performClick()
+
+        compose.onNodeWithTag("backup_password_input").assertDoesNotExist()
+        compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
+        compose.runOnIdle {
+            assertNull(fixture.state().controls.pendingRestoreUri)
+            assertSame(fixture.candidate, fixture.retained)
+            assertTrue(fixture.candidate.hasPayload)
+        }
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("backup_preview_resume"))
+        compose.onNodeWithTag("backup_preview_resume").performClick()
+
+        compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
+        compose.onNodeWithTag("backup_password_input").assertDoesNotExist()
+        compose.runOnIdle {
+            assertSame(fixture.candidate, fixture.retained)
+            assertTrue(fixture.candidate.hasPayload)
+            assertEquals(0, fixture.inspectCalls)
+            assertEquals(0, fixture.restoreCalls)
+            assertEquals(0, fixture.discardCalls)
+        }
+    }
+
+    @Test
     fun backHidesInsteadOfDiscardingTheVerifiedPreview() {
         val fixture = PreviewFixture()
         show(fixture)
@@ -527,6 +569,7 @@ private fun TestDestinations(fixture: PreviewFixture, language: AppLanguage) {
         Box(Modifier.weight(1f)) {
             if (fixture.showSettings) {
                 SettingsScreen(
+                    initialPage = SettingsPage.DATA,
                     state = fixture.state(),
                     onTheme = {},
                     onDynamicColor = {},

@@ -1,6 +1,7 @@
 package dev.opentimemanager.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -67,6 +68,9 @@ fun OpenTimeManagerApp(
     val snapshot = state.snapshot
     val configuration = LocalConfiguration.current
     val snackbar = remember { SnackbarHostState() }
+    BackHandler(enabled = state.controls.destination != AppDestination.TIMER) {
+        viewModel?.navigate(AppDestination.TIMER)
+    }
     // These launchers stay registered for every destination. Android may deliver
     // a pending result after process recreation before Reports/Settings is shown.
     val csvDocument = rememberLauncherForActivityResult(
@@ -224,7 +228,7 @@ private fun DestinationContent(
             state = state,
             onSearch = { viewModel?.searchHistory(it) },
             onSave = { id, revision, draft -> viewModel?.saveManualEntry(id, revision, draft) },
-            onDelete = { id, revision -> viewModel?.deleteEntry(id, revision) },
+            onDelete = { id, revision, generation -> viewModel?.deleteEntry(id, revision, generation) },
             onLoadMore = { viewModel?.loadMoreHistory() },
             onOpenProjectPicker = { viewModel?.openManualProjectPicker(it) },
             onSearchProjects = { viewModel?.searchManualProjects(it) },
@@ -248,6 +252,13 @@ private fun DestinationContent(
             onLanguage = onLanguage,
             onPrivacy = { viewModel?.setPrivacy(it) },
             onDailyGoal = { viewModel?.setDailyGoalMinutes(it) },
+            onDefaultProject = { viewModel?.setDefaultProject(it) },
+            onOpenProjectPicker = { viewModel?.openManualProjectPicker(it) },
+            onSearchProjects = { viewModel?.searchManualProjects(it) },
+            onLoadMoreProjects = { viewModel?.loadMoreManualProjects() },
+            onCloseProjectPicker = { viewModel?.closeManualProjectPicker() },
+            notificationStatus = notificationStatus,
+            onManageNotifications = onManageNotifications,
             modifier = modifier,
             onLaunchBackupDocument = onLaunchBackupDocument,
             onLaunchOpenBackupDocument = onLaunchOpenBackupDocument,
@@ -260,6 +271,9 @@ private fun DestinationContent(
                     currentPreview = model::currentBackupPreview,
                     discardPreview = model::discardBackupPreview,
                     restore = model::restoreBackup,
+                    preparePlain = model::preparePlainBackup,
+                    format = model::backupFormat,
+                    inspectPlain = model::inspectPlainBackup,
                 )
             },
         )
@@ -327,6 +341,7 @@ private fun UiMessage.resource(): Int = when (this) {
     UiMessage.SAVED -> R.string.action_completed
     UiMessage.CSV_EXPORTED -> R.string.csv_export_success
     UiMessage.BACKUP_CREATED -> R.string.backup_created_success
+    UiMessage.PLAIN_BACKUP_CREATED -> R.string.backup_plain_saved
     UiMessage.DATA_IO_ERROR -> R.string.data_io_error
     UiMessage.PARTIAL_FILE_CLEANUP_REQUIRED -> R.string.partial_file_cleanup_required
     UiMessage.SYSTEM_CONTROLS_UNAVAILABLE -> R.string.system_controls_unavailable

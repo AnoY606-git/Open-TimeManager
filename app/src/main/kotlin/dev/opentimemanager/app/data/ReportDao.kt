@@ -45,13 +45,15 @@ abstract class ReportDao {
     abstract fun rangeProjects(from: Long, to: Long): List<ProjectEntity>
     @Query("SELECT * FROM entries WHERE id = :id") abstract fun entry(id: String): EntryEntity?
     @Query("SELECT * FROM projects WHERE id = :id") abstract fun project(id: String): ProjectEntity?
+    @Query("SELECT generation FROM tracking_slot WHERE id = 1") abstract fun trackingGeneration(): String?
     @Query("DELETE FROM segments WHERE entryId = :id") abstract fun deleteSegments(id: String)
     @Query("DELETE FROM entries WHERE id = :id") abstract fun deleteEntry(id: String)
     @Upsert abstract fun saveEntry(entry: EntryEntity)
     @Insert abstract fun insertSegment(segment: SegmentEntity)
 
     @Transaction
-    open fun save(id: String, projectId: String, note: String, start: Long, duration: Long, expectedRevision: Long?): EditResult {
+    open fun save(id: String, projectId: String, note: String, start: Long, duration: Long, expectedRevision: Long?, expectedGeneration: String? = null): EditResult {
+        if (expectedGeneration != null && trackingGeneration() != expectedGeneration) return EditResult.StaleRevision
         val current = entry(id)
         if (current != null && !current.completed) return EditResult.ActiveEntry
         if (current == null && expectedRevision != null) return EditResult.NotFound
@@ -80,7 +82,8 @@ abstract class ReportDao {
     }
 
     @Transaction
-    open fun updateMetadata(id: String, projectId: String, note: String, expectedRevision: Long): EditResult {
+    open fun updateMetadata(id: String, projectId: String, note: String, expectedRevision: Long, expectedGeneration: String? = null): EditResult {
+        if (expectedGeneration != null && trackingGeneration() != expectedGeneration) return EditResult.StaleRevision
         val current = entry(id) ?: return EditResult.NotFound
         if (!current.completed) return EditResult.ActiveEntry
         if (current.revision != expectedRevision) return EditResult.StaleRevision
@@ -95,7 +98,8 @@ abstract class ReportDao {
     }
 
     @Transaction
-    open fun delete(id: String, expectedRevision: Long): EditResult {
+    open fun delete(id: String, expectedRevision: Long, expectedGeneration: String? = null): EditResult {
+        if (expectedGeneration != null && trackingGeneration() != expectedGeneration) return EditResult.StaleRevision
         val current = entry(id) ?: return EditResult.NotFound
         if (!current.completed) return EditResult.ActiveEntry
         if (current.revision != expectedRevision) return EditResult.StaleRevision
@@ -155,14 +159,15 @@ data class ReportSummaryProjection(
     val projects: List<ProjectEntity>,
 )
 
+/** Pass the generation captured with the form; null retains legacy revision-only writes. */
 class CompletedEntryRepository(private val database: AppDatabase, private val dispatcher: CoroutineDispatcher) {
-    suspend fun save(id: EntryId, projectId: ProjectId, note: String, startUtcMillis: Long, durationMillis: Long, expectedRevision: Long?): EditResult = withContext(dispatcher) {
-        database.reportDao().save(id.value, projectId.value, note, startUtcMillis, durationMillis, expectedRevision)
+    suspend fun save(id: EntryId, projectId: ProjectId, note: String, startUtcMillis: Long, durationMillis: Long, expectedRevision: Long?, expectedGeneration: String? = null): EditResult = withContext(dispatcher) {
+        database.reportDao().save(id.value, projectId.value, note, startUtcMillis, durationMillis, expectedRevision, expectedGeneration)
     }
-    suspend fun updateMetadata(id: EntryId, projectId: ProjectId, note: String, expectedRevision: Long): EditResult = withContext(dispatcher) {
-        database.reportDao().updateMetadata(id.value, projectId.value, note, expectedRevision)
+    suspend fun updateMetadata(id: EntryId, projectId: ProjectId, note: String, expectedRevision: Long, expectedGeneration: String? = null): EditResult = withContext(dispatcher) {
+        database.reportDao().updateMetadata(id.value, projectId.value, note, expectedRevision, expectedGeneration)
     }
-    suspend fun delete(id: EntryId, expectedRevision: Long): EditResult = withContext(dispatcher) { database.reportDao().delete(id.value, expectedRevision) }
+    suspend fun delete(id: EntryId, expectedRevision: Long, expectedGeneration: String? = null): EditResult = withContext(dispatcher) { database.reportDao().delete(id.value, expectedRevision, expectedGeneration) }
     suspend fun report(fromUtcMillis: Long, toUtcMillis: Long): List<Segment> = withContext(dispatcher) { database.reportDao().report(fromUtcMillis, toUtcMillis) }
     fun observeReportTotals(fromUtcMillis: Long, toUtcMillis: Long): Flow<ReportTotals> =
         observeReportSummary(fromUtcMillis, toUtcMillis).map { it.totals }

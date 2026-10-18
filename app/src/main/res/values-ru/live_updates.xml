@@ -1,0 +1,19 @@
+<resources>
+    <string name="live_updates_title">Live Updates Android 16</string>
+    <string name="live_updates_description">Необязательная функция, изначально выключена. Запрашивает более заметное системное уведомление запущенного таймера с прежним счётчиком времени и кнопками. Android решает, продвигать ли его, и может вернуть обычный вид. Частная интеграция с «островами» и сертификация производителями не обещаются.</string>
+    <string name="live_updates_requires_android16">Доступно только в поддерживаемых сборках Android 16. На Android 12–15 остаются обычное уведомление, виджет и плитка.</string>
+    <string name="live_updates_enable">Запрашивать Live Updates запущенного таймера</string>
+    <string name="live_updates_request_api_unavailable">Эта сборка Android 16 не предоставляет новый API запроса продвижения. Уведомление может остаться обычным; для нового отображения нужно поддерживаемое обновление системы.</string>
+    <string name="live_updates_android_allows">Android разрешает запросы продвижения. Разрешение уведомлений, настройки канала и критерии системы или производителя всё ещё действуют; появление чипа не гарантируется.</string>
+    <string name="live_updates_android_blocks">Android сейчас запрещает продвинутые уведомления этому приложению. Обычные кнопки таймера доступны, если уведомления разрешены.</string>
+    <string name="live_updates_status_unknown">Не удалось прочитать доступность продвижения Android. Это не подтверждает наличие Live Updates.</string>
+    <string name="live_updates_layout_eligible">Текущее уведомление имеет подходящие характеристики. Это не доказывает, что Android продвинет его.</string>
+    <string name="live_updates_layout_ineligible">Текущее уведомление не соответствует критериям продвижения Android и остаётся обычным.</string>
+    <string name="live_updates_manage">Настройки Live Updates в Android</string>
+    <string name="live_updates_dismissal_hint">Этот выбор хранится на устройстве и не входит в копии. После скрытия уведомления запросы продвижения этой записи не повторяются, в том числе после паузы и продолжения. Новая запись снова подходит. Для явного сброса скрытия выключите и включите эту опцию. Улучшение времени работы батареи не заявляется.</string>
+    <string name="live_updates_saving">Сохраняем локальный выбор…</string>
+    <string name="live_updates_saved">Выбор сохранён. Окончательное отображение определяет Android.</string>
+    <string name="live_updates_save_failed">Не удалось сохранить выбор. Повторите попытку; обычный таймер не изменён.</string>
+    <string name="live_updates_refresh_failed">Выбор сохранён, но уведомление не обновилось. Откройте приложение заново или повторите попытку. Не останавливайте и не пересоздавайте таймер только ради его отображения.</string>
+    <string name="live_updates_settings_unavailable">На устройстве не удалось открыть настройки Live Updates или системную страницу приложения.</string>
+</resources>

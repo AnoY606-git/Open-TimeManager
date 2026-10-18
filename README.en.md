@@ -34,6 +34,7 @@ Open TimeManager keeps projects, notes, and history on your device—without an 
 
 Real app screens from an **Android 16 / API 36 emulator**, using synthetic demo data only.
 [Capture setup and example records](docs/screenshots/README.md).
+This gallery shows 1.0 screens; it is not verification of the new 1.1 screens.
 
 | **01 · Timer** | **02 · History** |
 | :---: | :---: |
@@ -57,11 +58,23 @@ Real app screens from an **Android 16 / API 36 emulator**, using synthetic demo 
 | **Focus** | One durable timer with start, pause, resume, stop, and safe project switching. Colored projects and notes for the active entry. |
 | **History** | Manual entries, search, editing, and confirmed deletion. Archive projects without losing history; use a paged project picker and bounded loading of older entries. |
 | **Reports** | Week, month, or custom periods up to 10 years. Per-project totals and UTF-8 CSV export. |
-| **Your data** | Encrypted `.otmbackup` files with project metadata and preferences, retryable verified preview, and **Merge** or **Replace** restore modes. |
+| **Your data** | Encrypted `.otmbackup` by default; a separate optional `.otmplain` without encryption or authenticity protection. Inspection preview and **Merge** or **Replace** restore modes. |
 | **System controls** | Foreground-service notification, Quick Settings tile, and widget with stale-action protection. Privacy mode hides project names from system surfaces. |
 | **Adaptive UI** | Complete English and Russian interfaces; system, light, and dark themes; dynamic color. Navigation adapts to phones, landscape, split-screen, and wide windows. |
 
 Elapsed work uses the device's monotonic clock; calendar boundaries use UTC and the recorded time zone. After a reboot or loss of a trustworthy monotonic reference, an unfinished entry requires explicit review instead of guessing the missing work time.
+
+In 1.1, Settings opens five focused screens: **Appearance**, **Tracking and
+projects**, **Backups and restore**, **Help**, and **About**. The searchable,
+10-topic English/Russian guide works offline. A local default-project preference
+helps start work; an active session or explicit idle selection takes priority.
+The preference is not transferred in backups.
+
+Android 12+ supports device colors and a responsive widget with a preview.
+Android 13+ can offer the system tile-add dialog; Android 12 uses manual tile
+addition. Widget pinning requires launcher support and user confirmation.
+System-settings links and manufacturer hints help troubleshoot restrictions,
+without private OEM APIs or a blanket battery exemption. See the [user guide](docs/USER_GUIDE.md).
 
 ## Privacy by design
 
@@ -72,11 +85,21 @@ Elapsed work uses the device's monotonic clock; calendar boundaries use UTC and 
 
 ## Install
 
-**Current version: `1.0.0`.** Requires **Android 12+ (API 31)**; targets Android 16 / API 36.
+**Upcoming stable version: `1.1.0` (`versionCode = 3`).** Requires **Android 12+
+(API 31)**; targets Android 16 / API 36. Read the [1.1.0 notes](docs/releases/1.1.0.md).
+The [v1.1.0 release page](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.1.0)
+is intended for final assets and verification results once published. These docs
+do not establish signing, CI success, or publication.
 
-Download **`Open-TimeManager-1.0.0.apk`** from the [1.0.0 release](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.0.0). It is accompanied by final checksums, public signing-certificate details, and corresponding source. This is not a Google Play release.
+Until then, the latest published stable version is **1.0.0**:
+**`Open-TimeManager-1.0.0.apk`** from the [1.0.0 release](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.0.0).
+This is not a Google Play release.
 
-Before migrating from a preview/debug installation, stop the timer and create and verify a separate encrypted backup. The production key differs from the debug key; do not uninstall or clear app data to force an update. See the [release notes and migration precautions](docs/releases/1.0.0.md).
+Before migrating from a preview/debug installation, stop the timer and create and
+verify a separate encrypted backup. The production key differs from the debug
+key; do not uninstall or clear app data to force an update. Version 1.1 is planned
+to use the same production key as 1.0; the final assets must establish the matching
+certificate and data-preserving update check. See the [upgrade precautions](docs/releases/1.1.0.md).
 
 For development builds, open [GitHub Actions → CI](https://github.com/AnoY606-git/Open-TimeManager/actions/workflows/ci.yml), select a successful run, and look under **Artifacts** for `open-timemanager-debug-and-unsigned-release-apks`. Downloading Actions artifacts may require signing in. These debug/unsigned files are not the signed official release. See the [CI workflow](.github/workflows/ci.yml) for the build steps.
 
@@ -183,12 +206,29 @@ With your own JDK/SDK, run `./gradlew` directly; on native Windows, use `.\gradl
 
 **Before using Replace, create and verify a separate backup.** A successful replacement permanently removes current local projects and history before importing. Restore is blocked while a timer is running, paused, or awaiting review.
 
+**`.otmplain` and CSV are readable plaintext.** Anyone holding an `.otmplain` file
+can read or alter it; inspection cannot establish who created it. Android's
+document picker may transfer files through a cloud provider if you select one.
+
 <details>
 <summary><strong>Backup compatibility, limits, and restore guarantees</strong></summary>
 
-Backup files use the compatible `OTMB1` container: PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated header. This encryption applies to exported backup files, not the local database.
+Encrypted `.otmbackup` files retain the compatible `OTMB1` container:
+PBKDF2-HMAC-SHA256 with 310,000 iterations, AES-256-GCM, and an authenticated
+header. This does not encrypt the local database, `.otmplain`, or CSV.
 
-The current payload schema v2 preserves project colors and timestamps plus theme, dynamic color, privacy mode, and the daily goal; v1 remains readable with safe defaults. Language is selected in the app or inherited from the system; Android/AppCompat manages that choice, and it is not transferred in backups.
+The current payload schema v2 preserves project colors and timestamps plus theme,
+dynamic color, privacy mode, and the daily goal; v1 remains readable with safe
+defaults. Language is managed by Android/AppCompat, and the default-project
+preference stays local. Neither choice is transferred in backups.
+
+Optional `.otmplain` uses a separate `OTMP1` container, the same schema v2 payload,
+strict structural validation, and the same limits. It is **not encrypted or
+authenticated**. Its SHA-256 checksum detects accidental damage, but anyone can
+edit the data and recompute it. Creation and untrusted-file inspection have
+separate warnings. The default create action stays encrypted; a password failure
+does not authorize a plaintext fallback. Copies include confirmed, closed
+intervals, not the current open interval: pause or stop before making a copy.
 
 The Android app enforces a **4 MiB** operational limit and at most **20,000 projects, entries, and segments**. The underlying format and core codec have hard ceilings of 50 MiB and 200,000 elements. Those larger ceilings define the format; they are not the limits accepted by the Android UI.
 
@@ -207,7 +247,8 @@ See the [user guide](docs/USER_GUIDE.md), [security model](docs/SECURITY.md), an
 - System controls depend on notification permission and OEM restrictions; in-app tracking remains available.
 - Signed releases are distributed through GitHub Releases, not Google Play.
 - No independent cryptographic audit, Google Play policy approval, or verified battery/performance benchmark is claimed.
-- Instrumentation tests are prepared for API 31 and 36 and run in CI; a local build alone is not evidence of physical-device execution.
+- CI is configured for API 31 and 36 instrumentation; the release's `VERIFICATION.md` records actual results. A local build alone is not evidence of physical-device execution.
+- Redundant system updates are reduced, but battery savings are unmeasured. Android 16 Live Updates can be enabled separately for an active timer; Android and the OEM decide promotion. No private Super Island/HyperIsland integration is claimed.
 
 ## Contributing and license
 

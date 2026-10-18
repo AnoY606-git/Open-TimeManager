@@ -51,10 +51,17 @@ data class BackupLimits(val maxBytes: Int = 50 * 1024 * 1024, val maxSegments: I
     }
 }
 
+/** A container format, not a claim that its contents have been authenticated. */
+enum class BackupFormat(val requiresPassword: Boolean) {
+    ENCRYPTED(true),
+    PLAINTEXT(false),
+}
+
 sealed class BackupError(message: String) : Exception(message) {
     class MagicError : BackupError("Неверная сигнатура backup")
     class VersionError : BackupError("Неподдерживаемая версия backup")
     class IntegrityError : BackupError("Неверный пароль или повреждённый backup")
+    class PlainIntegrityError : BackupError("Повреждён незашифрованный backup")
     class LimitError : BackupError("Превышены ограничения backup")
     class SchemaError : BackupError("Некорректная структура backup")
 }

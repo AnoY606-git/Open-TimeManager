@@ -11,6 +11,7 @@ import dev.opentimemanager.app.OpenTimeManagerApplication
 import dev.opentimemanager.app.R
 import dev.opentimemanager.core.model.TrackingState
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 
 /** FGS поддерживает доступ к управлению; монотонная опора и сегменты принадлежат Room. */
 class TrackingService : Service() {
@@ -32,7 +33,9 @@ class TrackingService : Service() {
                     stopSelf()
                 },
             ) {
-                coordinator.observeSystemSnapshot().collect { snapshot ->
+                coordinator.observeSystemSnapshot().distinctUntilChangedBy { snapshot ->
+                    systemSurfaceKey(this@TrackingService, snapshot, SystemSurfaceUpdater.privacyMode(this@TrackingService))
+                }.collect { snapshot ->
                     if (snapshot.session.state == TrackingState.IDLE) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()

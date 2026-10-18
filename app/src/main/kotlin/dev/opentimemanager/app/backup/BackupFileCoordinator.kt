@@ -12,7 +12,9 @@ import dev.opentimemanager.app.settings.UserSettings
 import dev.opentimemanager.core.backup.DEFAULT_PROJECT_CANONICAL_NAME
 import dev.opentimemanager.core.backup.BackupCodec
 import dev.opentimemanager.core.backup.BackupError
+import dev.opentimemanager.core.backup.BackupFormat
 import dev.opentimemanager.core.backup.BackupLimits
+import dev.opentimemanager.core.backup.PlainBackupCodec
 import dev.opentimemanager.core.backup.PortableActiveEntry
 import dev.opentimemanager.core.backup.PortableEntry
 import dev.opentimemanager.core.backup.PortableProject
@@ -37,12 +39,14 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 
 class PreparedBackup internal constructor(
     val fileName: String,
-    encrypted: ByteArray,
+    content: ByteArray,
+    val format: BackupFormat = BackupFormat.ENCRYPTED,
 ) {
-    private var bytes: ByteArray? = encrypted
+    private var bytes: ByteArray? = content
 
     val isCleared: Boolean
         @Synchronized get() = bytes == null
@@ -71,7 +75,16 @@ sealed interface BackupWriteResult {
     data class Failed(val partialDocumentDeleted: Boolean) : BackupWriteResult
 }
 
-enum class BackupReadFailure { INTEGRITY, LIMIT, UNSUPPORTED_VERSION, INVALID_FORMAT, IO }
+enum class BackupReadFailure {
+    INTEGRITY, PLAIN_INTEGRITY, PASSWORD_REQUIRED, LIMIT, UNSUPPORTED_VERSION, INVALID_FORMAT, IO,
+}
+
+/** Detection is not authentication; a subsequent inspection revalidates the bytes. */
+sealed interface BackupFormatResult {
+    data object Cancelled : BackupFormatResult
+    data class Detected(val format: BackupFormat) : BackupFormatResult
+    data class Failed(val reason: BackupReadFailure) : BackupFormatResult
+}
 
 sealed interface BackupInspection {
     data object Cancelled : BackupInspection
@@ -91,32 +104,62 @@ class BackupFileCoordinator(
     private val settings: UserSettings? = null,
 ) {
     suspend fun prepareBackup(password: CharArray): PreparedBackup {
-        var prepared: PreparedBackup? = null
         try {
             BackupCreationPasswordPolicy.requireValid(password)
-            val snapshot = settings?.withStrictExportSnapshot { preferences ->
-                withContext(dispatcher) {
-                    database.withTransaction { portableSnapshot(preferences.toPortable()) }
-                }
-            } ?: withContext(dispatcher) {
-                database.withTransaction { portableSnapshot(PortablePreferences()) }
+            return prepare(BackupFormat.ENCRYPTED) { snapshot ->
+                BackupCodec.encrypt(snapshot, password, random, limits)
             }
-            return withContext(dispatcher) {
-                val encrypted = BackupCodec.encrypt(snapshot, password, random, limits)
-                PreparedBackup(
-                    fileName = "open-timemanager-${BACKUP_DATE.format(clock.instant().atZone(ZoneOffset.UTC))}.otmbackup",
-                    encrypted = encrypted,
-                ).also { prepared = it }
-            }
-        } catch (cancelled: CancellationException) {
-            // withContext may discard a completed result when its caller was
-            // cancelled while encryption ran; clear that orphaned ciphertext.
-            prepared?.clear()
-            throw cancelled
         } finally {
             password.fill('\u0000')
         }
     }
+
+    /** Opt-in only: the file exposes all projects, notes and portable settings, without authentication. */
+    suspend fun preparePlainBackup(): PreparedBackup = prepare(BackupFormat.PLAINTEXT) { snapshot ->
+        PlainBackupCodec.encode(snapshot, limits)
+    }
+
+    private suspend fun prepare(
+        format: BackupFormat,
+        encode: (PortableSnapshot) -> ByteArray,
+    ): PreparedBackup {
+        var prepared: PreparedBackup? = null
+        try {
+            val snapshot = captureSnapshot()
+            return withContext(dispatcher) {
+                currentCoroutineContext().ensureActive()
+                val content = encode(snapshot)
+                try {
+                    val extension = if (format == BackupFormat.ENCRYPTED) "otmbackup" else "otmplain"
+                    PreparedBackup(
+                        fileName = "open-timemanager-${BACKUP_DATE.format(clock.instant().atZone(ZoneOffset.UTC))}.$extension",
+                        content = content,
+                        format = format,
+                    ).also {
+                        prepared = it
+                        currentCoroutineContext().ensureActive()
+                    }
+                } catch (error: Throwable) {
+                    content.fill(0)
+                    throw error
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            // withContext may discard a completed result when its caller was
+            // cancelled while encoding ran; clear that orphaned container.
+            prepared?.clear()
+            throw cancelled
+        }
+    }
+
+    private suspend fun captureSnapshot(): PortableSnapshot =
+        settings?.withStrictExportSnapshot { preferences ->
+            withContext(dispatcher) {
+                database.withTransaction { portableSnapshot(preferences.toPortable()) }
+            }
+        } ?: withContext(dispatcher) {
+            database.withTransaction { portableSnapshot(PortablePreferences()) }
+        }
 
     suspend fun writeBackup(
         prepared: PreparedBackup,
@@ -126,6 +169,10 @@ class BackupFileCoordinator(
         if (uri == null) {
             prepared.clear()
             return BackupWriteResult.Cancelled
+        }
+        if (!uri.isContentDocument()) {
+            prepared.clear()
+            return BackupWriteResult.Failed(partialDocumentDeleted = false)
         }
         return try {
             withContext(dispatcher) {
@@ -159,55 +206,115 @@ class BackupFileCoordinator(
         }
     }
 
-    suspend fun inspectBackup(uri: Uri?, password: CharArray): BackupInspection {
+    /** Bounded, cancellable SAF read. No filename/extension guessing or decryption fallback. */
+    suspend fun backupFormat(uri: Uri?): BackupFormatResult = withContext(dispatcher) {
+        if (uri == null) return@withContext BackupFormatResult.Cancelled
+        try {
+            val bytes = readBackupBytes(uri)
+            try {
+                val format = BackupCodec.detectFormat(bytes, limits)
+                currentCoroutineContext().ensureActive()
+                BackupFormatResult.Detected(format)
+            } finally {
+                bytes.fill(0)
+            }
+        } catch (error: BackupReadException) {
+            BackupFormatResult.Failed(error.reason)
+        } catch (error: BackupError) {
+            BackupFormatResult.Failed(error.readFailure())
+        }
+    }
+
+    /** Plaintext needs no password. Encrypted input returns PASSWORD_REQUIRED, not a downgrade. */
+    suspend fun inspectBackup(uri: Uri?, expectedFormat: BackupFormat? = null): BackupInspection =
+        inspect(uri, password = null, expectedFormat = expectedFormat)
+
+    /** Takes ownership of password and clears it on every exit, including plaintext input. */
+    suspend fun inspectBackup(
+        uri: Uri?,
+        password: CharArray,
+        expectedFormat: BackupFormat? = null,
+    ): BackupInspection {
+        try {
+            return inspect(uri, password, expectedFormat)
+        } finally {
+            password.fill('\u0000')
+        }
+    }
+
+    private suspend fun inspect(
+        uri: Uri?,
+        password: CharArray?,
+        expectedFormat: BackupFormat?,
+    ): BackupInspection {
+        var preview: BackupPreview? = null
         try {
             return withContext(dispatcher) {
                 if (uri == null) return@withContext BackupInspection.Cancelled
-                val input = try {
-                    cancellableIo(discardOnCancellation = { stream -> stream?.close() }) { signal ->
-                        documents.openInput(uri, signal)
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    return@withContext BackupInspection.Failed(BackupReadFailure.IO)
-                } ?: return@withContext BackupInspection.Failed(BackupReadFailure.IO)
                 val bytes = try {
-                    input.use { stream ->
-                        val job = kotlin.coroutines.coroutineContext[Job]
-                        cancellableIo(closeOnCancel = { stream.close() }) {
-                            readBounded(stream, limits.maxBytes, job)
-                        }
-                    }
-                } catch (_: ReadLimitExceeded) {
-                    return@withContext BackupInspection.Failed(BackupReadFailure.LIMIT)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    return@withContext BackupInspection.Failed(BackupReadFailure.IO)
+                    readBackupBytes(uri)
+                } catch (error: BackupReadException) {
+                    return@withContext BackupInspection.Failed(error.reason)
                 }
                 try {
-                    val snapshot = BackupCodec.decrypt(bytes, password, limits)
+                    val format = BackupCodec.detectFormat(bytes, limits)
+                    if (expectedFormat != null && format != expectedFormat) {
+                        return@withContext BackupInspection.Failed(BackupReadFailure.INVALID_FORMAT)
+                    }
+                    val snapshot = when (format) {
+                        BackupFormat.ENCRYPTED -> {
+                            if (password == null) return@withContext BackupInspection.Failed(BackupReadFailure.PASSWORD_REQUIRED)
+                            BackupCodec.decrypt(bytes, password, limits)
+                        }
+                        BackupFormat.PLAINTEXT -> PlainBackupCodec.decode(bytes, limits)
+                    }
+                    currentCoroutineContext().ensureActive()
                     operationalLimits.requireWithin(snapshot)
-                    BackupInspection.Ready(restoreRepository.preview(snapshot))
-                } catch (_: BackupError.IntegrityError) {
-                    BackupInspection.Failed(BackupReadFailure.INTEGRITY)
-                } catch (_: BackupError.LimitError) {
-                    BackupInspection.Failed(BackupReadFailure.LIMIT)
-                } catch (_: BackupError.VersionError) {
-                    BackupInspection.Failed(BackupReadFailure.UNSUPPORTED_VERSION)
-                } catch (_: BackupError.MagicError) {
-                    BackupInspection.Failed(BackupReadFailure.INVALID_FORMAT)
-                } catch (_: BackupError.SchemaError) {
-                    BackupInspection.Failed(BackupReadFailure.INVALID_FORMAT)
+                    restoreRepository.preview(snapshot, format).let {
+                        preview = it
+                        currentCoroutineContext().ensureActive()
+                        BackupInspection.Ready(it)
+                    }
+                } catch (error: BackupError) {
+                    BackupInspection.Failed(error.readFailure())
                 } catch (_: RestoreValidationError) {
                     BackupInspection.Failed(BackupReadFailure.INVALID_FORMAT)
                 } finally {
                     bytes.fill(0)
                 }
             }
+        } catch (cancelled: CancellationException) {
+            preview?.discard()
+            throw cancelled
+        }
+    }
+
+    private suspend fun readBackupBytes(uri: Uri): ByteArray {
+        if (!uri.isContentDocument()) throw BackupReadException(BackupReadFailure.INVALID_FORMAT)
+        var bytes: ByteArray? = null
+        try {
+            val input = cancellableIo(discardOnCancellation = { stream -> stream?.close() }) { signal ->
+                documents.openInput(uri, signal)
+            } ?: throw IOException("Document provider returned no input stream")
+            input.use { stream ->
+                val job = currentCoroutineContext()[Job]
+                bytes = cancellableIo(
+                    closeOnCancel = { stream.close() },
+                    discardOnCancellation = { value -> value.fill(0) },
+                ) {
+                    readBounded(stream, limits.maxBytes, job)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            return checkNotNull(bytes).also { bytes = null }
+        } catch (_: ReadLimitExceeded) {
+            throw BackupReadException(BackupReadFailure.LIMIT)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            throw BackupReadException(BackupReadFailure.IO)
         } finally {
-            password.fill('\u0000')
+            bytes?.fill(0)
         }
     }
 
@@ -280,7 +387,7 @@ class BackupFileCoordinator(
     }
 
     private fun deleteCreatedDocument(uri: Uri): Boolean = try {
-        documents.delete(uri)
+        uri.isContentDocument() && documents.delete(uri)
     } catch (_: Exception) {
         false
     }
@@ -396,21 +503,61 @@ private fun String.utf8Bytes(): Long {
 
 private class ReadLimitExceeded : Exception()
 
-private fun readBounded(input: java.io.InputStream, maxBytes: Int, job: Job?): ByteArray {
-    val output = ByteArrayOutputStream(minOf(maxBytes, 16 * 1024))
-    val buffer = ByteArray(8 * 1024)
-    var total = 0
-    while (true) {
-        job?.ensureActive()
-        val read = input.read(buffer)
-        if (read == -1) break
-        total = try {
-            Math.addExact(total, read)
-        } catch (_: ArithmeticException) {
-            throw ReadLimitExceeded()
-        }
-        if (total > maxBytes) throw ReadLimitExceeded()
-        output.write(buffer, 0, read)
-    }
-    return output.toByteArray()
+private class BackupReadException(val reason: BackupReadFailure) : Exception()
+
+private fun BackupError.readFailure(): BackupReadFailure = when (this) {
+    is BackupError.IntegrityError -> BackupReadFailure.INTEGRITY
+    is BackupError.PlainIntegrityError -> BackupReadFailure.PLAIN_INTEGRITY
+    is BackupError.LimitError -> BackupReadFailure.LIMIT
+    is BackupError.VersionError -> BackupReadFailure.UNSUPPORTED_VERSION
+    is BackupError.MagicError, is BackupError.SchemaError -> BackupReadFailure.INVALID_FORMAT
 }
+
+private fun Uri.isContentDocument(): Boolean = scheme == "content" && !authority.isNullOrBlank()
+
+/** The staging buffer can now hold readable private data, so clear it even on I/O failure. */
+private class BackupReadBuffer(initialSize: Int) : ByteArrayOutputStream(initialSize) {
+    override fun close() {
+        buf.fill(0)
+        reset()
+    }
+
+    override fun write(bytes: ByteArray, offset: Int, length: Int) {
+        // ByteArrayOutputStream growth otherwise leaves an uncleared old backing array.
+        val previous = buf
+        super.write(bytes, offset, length)
+        if (buf !== previous) previous.fill(0)
+    }
+}
+
+private fun readBounded(input: java.io.InputStream, maxBytes: Int, job: Job?): ByteArray =
+    BackupReadBuffer(minOf(maxBytes, 16 * 1024)).use { output ->
+        val buffer = ByteArray(8 * 1024)
+        try {
+            var total = 0
+            while (true) {
+                job?.ensureActive()
+                // Read no more than one byte past the limit, including on small custom limits.
+                val read = input.read(buffer, 0, minOf(buffer.size, maxBytes - total + 1))
+                if (read == -1) break
+                val count = if (read == 0) {
+                    // A broken provider returning zero must not cause an unbounded busy loop.
+                    val byte = input.read()
+                    if (byte == -1) break
+                    buffer[0] = byte.toByte()
+                    1
+                } else read
+                total = try {
+                    Math.addExact(total, count)
+                } catch (_: ArithmeticException) {
+                    throw ReadLimitExceeded()
+                }
+                if (total > maxBytes) throw ReadLimitExceeded()
+                output.write(buffer, 0, count)
+            }
+            job?.ensureActive()
+            output.toByteArray()
+        } finally {
+            buffer.fill(0)
+        }
+    }

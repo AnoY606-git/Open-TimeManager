@@ -1,0 +1,20 @@
+<resources>
+    <string name="platform_controls_title">Android and your device</string>
+    <string name="platform_live_updates_guide">On Android 16, optionally enable Live Updates under Settings → Tracking and projects for a prominent running-timer status. It is off by default. Android, your notification settings and the manufacturer decide promotion. A session you dismiss is not promoted again. Earlier Android versions keep the standard timer notification. No private HyperOS island API is used.</string>
+    <string name="platform_add_tile">Add Quick Settings tile</string>
+    <string name="platform_pin_widget">Add home-screen widget</string>
+    <string name="platform_app_settings">Open app system settings</string>
+    <string name="platform_tile_added">The tile is available in Quick Settings.</string>
+    <string name="platform_tile_manual">Swipe down twice, open the Quick Settings editor and add Open TimeManager. The system may not offer the in-app add dialog.</string>
+    <string name="platform_tile_declined">The tile was not added. You can add it later in the Quick Settings editor.</string>
+    <string name="platform_widget_requested">The request was sent to your launcher. Confirm placement if prompted.</string>
+    <string name="platform_widget_manual">Open your launcher’s widget picker and add Open TimeManager. This launcher does not accept an in-app pin request.</string>
+    <string name="platform_settings_unavailable">This system settings page is unavailable on your device.</string>
+    <string name="platform_battery_saver">Battery Saver is on. Android may limit background work.</string>
+    <string name="platform_background_restricted">Android reports background restrictions for this app. If controls stop updating, review its battery settings.</string>
+    <string name="platform_features_hint">Android 12+: device colors and responsive widgets. Android 13+: app language and a system tile-add dialog. Android 15–16: edge-to-edge layouts and adaptive screens. Availability also depends on the launcher and manufacturer.</string>
+    <string name="platform_oem_xiaomi">Xiaomi / Redmi / POCO: in HyperOS or MIUI, background and notification restrictions can differ by model and region. If controls stop updating, review the app’s Notifications and Battery sections; some versions also offer background autostart. Change only what is necessary. No proprietary Super Island or HyperIsland integration is claimed.</string>
+    <string name="platform_oem_samsung">Samsung / One UI: if controls stop updating, check the app’s battery settings and whether it was put in Sleeping or Deep sleeping apps. Keep normal battery protection unless there is a specific problem.</string>
+    <string name="platform_oem_oppo">OPPO / OnePlus / realme: ColorOS, OxygenOS and realme UI can limit background activity or autolaunch. If controls stop updating, review the app’s battery and notification settings. Names and availability vary by version.</string>
+    <string name="platform_oem_other">Your manufacturer may add background or notification restrictions. If controls stop updating, review this app’s system settings. Menu names vary; no blanket battery-optimization exemption is required.</string>
+</resources>

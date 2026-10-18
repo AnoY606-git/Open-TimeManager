@@ -1,5 +1,6 @@
 package dev.opentimemanager.app.backup
 
+import dev.opentimemanager.core.backup.BackupFormat
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -17,7 +18,9 @@ data class BackupConflict(
 )
 
 /**
- * Предварительно проверенный snapshot. Payload остаётся для повтора после отказа,
+ * Schema/domain-checked snapshot, not necessarily authenticated: PLAINTEXT is
+ * readable and has no authentication. Only the encrypted reader checks a GCM tag.
+ * Payload остаётся для повтора после отказа,
  * конфликта или отмены; только Applied или discard удаляет сильную ссылку. Discard во время
  * restore безопасно отладывается до выхода из операции.
  */
@@ -27,6 +30,7 @@ class BackupPreview internal constructor(
     val skippedEntriesWithoutConfirmedTime: Int,
     val activeStateWillBeStopped: Boolean,
     payload: RestorePayload,
+    val format: BackupFormat? = null,
 ) {
     private val useMutex = Mutex()
     @Volatile
@@ -81,7 +85,12 @@ class BackupPreview internal constructor(
 enum class RestoreMode { MERGE, REPLACE }
 
 sealed interface RestoreResult {
-    data class Applied(val projects: Int, val entries: Int, val segments: Int) : RestoreResult
+    data class Applied(
+        val projects: Int,
+        val entries: Int,
+        val segments: Int,
+        val preferencesPending: Boolean = false,
+    ) : RestoreResult
     data class Conflicts(val conflicts: List<BackupConflict>) : RestoreResult
     data class ActiveTimerBlocked(val state: dev.opentimemanager.core.model.TrackingState) : RestoreResult
     data class LimitExceeded(val maximumProjects: Int) : RestoreResult

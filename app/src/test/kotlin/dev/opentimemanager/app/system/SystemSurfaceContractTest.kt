@@ -149,6 +149,12 @@ class SystemSurfaceContractTest {
         assertNull(TrackingActions.primary(idle.copy(quickStartProject = null)))
     }
 
+    @Test fun ambiguousWidgetStartHonestlyAsksForAProject() {
+        val idle = fixture(TrackingState.IDLE).copy(activeProject = null, quickStartProject = null)
+        val views = TrackingWidgetProvider.views(context, idle).apply(context, null)
+        assertEquals("Choose project", views.findViewById<TextView>(R.id.widget_primary).text.toString())
+    }
+
     @Test fun widgetAndTileProjectIdleRunningPausedAndReviewWithoutPrivateText() {
         for ((state, label, action) in listOf(
             Triple(TrackingState.IDLE, "Ready", "Start"), Triple(TrackingState.RUNNING, "Tracking", "Pause"),

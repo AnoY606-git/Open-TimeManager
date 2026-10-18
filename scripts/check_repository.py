@@ -73,6 +73,7 @@ FORBIDDEN_BASENAMES = {
     "research.md",
 }
 FORBIDDEN_SUFFIXES = {".jks", ".keystore", ".p12", ".pfx", ".pem", ".key"}
+FORBIDDEN_BACKUP_SUFFIXES = {".otmbackup", ".otmplain"}
 FORBIDDEN_ANDROID_ARTIFACT_SUFFIXES = {".apk", ".aab"}
 FORBIDDEN_DIRS = {
     ".gradle", ".kotlin", ".toolchain", ".superpowers", ".agents", ".codex", ".claude",
@@ -119,7 +120,7 @@ def policy_path_errors(root: Path, tracked: set[str]) -> list[str]:
             errors.append(f"tracked environment credentials: {relative}")
         if path.suffix.lower() in FORBIDDEN_SUFFIXES:
             errors.append(f"tracked signing material: {relative}")
-        if path.suffix.lower() == ".otmbackup":
+        if path.suffix.lower() in FORBIDDEN_BACKUP_SUFFIXES:
             errors.append(f"tracked private backup: {relative}")
         if path.suffix.lower() in FORBIDDEN_ANDROID_ARTIFACT_SUFFIXES:
             errors.append(f"tracked Android build artifact: {relative}")
@@ -149,34 +150,120 @@ def secret_errors(root: Path, tracked: set[str]) -> list[str]:
     return errors
 
 
-def resource_names(path: Path) -> set[tuple[str, str]]:
-    root = ET.parse(path).getroot()
-    return {
-        (child.tag, child.attrib["name"])
-        for child in root
-        if child.tag in {"string", "plurals", "string-array"}
-        and "name" in child.attrib
-        and child.attrib.get("translatable", "true") != "false"
-    }
+TRANSLATED_RESOURCE_TAGS = {"string", "plurals", "string-array"}
+FORMAT_ARGUMENT = re.compile(
+    r"%(?:(?P<index>[1-9][0-9]*)\$)?(?P<flags>[-#+ 0,(<]*)"
+    r"[0-9]*(?:\.[0-9]+)?(?:(?P<date>[tT])[A-Za-z]|(?P<conversion>[bBhHsScCdoxXeEfgGaA%n]))"
+)
+
+
+def translation_resources(
+    root: Path, paths: list[str],
+) -> tuple[dict[tuple[str, str], ET.Element], list[str]]:
+    resources: dict[tuple[str, str], ET.Element] = {}
+    locations: dict[tuple[str, str], str] = {}
+    errors: list[str] = []
+    for relative in paths:
+        try:
+            document = ET.parse(root / relative).getroot()
+        except (ET.ParseError, OSError) as error:
+            errors.append(f"translation resource could not be parsed: {relative}: {error}")
+            continue
+        for child in document:
+            if child.tag not in TRANSLATED_RESOURCE_TAGS or "name" not in child.attrib:
+                continue
+            key = (child.tag, child.attrib["name"])
+            if key in resources:
+                errors.append(
+                    f"duplicate translation resource: {key[0]}/{key[1]}: {locations[key]}, {relative}"
+                )
+            else:
+                resources[key] = child
+                locations[key] = relative
+    return resources, errors
+
+
+def format_arguments(element: ET.Element) -> set[tuple[int, str]]:
+    """Compare argument identities/types, allowing translation reordering and reuse."""
+    if element.attrib.get("formatted") == "false":
+        return set()
+    arguments: set[tuple[int, str]] = set()
+    implicit_index = 1
+    previous_index: int | None = None
+    for match in FORMAT_ARGUMENT.finditer("".join(element.itertext())):
+        conversion = match.group("conversion")
+        if conversion in {"%", "n"} and not match.group("date"):
+            continue
+        if match.group("index"):
+            index = int(match.group("index"))
+        elif "<" in match.group("flags") and previous_index is not None:
+            index = previous_index
+        else:
+            index = implicit_index
+            implicit_index += 1
+        previous_index = index
+        arguments.add((index, "date" if match.group("date") else conversion.lower()))
+    return arguments
+
+
+def translation_format_errors(key: tuple[str, str], english: ET.Element, russian: ET.Element) -> list[str]:
+    label = f"{key[0]}/{key[1]}"
+    pairs: list[tuple[str, ET.Element, ET.Element]] = []
+    errors: list[str] = []
+    if key[0] == "string":
+        pairs.append((label, english, russian))
+    elif key[0] == "plurals":
+        # Russian legitimately adds few/many forms. Compare those with the source's other form,
+        # not with an identical set of locale-specific quantities.
+        source = {item.attrib.get("quantity"): item for item in english.findall("item")}
+        for item in russian.findall("item"):
+            quantity = item.attrib.get("quantity")
+            original = source.get(quantity, source.get("other"))
+            if original is not None:
+                pairs.append((f"{label}[{quantity}]", original, item))
+    else:
+        source_items = english.findall("item")
+        translated_items = russian.findall("item")
+        if len(source_items) != len(translated_items):
+            errors.append(f"translation array length mismatch: {label}")
+        pairs.extend(
+            (f"{label}[{index}]", original, translated)
+            for index, (original, translated) in enumerate(zip(source_items, translated_items))
+        )
+    for item_label, original, translated in pairs:
+        if format_arguments(original) != format_arguments(translated):
+            errors.append(f"translation format arguments mismatch: {item_label}")
+    return errors
 
 
 def translation_errors(root: Path, tracked: set[str]) -> list[str]:
-    english = "app/src/main/res/values/strings.xml"
-    russian = "app/src/main/res/values-ru/strings.xml"
-    if english not in tracked or russian not in tracked:
+    folders = ("app/src/main/res/values", "app/src/main/res/values-ru")
+    paths = [
+        sorted(
+            relative for relative in tracked
+            if str(PurePosixPath(relative).parent) == folder and relative.endswith(".xml")
+        )
+        for folder in folders
+    ]
+    if not all(paths):
         return ["English and Russian translation resources must both be tracked"]
-    try:
-        en_names = resource_names(root / english)
-        ru_names = resource_names(root / russian)
-    except (ET.ParseError, OSError, KeyError) as error:
-        return [f"translation resource could not be parsed: {error}"]
-    errors: list[str] = []
+    english, errors = translation_resources(root, paths[0])
+    russian, ru_errors = translation_resources(root, paths[1])
+    errors.extend(ru_errors)
+    ignored = {key for key, item in english.items() if item.attrib.get("translatable") == "false"}
+    en_names = set(english) - ignored
+    ru_names = {
+        key for key, item in russian.items()
+        if key not in ignored and item.attrib.get("translatable") != "false"
+    }
     missing_ru = sorted(en_names - ru_names)
     missing_en = sorted(ru_names - en_names)
     if missing_ru:
         errors.append("Russian translation is missing: " + ", ".join(f"{kind}/{name}" for kind, name in missing_ru))
     if missing_en:
         errors.append("English translation is missing: " + ", ".join(f"{kind}/{name}" for kind, name in missing_en))
+    for key in sorted(en_names & ru_names):
+        errors.extend(translation_format_errors(key, english[key], russian[key]))
     return errors
 
 

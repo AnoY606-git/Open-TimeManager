@@ -1,41 +1,184 @@
 # Безопасность и приватность / Security and privacy
 
-Open TimeManager — offline-приложение без `INTERNET`, аккаунта, рекламы, аналитики, location, AccessibilityService и широкого file access. Room-база и настройки находятся во внутреннем credential-protected storage. Их защищают Android sandbox и шифрование устройства; Room не заявляется как отдельное app-level шифрование БД.
+Модель 1.1.0 / 1.1.0 model. [Статус выпуска / Release status](releases/1.1.0.md).
+Это описание границ защиты, не независимый аудит или отчёт об успешных проверках.
 
-Системные команды адресуют конкретную запись, revision и поколение слота, поэтому повтор старого PendingIntent не должен менять новый таймер даже после исчерпания `Long.MAX_VALUE` и безопасного перевыпуска слота. Компоненты закрыты, кроме launcher Activity и TileService, защищённой системным `BIND_QUICK_SETTINGS_TILE`. Автоматический Android backup/transfer отключён. Явный экспорт использует Storage Access Framework.
+## Хранение и разрешения
 
-## Portable backup
+Open TimeManager работает офлайн без `INTERNET`, аккаунта, рекламы, аналитики,
+геолокации, AccessibilityService и широкого доступа к файлам. Room и DataStore
+находятся во внутреннем credential-protected storage. Используются Android
+sandbox и защита хранилища устройства; отдельное app-level шифрование Room не
+заявляется. Разблокированное, скомпрометированное или root-устройство находится
+за пределами этой защиты.
 
-- `OTMB1`: PBKDF2-HMAC-SHA256, 310 000 итераций, salt 16 байт, nonce 12 байт, AES-256-GCM, tag 128 бит;
-- весь 42-байтовый заголовок аутентифицируется как AAD;
-- неверный пароль и повреждённый ciphertext дают одинаковый результат без provider-specific подробностей;
-- новые копии требуют минимум 12 Unicode code points и максимум 1024 байта пароля в UTF-8; используйте уникальную длинную парольную фразу, поскольку один лишь минимум длины не гарантирует стойкость к перебору;
-- этот минимум применяется только при создании: старые копии с короткими паролями открываются без изменения пароля и без Unicode-нормализации;
-- UI очищает пароль и собственные временные буферы, но JVM/provider могут создавать внутренние копии;
-- Android-путь ограничен 4 МиБ и 20 000 объектов каждого вида; hard limit core-формата — 50 МиБ и 200 000;
-- импорт не запускает активную сессию автоматически;
-- payload schema v2 сохраняет метаданные проектов и переносимые настройки; schema v1 читается с безопасными значениями по умолчанию;
-- длительность каждой записи проверяется точным сложением сегментов без переполнения.
+Автоматический Android backup/device transfer отключён. Явные экспорт и импорт
+используют Storage Access Framework. Выбранный пользователем document provider
+может быть облачным: отсутствие сетевого разрешения у приложения не делает
+внешний провайдер локальным. Экспорт раскрывает данные получателю файла.
 
-Криптографический дизайн имеет golden vector и тесты tamper/wrong-password, но независимый аудит не проводился. Храните пароль отдельно от копии.
+Поколение слота, идентификатор записи и revision защищают системные команды от
+устаревших нажатий. PendingIntents остаются immutable и явно адресованными.
+Компоненты закрыты, кроме launcher Activity и TileService под системным
+`BIND_QUICK_SETTINGS_TILE`. Отображение длительности опирается на монотонное
+время; после потери надёжной опоры неподтверждённая работа требует проверки.
 
-## Риски операций
+## Два разных формата копий
 
-Replace — разрушительная операция: успешное подтверждение заменяет всю локальную историю без Undo. Suspendable SQLite-транзакция и контрольные точки между ограниченными пакетами исключают частичную замену при сбое или отмене, но не отменяют уже подтверждённое действие. Предпросмотр автоматически расходуется после результата Applied и остаётся пригоден для повторной попытки после блокировки, конфликта, отмены или отката. «Скрыть» сохраняет его только в памяти текущего процесса; явная команда «Отменить восстановление» уничтожает payload. Предпросмотр и пароль не записываются в saved state или на диск. Сначала создайте и проверьте отдельную копию. Restore блокируется при RUNNING, PAUSED и NEEDS_REVIEW.
+### Зашифрованная `.otmbackup` — действие по умолчанию
 
-Настройки находятся в DataStore, а предметные данные — в Room, поэтому общая атомарная транзакция между ними не заявляется. Одна Room-транзакция записывает восстановленные данные и намерение применить настройки; после коммита устойчивый журнал доводит DataStore до согласованного состояния и повторяется при следующем запуске, если процесс был прерван. Ручные изменения переносимых настроек проходят через ту же последовательную границу: сначала завершается более старое намерение, затем новая полная настройка сама сохраняется как повторяемое намерение до успешной записи DataStore и privacy mirror. Запись privacy mirror выполняется не на main thread; если она не удалась уже после DataStore commit, целевой journal не удаляется, а UI отличает сохранённую настройку от ошибки действия. Частичное изменение использует строгое чтение текущего состояния: временная ошибка чтения завершает действие ошибкой до новых записей и не подменяет остальные настройки значениями по умолчанию. Экспорт доводит ожидающий journal, строго читает DataStore и удерживает ту же границу до завершения Room snapshot; при ошибке файл не создаётся.
+- Прежний контейнер **`OTMB1`**: PBKDF2-HMAC-SHA256, 310 000 итераций, salt 16 байт,
+  nonce 12 байт, AES-256-GCM и tag 128 бит; весь 42-байтовый заголовок входит в AAD.
+- Неверный пароль и повреждённый ciphertext дают одинаковый результат без
+  provider-specific подробностей. Ошибка не разрешает незаметно перейти к plaintext.
+- При создании пароль содержит не менее 12 Unicode code points и не более 1024
+  байт UTF-8; пробелы не обрезаются, Unicode не нормализуется. Это минимум длины,
+  не гарантия энтропии: нужна уникальная длинная парольная фраза.
+- Старые копии сохраняют совместимость исходных паролей, включая короткие.
+  Восстановить забытый пароль нельзя. UI очищает собственные буферы, но JVM и
+  криптографический провайдер могут создавать внутренние копии.
+- GCM защищает от изменения без пароля, но не доказывает личность автора и не
+  является публичной цифровой подписью. Любой, кто знает пароль, может создать другую копию.
 
-CSV не зашифрован и может содержать имена проектов и заметки. Формульные префиксы обезвреживаются, однако CSV остаётся чувствительным документом и не подходит для полного восстановления.
+### Открытая `.otmplain` — отдельный явный выбор
 
-Экспорт CSV формирует согласованный потоковый снимок в приватном cache-файле
-приложения до открытия внешнего document provider. Временный файл очищается при
-закрытии, включая ошибку и отмену; внешнее медленное I/O не удерживает
-Room-транзакцию и не блокирует изменение записей на всё время сохранения.
+- Новый контейнер **`OTMP1`** не содержит шифрования, пароля, MAC или подписи.
+  Проекты, заметки, история и переносимые настройки доступны любому получателю.
+- SHA-256 обнаруживает случайное повреждение. Злоумышленник может изменить
+  содержимое и пересчитать сумму; **checksum не обеспечивает подлинность**.
+- Перед созданием требуется отдельное предупреждение. Перед просмотром импорта
+  есть предупреждение о недоверенном файле; предпросмотр не называется проверкой
+  его автора или безопасности содержимого.
+- Выбор контейнера определяется поддерживаемым magic и строгой структурой,
+  а не доверием к расширению файла. Повреждённый или неизвестный контейнер должен
+  завершаться отказом, не автоматическим ослаблением защиты.
+
+Оба формата записывают один payload **schema v2** с теми же проверками доменных
+инвариантов, переполнения, структуры и ресурсов. Schema v1 старых зашифрованных
+копий читается с безопасными значениями по умолчанию. Android принимает до **4 МиБ**
+и **20 000 объектов каждого вида**; hard limits core — 50 МиБ и 200 000.
+Большие core-пределы не являются лимитами Android UI.
+
+Переносятся метаданные проектов, тема, dynamic color, privacy mode и дневная цель.
+Язык и проект по умолчанию **локальны**: последнего нет в `UserPreferences`,
+переносимом payload или schema. Восстановление переносимых настроек сохраняет
+локальный выбор; отсутствующий/архивный проект не используется для запуска.
+
+Копия хранит подтверждённые закрытые интервалы, не текущий открытый отрезок.
+Импорт не запускает таймер автоматически. Шифрование относится только к
+`.otmbackup`, не к `.otmplain`, CSV или локальной базе.
+
+## Восстановление и согласованность
+
+До применения файл проходит проверку контейнера, schema и лимитов, затем
+предпросмотр конфликтов. Для plaintext это структурная проверка, не криптографическая
+аутентификация. Восстановление блокируется при RUNNING, PAUSED и NEEDS_REVIEW.
+
+**Replace разрушителен:** после подтверждения заменяет локальную историю и
+переносимые настройки без Undo. Транзакция Room и точки отмены между ограниченными
+пакетами предотвращают частичное применение при сбое/отмене, но не отменяют уже
+успешное действие. Сначала создайте отдельную проверенную зашифрованную копию.
+Merge сохраняет локальные данные и повторно проверяет UUID-конфликты в транзакции.
+
+После Applied предпросмотр расходуется. После блокировки, конфликта, отмены или
+отката его можно повторить. Hide оставляет его только в памяти процесса; Cancel
+restore уничтожает payload. Пароль и предпросмотр не сохраняются в saved state
+или на диск. После завершения процесса файл требуется открыть заново.
+
+Общей транзакции Room/DataStore нет. Room сохраняет данные и устойчивое намерение
+применить переносимые настройки; журнал доводит DataStore после коммита и повторяет
+незавершённую работу после запуска. Ручные переносимые изменения используют ту
+же последовательную границу: старое восстановление не должно затереть более
+поздний выбор. Строгое чтение перед частичной записью и экспортом не заменяет
+непрочитанные данные значениями по умолчанию. Если privacy mirror не согласовалось,
+устойчивое намерение сохраняется для повтора; это не повод повторять Replace.
+
+Перед созданием любого backup завершается ожидающий journal, затем берётся
+последовательный снимок Room и DataStore. Ошибка чтения/согласования отменяет
+подготовку; она не выбирает plaintext вместо шифрования. Ошибка очистки частичного
+файла у внешнего провайдера может потребовать ручного удаления этого файла.
+
+CSV — открытый текст с возможными именами проектов и заметками; формульные
+префиксы обезвреживаются, но файл остаётся чувствительным и не подходит для restore.
+Его согласованный снимок сначала создаётся в приватном временном файле: медленное
+I/O внешнего провайдера не удерживает Room-транзакцию всё время сохранения.
+
+## Android/OEM и энергопотребление
+
+Добавление плитки/виджета и переход в стандартные настройки происходят по нажатию
+пользователя. На Android 13+ доступен системный запрос добавления плитки, на Android
+12 — ручное добавление; закрепление виджета зависит от лаунчера. Battery Saver и
+фоновое ограничение только читаются. Приложение не запрашивает blanket battery
+exemption или повышенной минимальной версии Android. Для необязательных Live Updates на Android 16 используется обычное, не runtime-разрешение `POST_PROMOTED_NOTIFICATIONS`.
+
+Подсказки HyperOS/MIUI, One UI, ColorOS/OxygenOS/realme UI — справочные, не
+подтверждение совместимости или проверки всех ROM. Нет частной интеграции
+Super Island/HyperIsland. Live Updates выключены по умолчанию, запрашиваются стандартным API только для активного таймера и учитывают скрытие пользователем; Android и OEM могут отказать в продвижении. Системные обновления
+событийные; уменьшение повторных публикаций не доказывает измеренную экономию батареи.
+
+## Приватность исходников и сообщений об ошибках
+
+В Git и source archives не должны попадать личные `.otmbackup` **или `.otmplain`**,
+CSV с реальными записями, ключи, пароли, environment credentials, внутренние планы
+или инструкции агентов. `.gitignore` и repository policy отвергают оба backup-расширения
+без учёта регистра; это не замена ручной проверке истории и release assets.
+Публичные fixtures должны быть синтетическими и не использовать личный backup.
+
+Policy также сопоставляет string/plurals/string-array ресурсы всех tracked XML в
+`values` и `values-ru`, проверяет повторные имена и аргументы форматирования.
+Она не требует перевода `translatable="false"` или парного файла темы и не
+доказывает качество перевода, доступность UI или отсутствие уязвимостей.
+
+Независимый криптографический аудит, подтверждённые battery/performance benchmarks
+и проверка всех OEM не заявляются. Конкретные результаты сборки, подписи и
+обновления перечисляются только в metadata окончательного выпуска.
+Об уязвимости сообщайте приватно по [SECURITY.md](../SECURITY.md), без реальных backup-файлов.
 
 ## English summary
 
-The app requests no network, location, broad-storage, advertising, or analytics capability. Local data relies on Android internal-storage and device-encryption guarantees; portable backups receive separate app-level encryption. Automatic platform backup is disabled. System actions carry entry identity, revision, and slot generation to reject stale replays, including after revision exhaustion.
+The app requests no network, location, broad-storage, advertising, analytics, or
+accessibility-service capability. Local Room/DataStore data relies on Android
+sandbox and device-storage protection, not separate database encryption.
+Automatic platform backup is disabled. A document provider you explicitly select
+may still transfer files to the cloud. Immutable, explicit system actions carry
+entry/revision/generation identity; elapsed work uses a durable monotonic anchor.
 
-New backup creation requires 12 or more Unicode code points and at most 1024 UTF-8 bytes. Use a unique, strong passphrase: length alone is not an entropy guarantee. Existing backups remain readable with their original passwords, including short passwords; passwords are not normalized.
+**Default encrypted `.otmbackup` remains OTMB1:** PBKDF2-HMAC-SHA256 (310,000
+iterations), AES-256-GCM, and an authenticated header. New passwords require at
+least 12 Unicode code points and at most 1024 UTF-8 bytes, without trimming or
+normalization. Existing short-password backups remain readable. Forgotten
+passwords cannot be recovered. GCM integrity is not public proof of the author's identity.
 
-Replace is intentionally destructive after confirmation. Room transaction rollback prevents partial replacement on failure or cancellation, not regret after success. Portable preferences converge through a durable post-commit journal; one atomic transaction across Room and DataStore is not claimed. Backup export first converges that journal, then strictly reads DataStore and holds the shared ordering boundary through the Room snapshot; failure aborts before a file is created. A failed post-commit privacy mirror remains retryable and is shown as a warning rather than a false action failure. Keep a separately verified backup. CSV is plaintext and sensitive. No independent security or cryptographic audit is claimed. Report vulnerabilities privately through [SECURITY.md](../SECURITY.md).
+**Optional `.otmplain` is OTMP1 plaintext, not encrypted or authenticated.** Anyone
+holding it can read and alter records and included settings. SHA-256 detects
+accidental damage, not malicious editing: an attacker can recompute it. Separate
+creation and untrusted-import warnings are required. Structural preview is not
+authenticity verification. Bad passwords, malformed input, or export errors must
+not silently downgrade to plaintext.
+
+Both formats write the same strict schema v2 and enforce the same Android limits:
+4 MiB and 20,000 projects, entries, and segments each. Core ceilings are larger,
+not a promise of Android acceptance. Copies contain confirmed closed intervals;
+restore never auto-starts a timer. Language and the default-project preference
+remain local, outside portable preferences/schema. Privacy mode hides system
+project labels; it does not encrypt files. CSV is plaintext and not restorable.
+
+Replace permanently replaces local history and portable settings after confirmation.
+Room rollback prevents partial failure, not regret after success. Restore is blocked
+for running, paused, or review sessions. Retryable previews live only in process
+memory; explicit cancellation or process death discards them. Portable settings
+converge through a durable post-commit journal; there is no Room/DataStore atomicity
+claim. Export first converges the journal and takes a strict serialized snapshot.
+
+Native controls require explicit taps and platform/launcher support. Battery and
+background-restriction status is read-only. OEM hints are advisory, with no private
+Super Island/HyperIsland API or required battery exemption. Optional Android 16
+Live Updates are off by default, use the normal non-runtime
+`POST_PROMOTED_NOTIFICATIONS` permission, and respect per-session dismissal.
+Android and the OEM decide promotion. The minimum SDK is unchanged; battery improvement is unmeasured.
+
+Do not publish personal `.otmbackup`, `.otmplain`, CSV, credentials, private keys,
+or internal plans in Git, issues, CI artifacts, or source archives. Repository
+checks reject both backup suffixes and validate aggregated RU/EN text resources;
+they are not a security audit. Final release metadata, not these docs, establishes
+signing and actual tests. Report vulnerabilities privately through [SECURITY.md](../SECURITY.md).

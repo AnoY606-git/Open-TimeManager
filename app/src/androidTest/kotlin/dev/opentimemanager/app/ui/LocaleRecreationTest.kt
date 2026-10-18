@@ -59,6 +59,7 @@ class LocaleRecreationTest {
             compose.activityRule.scenario.recreate()
             compose.waitForIdle()
             compose.onNodeWithText("Настройки", substring = false).performClick()
+            compose.onNodeWithTag("settings_category_appearance").performClick()
             compose.onNodeWithTag("language_russian").assertIsSelected()
             assertEquals("ru", localeManager.applicationLocales[0].language)
         } finally {
@@ -79,6 +80,7 @@ class LocaleRecreationTest {
             model.navigate(AppDestination.SETTINGS)
         }
         compose.waitUntil(10_000) { model.state.value.snapshot != null }
+        compose.onNodeWithTag("settings_category_appearance").performClick()
         val defaultProject = ProjectEntity(
             ProjectRepository.DEFAULT_PROJECT_ID.value, ProjectRepository.DEFAULT_PROJECT_STORAGE_NAME, 0, 0,
         )
