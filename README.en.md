@@ -32,15 +32,31 @@ Open TimeManager keeps projects, notes, and history on your device—without an 
 
 ## Screenshots
 
-Real app screens from an **Android 16 / API 36 emulator**, using synthetic demo data only.
-[Capture setup and example records](docs/screenshots/README.md).
-This gallery shows 1.0 screens; it is not verification of the new 1.1 screens.
+For the **upcoming stable 1.1.0** (`versionCode = 3`), 16 real captures are planned
+from an **Android 16 / API 36 emulator**: eight each in English and Russian,
+using synthetic demo data only. [Capture setup and example records](docs/screenshots/README.md).
+
+> [!NOTE]
+> The 1.1 reshoot has not happened yet. The main screens and dark timer below
+> still show the previous 1.0 interface; six new workflow image files await capture.
+> This prepared gallery does not establish verification or publication of 1.1.
 
 | **01 · Timer** | **02 · History** |
 | :---: | :---: |
 | <img src="docs/screenshots/en-timer.png" width="280" alt="Paused timer with a selected demo project"> | <img src="docs/screenshots/en-history.png" width="280" alt="History containing synthetic work entries"> |
 | **03 · Reports** | **04 · Settings** |
-| <img src="docs/screenshots/en-reports.png" width="280" alt="Report showing totals by demo project"> | <img src="docs/screenshots/en-settings.png" width="280" alt="Appearance, language, and privacy preferences"> |
+| <img src="docs/screenshots/en-reports.png" width="280" alt="Report showing totals by demo project"> | <img src="docs/screenshots/en-settings.png" width="280" alt="Settings 1.1 overview with five sections: appearance, tracking and projects, backups, help, and about"> |
+
+<details>
+<summary><strong>New 1.1 workflows · help, default project, and backup safety</strong></summary>
+
+Planned real screens: these files will be added after emulator capture.
+
+| **Offline help** | **Default project** | **Backup warning** |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/en-help.png" width="240" alt="Built-in offline guide with search across ten help topics"> | <img src="docs/screenshots/en-default-project.png" width="240" alt="Default-project picker with demo projects and the automatic fallback option"> | <img src="docs/screenshots/en-backup-warning.png" width="240" alt="Warning before creating .otmplain: the file is unencrypted and can be read or changed"> |
+
+</details>
 
 <details>
 <summary>Dark theme</summary>
