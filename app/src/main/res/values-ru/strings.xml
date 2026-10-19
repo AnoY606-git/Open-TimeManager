@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Open TimeManager</string>
+    <string name="app_name">OTM</string>
     <string name="tracking_channel">Учёт рабочего времени</string>
     <string name="tracking_ready">Готов</string>
     <string name="tracking_running">Идёт учёт</string>
@@ -78,7 +78,7 @@
     <string name="daily_goal_minutes">Цель на день, минут</string>
     <string name="data_management">Ваши данные</string>
     <string name="portable_backup">Зашифрованная переносимая копия</string>
-    <string name="portable_backup_description">Сохраните защищённый паролем файл .otmbackup размером до 4 МиБ или проверьте копию до объединения или замены локальных записей. Open TimeManager не сможет восстановить забытый пароль.</string>
+    <string name="portable_backup_description">Сохраните защищённый паролем файл .otmbackup размером до 4 МиБ или проверьте копию до объединения или замены локальных записей. OTM не сможет восстановить забытый пароль.</string>
     <string name="create_backup">Создать копию</string>
     <string name="restore_backup">Проверить и восстановить копию</string>
     <string name="backup_password">Пароль копии</string>
@@ -88,7 +88,7 @@
     <string name="backup_creation_password_too_long">Пароль превышает 1024 байта UTF-8. Сократите его для создания копии; введённый пароль не был обрезан.</string>
     <string name="backup_password_content_description">Пароль для зашифрованной резервной копии</string>
     <string name="continue_action">Продолжить</string>
-    <string name="data_operation_in_progress">Операция выполняется… Не закрывайте Open TimeManager.</string>
+    <string name="data_operation_in_progress">Операция выполняется… Не закрывайте OTM.</string>
     <string name="backup_created_success">Зашифрованная копия сохранена</string>
     <string name="backup_restored_success">Копия восстановлена</string>
     <string name="backup_invalid_or_password">Пароль неверен или копия повреждена. Эти случаи намеренно неразличимы.</string>
@@ -122,7 +122,7 @@
     <string name="restore_replace">Заменить</string>
     <string name="replace_backup_title">Заменить всю локальную историю?</string>
     <string name="replace_backup_warning">Будут удалены текущие проекты, история и квитанции команд, после чего будет импортирована копия. При ошибке транзакция БД откатится целиком.</string>
-    <string name="about_local">Ваши записи остаются на этом устройстве. У Open TimeManager нет доступа к сети, аккаунтов, рекламы и аналитики.</string>
+    <string name="about_local">Ваши записи остаются на этом устройстве. У OTM нет доступа к сети, аккаунтов, рекламы и аналитики.</string>
     <string name="notification_permission_needed">Системные кнопки таймера недоступны, пока уведомления не разрешены. Учёт времени в приложении продолжает работать.</string>
     <string name="notification_channel_blocked">Системные кнопки таймера заблокированы. Учёт времени в приложении продолжает работать.</string>
     <string name="manage_notifications">Настроить уведомления</string>

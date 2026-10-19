@@ -4,7 +4,7 @@
 
 ## Русский
 
-Это руководство для Open TimeManager 1.1.0. Справка с поиском также доступна
+Это руководство для OTM (Open TimeManager) 1.1.0. Справка с поиском также доступна
 без интернета в «Настройки → Как работать с приложением».
 
 ### Первая рабочая сессия
@@ -150,7 +150,7 @@
   сессию. Если уведомления запрещены, откройте их системные настройки; внутри
   приложения таймер по-прежнему доступен.
 - **Виджет** можно добавить кнопкой в приложении, если это поддерживает ваш
-  рабочий стол. Иначе найдите Open TimeManager в обычном списке виджетов.
+  рабочий стол. Иначе найдите OTM в обычном списке виджетов.
 - **Плитка быстрых настроек** добавляется через системный запрос на Android 13+.
   На Android 12 откройте редактор быстрых настроек и добавьте её вручную.
 - **«Скрывать названия проектов»** убирает имена из этих системных элементов.
@@ -178,7 +178,7 @@
 
 В «Оформлении» доступны системная, светлая и тёмная темы, цвета устройства и язык.
 На Android 13+ язык также можно выбрать в системных настройках приложения;
-на Android 12 используйте выбор внутри Open TimeManager.
+на Android 12 используйте выбор внутри OTM.
 
 Остальные настройки сгруппированы по задачам: учёт и проекты, копии данных,
 справка и сведения о приложении. Размер окна и крупный шрифт могут менять
@@ -211,7 +211,7 @@ Android. В разделе «Учёт и проекты» видны призн�
 
 ## English
 
-This guide covers Open TimeManager 1.1.0. Searchable help is also available
+This guide covers OTM (Open TimeManager) 1.1.0. Searchable help is also available
 offline under Settings → How to use the app.
 
 ### Your first work session
@@ -335,7 +335,7 @@ Find system controls under Settings → Tracking and projects.
 - **Notification:** pause, resume, or stop the session. If notifications are blocked,
   open their system settings. You can still use the timer inside the app.
 - **Widget:** use the in-app add button if your launcher supports it, or find
-  Open TimeManager in the launcher's widget list.
+  OTM in the launcher's widget list.
 - **Quick Settings tile:** Android 13+ can show a system add dialog. On Android 12,
   add the tile manually through the Quick Settings editor.
 - **Hide project names:** removes labels from these controls; it does not encrypt data.

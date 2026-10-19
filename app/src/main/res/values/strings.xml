@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Open TimeManager</string>
+    <string name="app_name">OTM</string>
     <string name="tracking_channel">Work time tracking</string>
     <string name="tracking_ready">Ready</string>
     <string name="tracking_running">Tracking</string>
@@ -77,7 +77,7 @@
     <string name="daily_goal_minutes">Daily goal, minutes</string>
     <string name="data_management">Your data</string>
     <string name="portable_backup">Encrypted portable backup</string>
-    <string name="portable_backup_description">Save a password-protected .otmbackup file up to 4 MiB, or inspect one before merging or replacing local records. Open TimeManager cannot recover a forgotten password.</string>
+    <string name="portable_backup_description">Save a password-protected .otmbackup file up to 4 MiB, or inspect one before merging or replacing local records. OTM cannot recover a forgotten password.</string>
     <string name="create_backup">Create backup</string>
     <string name="restore_backup">Inspect and restore backup</string>
     <string name="backup_password">Backup password</string>
@@ -87,7 +87,7 @@
     <string name="backup_creation_password_too_long">The password exceeds 1024 UTF-8 bytes. Shorten it to create a backup; the entered password has not been truncated.</string>
     <string name="backup_password_content_description">Password for the encrypted backup</string>
     <string name="continue_action">Continue</string>
-    <string name="data_operation_in_progress">Working… Keep Open TimeManager open.</string>
+    <string name="data_operation_in_progress">Working… Keep OTM open.</string>
     <string name="backup_created_success">Encrypted backup saved</string>
     <string name="backup_restored_success">Backup restored</string>
     <string name="backup_invalid_or_password">The password is wrong or the backup is damaged. These cases are intentionally indistinguishable.</string>
@@ -121,7 +121,7 @@
     <string name="restore_replace">Replace</string>
     <string name="replace_backup_title">Replace all local history?</string>
     <string name="replace_backup_warning">This removes current projects, history and command receipts before importing the backup. The database transaction rolls back completely if import fails.</string>
-    <string name="about_local">Your records stay on this device. Open TimeManager has no network permission, account, ads or analytics.</string>
+    <string name="about_local">Your records stay on this device. OTM has no network permission, account, ads or analytics.</string>
     <string name="notification_permission_needed">System timer controls are unavailable until notifications are allowed. Time tracking still works in the app.</string>
     <string name="notification_channel_blocked">System timer controls are blocked. Time tracking still works in the app.</string>
     <string name="manage_notifications">Manage notifications</string>

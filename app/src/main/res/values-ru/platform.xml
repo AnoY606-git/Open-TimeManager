@@ -5,10 +5,10 @@
     <string name="platform_pin_widget">Добавить виджет на рабочий стол</string>
     <string name="platform_app_settings">Системные настройки приложения</string>
     <string name="platform_tile_added">Плитка доступна в быстрых настройках.</string>
-    <string name="platform_tile_manual">Дважды раскройте шторку, откройте редактор быстрых настроек и добавьте Open TimeManager. Система может не поддерживать добавление из приложения.</string>
+    <string name="platform_tile_manual">Дважды раскройте шторку, откройте редактор быстрых настроек и добавьте OTM. Система может не поддерживать добавление из приложения.</string>
     <string name="platform_tile_declined">Плитка не добавлена. Это можно сделать позже в редакторе быстрых настроек.</string>
     <string name="platform_widget_requested">Запрос передан рабочему столу. Подтвердите размещение, если появится запрос.</string>
-    <string name="platform_widget_manual">Откройте меню виджетов рабочего стола и добавьте Open TimeManager. Этот лаунчер не принимает запрос добавления из приложения.</string>
+    <string name="platform_widget_manual">Откройте меню виджетов рабочего стола и добавьте OTM. Этот лаунчер не принимает запрос добавления из приложения.</string>
     <string name="platform_settings_unavailable">Этот раздел системных настроек недоступен на устройстве.</string>
     <string name="platform_battery_saver">Включена экономия заряда. Android может ограничивать фоновую работу.</string>
     <string name="platform_background_restricted">Android сообщает об ограничении фоновой работы приложения. Если кнопки перестали обновляться, проверьте его настройки батареи.</string>

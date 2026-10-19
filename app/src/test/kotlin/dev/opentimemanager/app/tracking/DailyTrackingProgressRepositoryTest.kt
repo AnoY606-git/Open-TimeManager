@@ -50,6 +50,9 @@ class DailyTrackingProgressRepositoryTest {
     private val queries = Collections.synchronizedList(mutableListOf<String>())
     private lateinit var tracker: TrackingCoordinator
 
+    // Room дописывает SQL из фоновых потоков; обход synchronizedList требует её монитора.
+    private fun querySnapshot(): List<String> = synchronized(queries) { queries.toList() }
+
     @Before fun setup() {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), AppDatabase::class.java)
             .setQueryCallback({ sql, _ -> queries += sql }, Executor(Runnable::run)).build()
@@ -181,7 +184,7 @@ class DailyTrackingProgressRepositoryTest {
 
         // 20 000 × 1 ms + 500 ms после начала + 700 ms до конца суток.
         assertEquals(21_200L, snapshot.dailyProgress?.trackedMillis)
-        val segmentReads = queries.filter {
+        val segmentReads = querySnapshot().filter {
             it.trimStart().startsWith("SELECT", ignoreCase = true) && it.contains("FROM segments", ignoreCase = true)
         }
         assertTrue("Дневная сумма должна читаться скалярным агрегатом", segmentReads.any { it.contains("SUM(", ignoreCase = true) })
@@ -198,6 +201,6 @@ class DailyTrackingProgressRepositoryTest {
 
         assertNull(snapshot.dailyProgress)
         assertEquals(0, waitingForRefresh.get())
-        assertTrue(queries.none { it.contains("SUM(", ignoreCase = true) && it.contains("FROM segments", ignoreCase = true) })
+        assertTrue(querySnapshot().none { it.contains("SUM(", ignoreCase = true) && it.contains("FROM segments", ignoreCase = true) })
     }
 }

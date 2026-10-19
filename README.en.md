@@ -72,6 +72,7 @@ Version 1.1.0, captured on an emulator with made-up records.
 The app is distributed through GitHub Releases, not Google Play.
 [What's new in 1.1.0](docs/releases/1.1.0.md#english).
 
+New local and CI builds are named **OTM** on your device.
 New local and CI builds produce `OTM.apk`. Files in previously published
 releases keep their original names.
 
