@@ -6,8 +6,10 @@
     android:orientation="horizontal"
     android:baselineAligned="false"
     android:gravity="center_vertical"
-    android:padding="4dp"
-    android:background="?android:attr/colorBackground"
+    android:padding="5dp"
+    android:theme="@android:style/Theme.DeviceDefault.DayNight"
+    android:background="@drawable/widget_card_background"
+    android:clipToOutline="true"
     tools:ignore="Overdraw">
 
     <LinearLayout
@@ -19,26 +21,35 @@
 
         <TextView
             android:id="@+id/widget_status"
+            style="@style/Widget.OTM.Status"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="14sp" />
+            android:layout_height="wrap_content" />
 
-        <Chronometer
-            android:id="@+id/widget_timer"
+        <FrameLayout
+            android:id="@+id/widget_timer_accessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:autoSizeTextType="uniform"
-            android:autoSizeMinTextSize="8sp"
-            android:autoSizeMaxTextSize="24sp"
-            android:autoSizeStepGranularity="1sp"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="24sp" />
+            android:importantForAccessibility="no">
+
+            <Chronometer
+                android:id="@+id/widget_timer"
+                style="@style/Widget.OTM.Timer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autoSizeMaxTextSize="24sp"
+                android:textSize="24sp"
+                android:importantForAccessibility="yes"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/widget_frozen_timer"
+                style="@style/Widget.OTM.Timer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autoSizeMaxTextSize="24sp"
+                android:textSize="24sp"
+                android:importantForAccessibility="yes" />
+        </FrameLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -46,27 +57,19 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- RemoteViews создаёт нативные ImageButton: для них нужен android:tint, а не атрибут AppCompat. -->
         <ImageButton
             android:id="@+id/widget_primary"
+            style="@style/Widget.OTM.PrimaryAction"
+            android:contentDescription="@string/tracking_start"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/tracking_start"
-            android:padding="12dp"
-            android:src="@drawable/ic_island_resume"
-            android:tint="?android:attr/textColorPrimary"
-            tools:ignore="UseAppTint" />
+            android:layout_marginBottom="4dp" />
 
         <ImageButton
             android:id="@+id/widget_stop"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            style="@style/Widget.OTM.SecondaryAction"
             android:contentDescription="@string/tracking_stop"
-            android:padding="12dp"
-            android:src="@drawable/ic_island_stop"
-            android:tint="?android:attr/textColorPrimary"
-            tools:ignore="UseAppTint" />
+            android:layout_width="48dp"
+            android:layout_height="48dp" />
     </LinearLayout>
 </LinearLayout>

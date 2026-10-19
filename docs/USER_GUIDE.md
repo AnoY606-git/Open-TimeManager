@@ -175,11 +175,15 @@
   сессию. Если уведомления запрещены, откройте их системные настройки; внутри
   приложения таймер по-прежнему доступен.
 - **Виджет** можно добавить кнопкой в приложении, если это поддерживает ваш
-  рабочий стол. Иначе найдите OTM в обычном списке виджетов. Справа находятся
-  кнопки-иконки запуска/паузы/продолжения и завершения; завершение видно только
+  рабочий стол. Иначе найдите OTM в обычном списке виджетов. Карточка подстраивается
+  под размер: в высоком варианте крупный таймер находится над широкими кнопками,
+  в компактном и широком — рядом с управлением. Кнопки запуска/паузы/продолжения
+  и завершения имеют зоны нажатия не меньше 48 dp; завершение видно только
   у активной сессии. Их полные названия читаются средствами доступности.
-  Длинное имя проекта сокращается в одну строку, а размер цифр таймера
-  подбирается по доступной ширине. Увеличьте виджет, если хотите больше места.
+  Длинное имя проекта сокращается в одну строку, а цифры таймера подбираются
+  по доступному месту. Светлый и тёмный вид следуют системной теме рабочего стола,
+  независимо от выбранной внутри приложения темы.
+  На паузе показанное и озвучиваемое время остаётся зафиксированным.
 - **Плитка быстрых настроек** добавляется через системный запрос на Android 13+.
   На Android 12 откройте редактор быстрых настроек и добавьте её вручную.
 - **«Скрывать названия проектов»** в разделе «Учёт и проекты» убирает имена из этих системных элементов.
@@ -482,10 +486,14 @@ Find system controls under Settings → Android and device.
 - **Notification:** pause, resume, or stop the session. If notifications are blocked,
   open their system settings. You can still use the timer inside the app.
 - **Widget:** use the in-app add button if your launcher supports it, or find
-  OTM in the launcher's widget list. The right-hand icons start/pause/resume
-  and stop; Stop is shown only for an active session. Accessibility services
-  read the full action labels. Long project names use one ellipsized line,
-  and timer digits fit the available width. Resize the widget for more room.
+  OTM in the launcher's widget list. The card adapts to its size: a tall widget
+  places a prominent timer above wide controls, while compact and wide layouts
+  place the controls beside it. Start/pause/resume and Stop have touch targets
+  of at least 48 dp; Stop is shown only for an active session. Accessibility
+  services read the full action labels. Long project names use one ellipsized
+  line, and timer digits fit the available space. Light and dark colors follow
+  the launcher's system theme, independently of the theme selected in the app.
+  While paused, both the displayed and accessible elapsed time stay fixed.
 - **Quick Settings tile:** Android 13+ can show a system add dialog. On Android 12,
   add the tile manually through the Quick Settings editor.
 - **Hide project names:** under Tracking and projects, removes labels from these controls; it does not encrypt data.

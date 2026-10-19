@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:theme="@android:style/Theme.DeviceDefault.DayNight"
+    android:background="@drawable/widget_card_background"
+    android:clipToOutline="true"
+    tools:ignore="Overdraw">
+
+    <TextView
+        android:id="@+id/widget_status"
+        style="@style/Widget.OTM.Status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="32dp"
+        android:gravity="center_vertical" />
+
+    <FrameLayout
+        android:id="@+id/widget_timer_accessibility"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp"
+        android:importantForAccessibility="no">
+
+        <Chronometer
+            android:id="@+id/widget_timer"
+            style="@style/Widget.OTM.Timer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:importantForAccessibility="yes"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_frozen_timer"
+            style="@style/Widget.OTM.Timer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:importantForAccessibility="yes" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+
+        <ImageButton
+            android:id="@+id/widget_primary"
+            style="@style/Widget.OTM.PrimaryAction"
+            android:contentDescription="@string/tracking_start"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/widget_stop"
+            style="@style/Widget.OTM.SecondaryAction"
+            android:contentDescription="@string/tracking_stop"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+</LinearLayout>

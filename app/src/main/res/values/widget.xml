@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_surface">#F7F7FD</color>
+    <color name="widget_on_surface">#1C1D2B</color>
+    <color name="widget_muted">#646B7D</color>
+    <color name="widget_primary">#6251DA</color>
+    <color name="widget_on_primary">#FFFFFF</color>
+    <color name="widget_secondary">#E7E4F7</color>
+    <color name="widget_outline">#D9D7E7</color>
+    <string name="widget_preview_time" translatable="false">00:00</string>
+
+    <style name="Widget.OTM.Status" parent="">
+        <item name="android:text">@string/tracking_ready</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textColor">@color/widget_muted</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="Widget.OTM.Timer" parent="">
+        <item name="android:text">@string/widget_preview_time</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">8sp</item>
+        <item name="android:autoSizeMaxTextSize">44sp</item>
+        <item name="android:autoSizeStepGranularity">1sp</item>
+        <item name="android:textColor">@color/widget_on_surface</item>
+        <item name="android:textSize">44sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
+
+    <!-- RemoteViews создаёт нативные ImageButton: android:tint нужен вместо атрибута AppCompat. -->
+    <style name="Widget.OTM.PrimaryAction" parent="">
+        <item name="android:background">@drawable/widget_primary_background</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:src">@drawable/ic_island_resume</item>
+        <item name="android:scaleType">centerInside</item>
+        <item name="android:tint">@color/widget_on_primary</item>
+    </style>
+
+    <style name="Widget.OTM.SecondaryAction" parent="">
+        <item name="android:background">@drawable/widget_secondary_background</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:src">@drawable/ic_island_stop</item>
+        <item name="android:scaleType">centerInside</item>
+        <item name="android:tint">@color/widget_on_surface</item>
+    </style>
+</resources>

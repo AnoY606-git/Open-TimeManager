@@ -3,5 +3,5 @@
     android:minWidth="180dp" android:minHeight="110dp" android:initialLayout="@layout/tracking_widget"
     android:resizeMode="horizontal|vertical" android:updatePeriodMillis="0" android:widgetCategory="home_screen"
     android:description="@string/tracking_widget_description"
-    android:previewLayout="@layout/tracking_widget"
+    android:previewLayout="@layout/tracking_widget_tall"
     android:targetCellWidth="2" android:targetCellHeight="2" />

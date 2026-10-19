@@ -5,6 +5,7 @@
 
 ## В разработке / Unreleased
 
+- Виджет переработан в адаптивную карточку: выразительный таймер, широкие кнопки в высоком варианте и отдельные компактная и широкая компоновки. Светлые и тёмные цвета следуют системной теме рабочего стола; управление и скрытие названий проектов сохранены. На паузе озвучивание длительности больше не увеличивается при обновлении виджета.
 - Формы и подтверждения теперь прокручиваются целиком, включая заголовок и действия: крупный шрифт и короткое окно с клавиатурой не вытесняют поля ввода. Компактный виджет получил отдельные кнопки-иконки 48 dp с полными русскими/английскими названиями для средств доступности; длинное имя проекта больше не выталкивает таймер и управление за границы.
 - Добавлен необязательный мастер первого запуска на русском и английском: Android и семейство устройства, проверка уведомлений и фоновых ограничений, явные действия и возможность пропустить. Пропуск и завершение запоминаются локально без повторных показов; мастер доступен вручную в «Android и устройство». Разрешения и Live Updates не включаются автоматически, точная прошивка не угадывается по бренду.
 - Нижняя навигация временно скрывается при экранной клавиатуре, освобождая место для ввода. Поиск настроек удерживает строку поиска, а не большой заголовок, в видимой области; это особенно важно на узких экранах с крупным шрифтом.
@@ -27,6 +28,10 @@ of the exact firmware.
 
 Forms and confirmations now scroll as a whole, including their headings and
 actions, so large text and short keyboard windows do not displace input fields.
+The redesigned widget is a responsive card with a prominent timer, wide controls
+in the tall layout, and dedicated compact and wide layouts. Its light/dark colors
+follow the launcher's system theme; timer actions and project-name privacy are unchanged.
+Paused duration announcements no longer advance when the widget is reapplied.
 The compact widget uses separate 48 dp icon controls with full localized
 accessibility labels; long project names no longer push the timer or controls
 outside the widget.
