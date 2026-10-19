@@ -77,6 +77,14 @@ it does not establish app approval.
 | **Default project** | **Unprotected backup** |
 | <img src="docs/screenshots/en-default-project.png" width="280" alt="Choosing a project for new sessions"> | <img src="docs/screenshots/en-backup-warning.png" width="280" alt="Warning that anyone with an unprotected backup can read its contents"> |
 
+**Create-project form at 200% font scale**
+
+<img src="docs/screenshots/en-project-create-large-font.png" width="280" alt="Scrollable create-project form in dark theme at 200% system font scale">
+
+**Home-screen widget, 200% font scale**
+
+<img src="docs/screenshots/en-widget.png" width="280" alt="Redesigned dark OTM widget with a prominent timer and wide resume and stop controls">
+
 </details>
 
 <details>
@@ -88,7 +96,7 @@ it does not establish app approval.
 
 </details>
 
-The gallery contains 22 genuine `main` development screenshots from an AOSP
+The gallery contains 26 genuine `main` development screenshots from an AOSP
 Android 16 / API 36 emulator with made-up records or a fresh empty installation for settings and setup. They show OTM's interface and
 ordinary Android notification, not HyperOS or a working island. Capture provenance
 is documented separately.

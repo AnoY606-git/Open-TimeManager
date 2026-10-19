@@ -93,6 +93,8 @@ class DocumentationTest(unittest.TestCase):
         screens = (
             "timer", "history", "reports", "settings", "timer-dark",
             "help", "default-project", "backup-warning", "notification", "monthly-plan", "setup",
+            "project-create-large-font",
+            "widget",
         )
         for language, filename in (("ru", "README.md"), ("en", "README.en.md")):
             with self.subTest(language=language):
