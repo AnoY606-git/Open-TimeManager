@@ -5,8 +5,26 @@
 
 ## В разработке / Unreleased
 
+- Добавлены отдельные планы часов и минут для календарных месяцев, переходы стрелками и кнопки «Прошлый месяц» / «Текущий месяц». Баланс показывает разность подтверждённого времени и плана, недобор за законченный месяц или остаток до цели за текущий. Оценка по будням применяется только по выбору пользователя и не учитывает праздники. Планы остаются на устройстве, не входят в копии и не меняются при смене дневной цели.
+- Уведомление показывает дневное время по всем проектам с текущим рабочим отрезком и прогрессом цели: системный сегментированный `ProgressStyle` на Android 16, обычная полоса на Android 12–15. Хронометр продолжает показывать текущую сессию; отчёты учитывают только закрытые подтверждённые интервалы. Live Updates остаются отдельной необязательной настройкой без гарантии выделенного отображения.
+- На узких экранах с крупным шрифтом кнопки навигации располагаются в два ряда, длинные диалоги прокручиваются. Черновики форм и заметок сохраняются при пересоздании экрана и смене компоновки; отказ в необязательных уведомлениях больше не выдаётся за сбой таймера.
+- В локальных и CI-сборках приложение называется OTM, а APK — `OTM.apk`. Идентификатор приложения и правила подписи не изменены; имена уже опубликованных APK сохранены.
 - Переписана документация: короче README, понятнее руководство, отдельная страница сборки.
-- Rewritten documentation with shorter READMEs, clearer help, and a dedicated build guide.
+- Обновлены русская и английская галереи текущей ветки `main`, добавлены уведомление и ручной план месяца. Снимки dev-сборки сделаны 19 октября 2026 года; стабильный выпуск 1.1.0 остаётся отдельным.
+
+**English:** per-month plans with signed balances, remaining time, calendar
+navigation, and an opt-in Monday–Friday estimate without holidays. Plans are
+local, excluded from backups, and unaffected by daily-goal changes. Notifications
+show daily totals across all projects plus the running interval, using native
+segmented progress on Android 16 and a standard bar on Android 12–15; the
+chronometer remains session-based and reports count closed, confirmed intervals.
+Live Updates remain optional and system-controlled. Two rows of navigation buttons,
+scrollable dialogs, and restored form and note drafts improve small-window use;
+blocked optional notifications no longer appear as timer failures. Current local
+and CI builds use OTM and `OTM.apk`, with the application ID and signing rules
+unchanged. Updated bilingual documentation and development screenshots dated
+19 October 2026, including notifications and monthly plans. The stable release
+remains 1.1.0.
 
 ## 1.1.0 — 18 октября 2026
 

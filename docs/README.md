@@ -2,6 +2,11 @@
 
 [На главную](../README.md) · [English](#english)
 
+Руководство и новые скриншоты описывают текущую ветку `main` после 1.1.0.
+Изменения, которые ещё не выпущены, перечислены в разделе Unreleased
+[истории версий](../CHANGELOG.md); возможности стабильных выпусков — в их
+отдельных заметках.
+
 ## Пользователям
 
 | Что нужно | Где прочитать |
@@ -25,6 +30,10 @@
 компонентах — в [уведомлениях](../THIRD_PARTY_NOTICES.md).
 
 ## English
+
+The guide and new screenshots cover the current `main` branch after 1.1.0.
+See Unreleased in the [changelog](../CHANGELOG.md) for changes still in development
+and the individual release notes for stable versions.
 
 | I need to… | Read |
 | --- | --- |

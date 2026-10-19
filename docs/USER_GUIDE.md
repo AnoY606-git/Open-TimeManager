@@ -4,7 +4,10 @@
 
 ## Русский
 
-Это руководство для OTM (Open TimeManager) 1.1.0. Справка с поиском также доступна
+Это руководство для текущей ветки `main` OTM (Open TimeManager) после выпуска
+1.1.0. Месячные планы и обновлённый дневной прогресс уведомления пока доступны
+в dev-сборках. Последний стабильный релиз — 1.1.0; его возможности описаны
+в [заметках к выпуску](releases/1.1.0.md). Справка с поиском также доступна
 без интернета в «Настройки → Как работать с приложением».
 
 ### Первая рабочая сессия
@@ -59,16 +62,18 @@
 ### Отчёты и CSV
 
 Выберите неделю, месяц или собственный период до 10 лет. Границы периода
-определяются текущим часовым поясом. В отчёт попадает уже сохранённое время:
-текущий отрезок добавится после паузы, завершения или смены проекта.
+определяются текущим часовым поясом. В отчёт попадают подтверждённые закрытые
+интервалы: текущий отрезок добавится после паузы, завершения или смены проекта.
 Поэтому работающий таймер может показывать больше, чем отчёт.
 
 В режиме месяца стрелки переключают календарные месяцы, а «Прошлый месяц»
 и «Текущий месяц» позволяют быстро вернуться к нужному периоду. В карточке
 «Баланс месяца» задайте план часов и минут именно для выбранного месяца:
-приложение покажет переработку или недобор, а для незавершённого месяца —
-сколько осталось до плана. Пока план не задан, недобор не рассчитывается.
-Нулевой план допустим, например для месяца без работы.
+приложение покажет разность «подтверждённое время − план». Знак «+» означает
+время сверх плана, «−» — недобор в закончившемся месяце или остаток до плана
+в текущем. Например, 152 часа при плане 160 часов дадут `−08:00:00`.
+Пока план не задан, недобор не рассчитывается. Нулевой план допустим,
+например для месяца без работы; «Убрать план» возвращает состояние без плана.
 
 Оценка по будням использует понедельник–пятницу и текущую дневную цель,
 но не знает праздников, отпусков и вашего графика. Она заполняет форму только
@@ -103,8 +108,9 @@
 не обходит пароль и не превращает такую копию в открытую.
 
 Копии содержат проекты, заметки, сохранённые интервалы и основные настройки:
-тему, цвета устройства, скрытие названий и дневную цель. Язык и проект по
-умолчанию и планы месяцев остаются на устройстве. Старые зашифрованные копии поддерживаются.
+тему, цвета устройства, скрытие названий и дневную цель. Язык, проект по
+умолчанию, планы месяцев и выбор Live Updates остаются на устройстве и не
+входят в файлы копий. Старые зашифрованные копии поддерживаются.
 Приложение принимает файл до 4 МиБ и до 20 000 проектов, записей и интервалов
 каждого вида.
 
@@ -156,14 +162,29 @@
 - **«Скрывать названия проектов»** убирает имена из этих системных элементов.
   Это настройка отображения, а не шифрование.
 
-На паузе длительность не растёт. Если системная кнопка выглядит устаревшей,
-откройте приложение и проверьте состояние таймера.
+Подпись **«Сегодня … из …»** и полоса прогресса сравнивают время за текущий
+день по всем проектам с дневной целью. К закрытым интервалам добавляется
+текущий рабочий отрезок, измеренный монотонным таймером устройства. Хронометр
+рядом показывает длительность текущей сессии — эти значения могут различаться.
+На паузе открытый отрезок больше не растёт. Полоса заполняется до цели,
+а подпись продолжает показывать фактически учтённое время и сверх неё.
+
+На Android 16 (API 36) используется системный сегментированный прогресс
+`ProgressStyle`; на Android 12–15 (API 31–35) — обычная полоса. Чтобы увидеть
+подробности и кнопки, раскройте уведомление. Если системная кнопка выглядит
+устаревшей, откройте приложение и проверьте состояние таймера.
+
+Скрытие названий проектов оставляет дневную сумму и цель в обычном уведомлении.
+Для показа без личных подробностей приложение предоставляет Android публичную
+версию только со статусом таймера. Что появится на экране блокировки,
+определяют настройки Android.
 
 На Android 16 можно отдельно включить **Live Updates** для работающего таймера.
 По умолчанию они выключены. Полная поддержка зависит от системного обновления
 36.1 и решения Android или производителя: уведомление может остаться обычным.
+Сегментированный прогресс на Android 16 доступен независимо от этого выбора.
 После скрытия пользователем та же сессия не будет снова запрашивать выделенное
-отображение.
+отображение, пока Live Updates не будут явно выключены и включены снова.
 
 ### Если таймер требует проверки
 
@@ -182,7 +203,10 @@
 
 Остальные настройки сгруппированы по задачам: учёт и проекты, копии данных,
 справка и сведения о приложении. Размер окна и крупный шрифт могут менять
-расположение элементов.
+расположение элементов: на узком экране с крупным шрифтом кнопки навигации
+располагаются в два ряда, а содержимое длинных диалогов прокручивается.
+Черновики обычных форм и заметки текущей сессии сохраняются при пересоздании
+экрана и изменении компоновки. Пароли резервных копий не сохраняются.
 
 ### Если не обновляются системные кнопки
 
@@ -206,13 +230,22 @@ Android. В разделе «Учёт и проекты» видны призн�
 ключ версии 1.0.0; тестовая сборка может использовать другой ключ.
 При ошибке подписи не удаляйте приложение и не очищайте данные ради установки.
 
+У стабильного релиза 1.1.0 файл называется `Open-TimeManager-1.1.0.apk`.
+Текущие локальные и CI-сборки создают `OTM.apk`, а на устройстве приложение
+называется **OTM**. Идентификатор приложения не изменён; короткое имя APK
+само по себе не меняет совместимость подписи. Для текущей ветки `main` см.
+[инструкцию по сборке](BUILDING.md).
+
 [Скачать релиз](https://github.com/AnoY606-git/Open-TimeManager/releases/latest) ·
 [Подробнее о защите данных](SECURITY.md)
 
 ## English
 
-This guide covers OTM (Open TimeManager) 1.1.0. Searchable help is also available
-offline under Settings → How to use the app.
+This guide covers the current `main` branch of OTM (Open TimeManager) after
+1.1.0. Monthly plans and the updated daily notification progress are currently
+available in development builds. The latest stable release is 1.1.0; see its
+[release notes](releases/1.1.0.md#english) for that version's features.
+Searchable help is also available offline under Settings → How to use the app.
 
 ### Your first work session
 
@@ -255,15 +288,17 @@ If the app says an entry has changed, reopen it rather than overwriting newer da
 ### Reports and CSV
 
 Choose a week, month, or custom range of up to 10 years. Period boundaries follow
-your current time zone. Reports include saved intervals; a running interval is
-added after you pause, stop, or switch projects. That is why the live timer can
-show more than the report.
+your current time zone. Reports include confirmed, closed intervals; a running
+interval is added after you pause, stop, or switch projects. That is why the live
+timer can show more than the report.
 
 In monthly mode, use the arrows to browse calendar months or jump to the last
 or current month. Set planned hours and minutes for that specific month in
-Monthly balance. The card shows time above or below plan; an unfinished month
-shows how much remains. An unset plan is not treated as missing work, and a
-zero-hour plan is allowed.
+Monthly balance. The card shows confirmed time minus the plan: `+` means time
+above plan, while `−` means a shortfall for a finished month or time remaining
+for the current month. For example, 152 hours against a 160-hour plan gives
+`−08:00:00`. An unset plan is not treated as missing work, and a zero-hour plan
+is allowed. Remove plan returns the month to having no plan.
 
 The weekday estimate uses Monday–Friday and your current daily goal, not public
 holidays, leave, or individual schedules. It only fills the form when requested;
@@ -296,8 +331,9 @@ Spaces matter; older copies with shorter passwords still work. If an encrypted
 file does not open, check the password and file. The app does not bypass encryption.
 
 Copies include projects, notes, saved intervals, theme, device colors, hidden
-project labels, and the daily goal. Language, monthly plans, and the default-project choice stay
-on the device. Older encrypted copies remain supported. The app accepts up to
+project labels, and the daily goal. Language, monthly plans, the default-project
+choice, and the Live Updates preference stay on the device, outside backup files.
+Older encrypted copies remain supported. The app accepts up to
 4 MiB and 20,000 projects, entries, and intervals of each kind.
 
 Unprotected copies have separate warnings before creation and inspection.
@@ -340,13 +376,28 @@ Find system controls under Settings → Tracking and projects.
   add the tile manually through the Quick Settings editor.
 - **Hide project names:** removes labels from these controls; it does not encrypt data.
 
-Paused duration stays fixed. If a system control looks out of date, reopen the
-app and check the timer's state.
+**Today … of …** and the progress bar compare today's tracked time across all
+projects with the daily goal. The current open work interval is added to closed
+intervals using the device's monotonic clock. The chronometer shows the current
+session's duration, so these values can differ. Pausing stops the open interval
+from growing. The bar fills up to the goal; the label still shows actual time
+after the goal is exceeded.
+
+Android 16 (API 36) uses native segmented `ProgressStyle`; Android 12–15
+(API 31–35) uses a standard progress bar. Expand the notification to see details
+and controls. If a system control looks out of date, reopen the app and check
+the timer's state.
+
+Hiding project names leaves daily totals and the goal in the normal notification.
+The app provides Android with a public version containing only the timer status.
+Android settings decide what appears on the lock screen.
 
 On Android 16, optional **Live Updates** can request a more prominent notification
 for a running timer. They are off by default. Full support depends on system
 update 36.1 and Android or manufacturer decisions; the notification may remain
-ordinary. A dismissed session will not request prominent presentation again.
+ordinary. Android 16's segmented progress is available independently of this
+preference. A dismissed session will not request prominent presentation again
+unless you explicitly turn Live Updates off and on again.
 
 ### When a timer needs review
 
@@ -361,7 +412,10 @@ end time you can verify. The app does not add unknown hours automatically.
 Appearance offers system, light, and dark themes, device colors, and language.
 On Android 13+, language is also available in Android's app settings. On Android 12,
 use the in-app selector. Other settings are grouped into tracking, backups, help,
-and app information. Layout adapts to the window size and larger fonts.
+and app information. Layout adapts to the window size and larger fonts: narrow
+screens with large text use two rows of navigation buttons, and long dialogs
+scroll. Ordinary form drafts and the current session's note survive screen
+recreation and layout changes. Backup passwords are not saved.
 
 ### If system controls stop updating
 
@@ -383,6 +437,11 @@ Save and check an encrypted backup, then install the new release over the old
 one. Updates need a compatible signature. Version 1.1.0 keeps 1.0.0's signing key;
 test builds may use another. Do not uninstall or clear data to force an update
 after a signature mismatch.
+
+The stable 1.1.0 APK is named `Open-TimeManager-1.1.0.apk`. Current local and CI
+builds produce `OTM.apk` and display **OTM** on the device. The application ID
+is unchanged; shortening the APK name does not change signing compatibility.
+For the current `main` branch, see [Building from source](BUILDING.md#english).
 
 [Download a release](https://github.com/AnoY606-git/Open-TimeManager/releases/latest) ·
 [More about data protection](SECURITY.md#english)

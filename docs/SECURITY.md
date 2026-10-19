@@ -49,6 +49,11 @@ PBKDF2-HMAC-SHA256 с 310 000 итераций. Для каждого файла
 и интервалов каждого вида. Оба формата сохраняют уже закрытые интервалы,
 а не текущий открытый отрезок. Импорт не запускает таймер автоматически.
 
+В копии входят тема, цвета устройства, скрытие названий проектов и дневная
+цель. Язык, проект по умолчанию, планы месяцев и выбор Live Updates хранятся
+только на устройстве и в копии не переносятся. Восстановление записей времени
+не заменяет планы месяцев.
+
 **«Объединить»** сохраняет текущие данные и отклоняет неоднозначные конфликты.
 **«Заменить»** удаляет текущие проекты и историю после подтверждения.
 Сбой до завершения транзакции базы откатывает изменения; успешную замену
@@ -69,8 +74,12 @@ PBKDF2-HMAC-SHA256 с 310 000 итераций. Для каждого файла
 ### Уведомления и фоновые функции
 
 Скрытие названий проектов относится только к уведомлению, виджету и плитке.
-Оно не шифрует данные. Системные команды привязаны к записи и её состоянию,
-чтобы старое нажатие не изменило новую сессию.
+Оно убирает только название проекта: дневная сумма и цель остаются видны
+в обычном уведомлении. Для показа без личных подробностей приложение передаёт
+Android публичную версию только со статусом таймера; окончательное отображение
+на экране блокировки определяют настройки Android. Эта настройка не шифрует
+данные. Системные команды привязаны к записи и её состоянию, чтобы старое
+нажатие не изменило новую сессию.
 
 Добавление виджета и плитки требует действия пользователя и поддержки системы.
 Приложение только читает признаки экономии батареи и ограничений фона; оно не
@@ -129,6 +138,11 @@ preview. Android accepts up to 4 MiB and 20,000 projects, entries, and intervals
 of each kind. Copies contain closed intervals, not the current open interval;
 restore never starts a timer automatically.
 
+Backups include the theme, device colors, hidden project labels, and daily goal.
+Language, the default-project choice, monthly plans, and the Live Updates
+preference stay on the device and are excluded from backup files. Restoring
+time records does not replace monthly plans.
+
 Merge keeps local data and rejects conflicting versions of the same record.
 **Replace removes current projects and history.** Save and check a separate
 encrypted backup first. Database changes roll back if the transaction fails,
@@ -147,7 +161,11 @@ internal copy made by the JVM or cryptographic provider.
 
 ### System controls and reporting
 
-Hiding project names changes the notification, widget, and tile, not encryption.
+Hiding project names removes only project labels from the notification, widget,
+and tile. Daily totals and the goal remain visible in the normal notification.
+The app provides Android with a public version containing only the timer status;
+Android settings decide what is shown on the lock screen. This preference does
+not encrypt data.
 Old system actions carry session identity so they cannot affect a newer session.
 Widget and tile placement need your action and system support. Battery and
 background-restriction indicators are read-only; disabling all optimization is

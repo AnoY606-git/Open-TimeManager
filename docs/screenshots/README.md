@@ -4,70 +4,93 @@
 
 ## Русский
 
-Все 16 снимков показывают Open TimeManager **1.1.0** и сделаны 18 октября
-2026 года на эмуляторе Android 16. Использованы только вымышленные проекты
-и записи, не данные с личного телефона.
+Все 20 снимков сделаны **19 октября 2026 года** на выделенном эмуляторе
+Android 16 из текущей **dev/debug-сборки `main`**. Они показывают OTM после
+обновлений интерфейса, уведомления и месячного баланса, а не опубликованную
+стабильную 1.1.0. Номер версии APK пока остаётся `1.1.0` (`versionCode = 3`);
+новый стабильный релиз для этой галереи не создавался.
+
+Использованы только вымышленные проекты и записи, не личный телефон или рабочие данные.
 
 ### Что есть в галерее
 
 | Экран | Русский | English |
 | --- | --- | --- |
-| Таймер | [ru-timer.png](ru-timer.png) | [en-timer.png](en-timer.png) |
-| История | [ru-history.png](ru-history.png) | [en-history.png](en-history.png) |
-| Отчёты | [ru-reports.png](ru-reports.png) | [en-reports.png](en-reports.png) |
+| Таймер на паузе и дневная цель | [ru-timer.png](ru-timer.png) | [en-timer.png](en-timer.png) |
+| История записей | [ru-history.png](ru-history.png) | [en-history.png](en-history.png) |
+| Баланс прошлого месяца | [ru-reports.png](ru-reports.png) | [en-reports.png](en-reports.png) |
+| Уведомление Android 16 | [ru-notification.png](ru-notification.png) | [en-notification.png](en-notification.png) |
 | Настройки | [ru-settings.png](ru-settings.png) | [en-settings.png](en-settings.png) |
 | Справка | [ru-help.png](ru-help.png) | [en-help.png](en-help.png) |
 | Проект по умолчанию | [ru-default-project.png](ru-default-project.png) | [en-default-project.png](en-default-project.png) |
 | Предупреждение о копии без пароля | [ru-backup-warning.png](ru-backup-warning.png) | [en-backup-warning.png](en-backup-warning.png) |
+| Создание месячного плана | [ru-monthly-plan.png](ru-monthly-plan.png) | [en-monthly-plan.png](en-monthly-plan.png) |
 | Тёмная тема | [ru-timer-dark.png](ru-timer-dark.png) | [en-timer-dark.png](en-timer-dark.png) |
 
-В демонстрационных проектах `Design Lab` и `Learning` есть три ручные записи
-за 17 октября общей длительностью 3 часа. Они сохранены при обновлении с 1.0.0.
-В истории включён поиск `c`, чтобы показать эти заметки; отчёт также учитывает
-настоящие короткие сессии, созданные при проверке таймера.
+В проекты `Design Lab` и `Learning` через штатный предпросмотр и объединение
+копии импортированы 24 демонстрационные записи. За сентябрь 2026 года сохранено
+**166 ч 30 мин**; вручную заданный план **160 часов** даёт баланс **+06:30:00**.
+Оценка по будням в форме равна 176 часам и не применяется автоматически.
+
+За 19 октября добавлены два часа подтверждённой работы. Короткая настоящая
+сессия запускалась, ставилась на паузу и продолжалась во время съёмки, поэтому
+дневной итог и хронометр немного отличаются между кадрами. Их значения не подменялись.
+Названия проектов и заметки одинаковы на обоих языках; локализуется интерфейс.
+
+### Параметры и происхождение
+
+- PNG сняты напрямую в **720 × 1560**, 280 dpi, портретная ориентация,
+  масштаб шрифта 100%. Масштабирования, ретуши, генерации и коллажей нет.
+- Светлая тема для основных экранов, тёмная — для двух кадров таймера;
+  цвета устройства выключены. Язык Android — английский, OTM — RU или EN.
+- Стандартный demo mode фиксирует часы и батарею только в строке состояния.
+  Для кадров уведомления служебные уведомления эмулятора временно отложены
+  штатной функцией Android. Текст, прогресс и действия OTM не менялись.
+- Показан обычный нативный `ProgressStyle` Android 16, Live Updates выключены.
+  Кадры не доказывают продвижение уведомления, OEM-анимацию или расход батареи.
+- Исходники приложения: [`6eba066d47e5e0acc364cf707c3c0bd1b807deb4`](https://github.com/AnoY606-git/Open-TimeManager/commit/6eba066d47e5e0acc364cf707c3c0bd1b807deb4).
+- Проверка сборки: `:app:assembleDebug`; release не собирался.
+- Файл: `OTM.apk`, пакет `dev.opentimemanager.app`.
+- SHA-256 APK: `f14fe987cf0122129debd1864eddeaf29ff74b888c02d501be5402b00131dbd3`.
+- AVD: `otm_ui_api36`, Android 16 / API 36, Google APIs x86_64.
 
 ### Обновление снимков
 
-1. Используйте отдельный эмулятор и вымышленные данные. Перед захватом явно
-   выберите его идентификатор, чтобы не обратиться к подключённому телефону.
-2. Пройдите нужные экраны через обычный интерфейс на обоих языках.
-3. Сохраните PNG и уменьшите пропорционально до 720 × 1560.
-4. Проверьте изображения и галереи в обоих README.
-
-Для текущей галереи использованы профиль Pixel 5, исходное разрешение
-1080 × 2340, портретная ориентация, обычный размер шрифта и выключенные цвета
-устройства. Системный демонстрационный режим фиксирует только строку состояния.
-Текст, предупреждения, таймер и итоги внутри приложения не подменяются.
-Изображения не генерируются и не собираются из фрагментов.
-
-<details>
-<summary>Сведения о сборке для текущих снимков</summary>
-
-- AVD: `OTM_Screenshots_API36`, AOSP x86_64.
-- Код снятой сборки: `bd2c0e65bdd72dba49ddaba1fe0998771f31ffa9`.
-- SHA-256 APK: `fe73c9aecad4bad9f449e42ee6794373321ca8ddc93332961241a11c29f800ba`.
-
-После добавления галереи финальный APK пересобран с новым идентификатором commit.
-Исполняемый код и ресурсы остались байтово одинаковыми; отличались только
-встроенные сведения об исходниках. Подробности — в `VERIFICATION.md`
-[релиза 1.1.0](https://github.com/AnoY606-git/Open-TimeManager/releases/tag/v1.1.0).
-
-</details>
+APK, демонстрационная копия, служебные скрипты и SDK в Git не добавляются.
+При следующем обновлении явно выберите отдельный эмулятор, пройдите настоящий
+интерфейс на обоих языках, проверьте все изображения и обе главные страницы.
+Запишите актуальные commit, параметры и SHA-256, не переносите сведения прежней сборки.
 
 ## English
 
-All 16 screenshots show **1.1.0**, captured on 18 October 2026 using an Android
-16 emulator and made-up records. No personal phone or work data was used.
-The table above links to every scene in both languages.
+All 20 screenshots were captured on **19 October 2026** using a dedicated
+Android 16 emulator and the current **`main` dev/debug build**, after the UI,
+notification and monthly-balance updates. They do not show the published stable
+1.1.0. The APK still reports `1.1.0` (`versionCode = 3`); no new stable release
+was created for this gallery. Only made-up data was used, never a personal phone
+or work records. The table above links to every scene in both languages.
 
-The `Design Lab` and `Learning` examples include three manual entries totaling
-three hours, preserved during the 1.0.0 upgrade. History uses the real `c` search;
-reports also include genuine short timer-test sessions.
+The `Design Lab` and `Learning` projects contain 24 demonstration entries imported
+through the normal backup preview and Merge flow. September 2026 has **166 hours
+30 minutes** of confirmed work; the manually saved **160-hour** plan gives
+**+06:30:00**. The optional weekday estimate is 176 hours, not an automatically
+applied norm. Two hours of confirmed work were added for 19 October. A genuine
+short timer session was paused and resumed during capture, so daily totals and
+the session chronometer vary slightly. Project names and notes remain the same;
+the app interface is localized.
 
-To refresh the gallery, select a dedicated emulator explicitly, navigate through
-the actual interface in both languages, capture PNGs, and resize proportionally
-to 720 × 1560. Review both README galleries. Current captures use a Pixel 5
-profile at 1080 × 2340, portrait orientation, normal text size, and device colors off.
-System demo mode may stabilize the status bar, not alter the app. Do not generate,
-composite, or paint over screenshots. Build details are available in the expandable
-section above and the release verification report.
+PNGs were captured directly at **720 × 1560**, 280 dpi, portrait orientation,
+100% font scale, device colors off, with light and dark themes as shown.
+There was no resizing, retouching, generation or compositing. Android remained
+in English while OTM used RU or EN, so notification-shade system labels stay English.
+Demo mode stabilizes the status-bar clock and battery only. Emulator service
+notifications were temporarily snoozed through Android for notification captures;
+OTM's content, progress and actions were not altered. These show standard Android
+16 `ProgressStyle` with Live Updates off, not promotion, proprietary OEM animations
+or physical-device battery performance.
+
+The captured source commit, debug task, package, APK hash and AVD are listed above.
+The APK, demo backup, local helpers and SDK are not committed. To refresh the
+gallery, explicitly select a dedicated emulator, navigate the actual interface
+in both languages, inspect every image and both README galleries, and record
+the real source commit, settings and APK checksum. Do not reuse old provenance.

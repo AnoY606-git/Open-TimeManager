@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="docs/assets/mark.svg" width="80" height="80" alt="Open TimeManager logo">
+  <img src="docs/assets/mark.svg" width="80" height="80" alt="OTM logo">
 </p>
 
-<h1 align="center">Open TimeManager</h1>
+<h1 align="center">OTM</h1>
 
 <p align="center">
-  A work-time tracker for Android.<br>
+  Open TimeManager — a work-time tracker for Android.<br>
   No account, ads, or cloud sync.
 </p>
 
@@ -20,46 +20,53 @@
   <a href="README.md">Русский</a>
 </p>
 
-Choose a project, start the timer, and get on with your work. Open TimeManager
+Choose a project, start the timer, and get on with your work. OTM
 keeps your sessions, lets you fill in missing entries, and shows where your time
 went. Your records stay on your device; no internet connection is needed.
+
+The description and screenshots below cover the current `main` branch after
+1.1.0. The latest stable release is **1.1.0**; monthly plans and the updated
+notification progress are currently available in builds from current source.
 
 ## What you can do
 
 - **Track your work.** Start, pause, switch projects, and add notes.
 - **Keep history tidy.** Add work you forgot to time, then search and edit entries.
-- **See the bigger picture.** View weekly, monthly, or custom reports. Export CSV for spreadsheets.
+- **See the bigger picture.** View weekly, monthly, or custom reports. Set a separate plan for each month and check its balance. Export CSV for spreadsheets.
 - **Keep a backup.** Save password-encrypted files, move your records, and choose whether to merge or replace data.
-- **Stay in control.** Use the notification, home-screen widget, or Quick Settings tile.
+- **Stay in control.** Use the notification, home-screen widget, or Quick Settings tile. The notification shows daily goal progress across all projects.
 - **Make it yours.** Choose a theme, language, daily goal, and default project. Built-in help works offline.
 
 ## Screenshots
 
 | Timer | History |
 | :---: | :---: |
-| <img src="docs/screenshots/en-timer.png" width="280" alt="Paused timer with a selected project and daily goal"> | <img src="docs/screenshots/en-history.png" width="280" alt="History with project and note search"> |
-| **Reports** | **Settings** |
-| <img src="docs/screenshots/en-reports.png" width="280" alt="Weekly report showing time spent on each project"> | <img src="docs/screenshots/en-settings.png" width="280" alt="Settings for appearance, tracking, backups, help, and app information"> |
+| <img src="docs/screenshots/en-timer.png" width="280" alt="Timer with a selected project and daily goal"> | <img src="docs/screenshots/en-history.png" width="280" alt="History with project and note search"> |
+| **Monthly balance** | **Notification** |
+| <img src="docs/screenshots/en-reports.png" width="280" alt="Last month's report with confirmed time, a monthly plan, and the balance"> | <img src="docs/screenshots/en-notification.png" width="280" alt="Expanded OTM notification with segmented daily progress on Android 16"> |
 
 <details>
-<summary>More screens: help, project selection, and unprotected backup</summary>
+<summary>Settings, help, default project, and unprotected backup</summary>
 
-| Help | Default project | Unprotected backup |
-| :---: | :---: | :---: |
-| <img src="docs/screenshots/en-help.png" width="240" alt="Offline guide with topic search"> | <img src="docs/screenshots/en-default-project.png" width="240" alt="Choosing a project for new sessions"> | <img src="docs/screenshots/en-backup-warning.png" width="240" alt="Warning that anyone with an unprotected backup can read its contents"> |
+| Settings | Help |
+| :---: | :---: |
+| <img src="docs/screenshots/en-settings.png" width="280" alt="Settings for appearance, tracking, backups, help, and app information"> | <img src="docs/screenshots/en-help.png" width="280" alt="Offline guide with topic search"> |
+| **Default project** | **Unprotected backup** |
+| <img src="docs/screenshots/en-default-project.png" width="280" alt="Choosing a project for new sessions"> | <img src="docs/screenshots/en-backup-warning.png" width="280" alt="Warning that anyone with an unprotected backup can read its contents"> |
 
 </details>
 
 <details>
-<summary>Dark theme</summary>
+<summary>Monthly plan and dark theme</summary>
 
-<p align="center">
-  <img src="docs/screenshots/en-timer-dark.png" width="280" alt="Timer in the dark theme">
-</p>
+| Monthly plan | Dark theme |
+| :---: | :---: |
+| <img src="docs/screenshots/en-monthly-plan.png" width="280" alt="Manual monthly plan in hours and minutes with an optional weekday estimate"> | <img src="docs/screenshots/en-timer-dark.png" width="280" alt="Timer in the dark theme"> |
 
 </details>
 
-Version 1.1.0, captured on an emulator with made-up records.
+Current `main` development build, captured on an Android 16 emulator on
+19 October 2026 with made-up records.
 [About the screenshots](docs/screenshots/README.md#english).
 
 ## Install or update
@@ -73,8 +80,9 @@ The app is distributed through GitHub Releases, not Google Play.
 [What's new in 1.1.0](docs/releases/1.1.0.md#english).
 
 New local and CI builds are named **OTM** on your device.
-New local and CI builds produce `OTM.apk`. Files in previously published
-releases keep their original names.
+They produce **`OTM.apk`**; the application ID is unchanged. Previously published
+releases keep their original APK names. To use current `main` features,
+[build from source](docs/BUILDING.md#english).
 
 Before updating, save and check an encrypted backup. Version 1.1.0 uses the same
 signing key as 1.0.0; an emulator upgrade preserved existing data. Test builds
@@ -104,6 +112,9 @@ Android's file picker, that provider will upload the file.
 Finish the timer before restoring a copy. **Replace removes your current
 projects and history**, so save a separate, checked backup first. Hiding project
 names in notifications does not encrypt the database or exported files.
+Monthly plans, language, the default-project choice, and the Live Updates
+preference stay on the device, outside backups. Changing the daily goal does
+not change saved monthly plans.
 
 [Backups and restore](docs/USER_GUIDE.md#backups-and-restore) ·
 [Security and privacy](docs/SECURITY.md#english)
