@@ -1,0 +1,28 @@
+<resources>
+    <string name="notification_daily_progress">Today %1$s of %2$s</string>
+    <string name="notification_review_hint">Open the app to review the unconfirmed interval.</string>
+    <string name="report_month_previous">Previous month</string>
+    <string name="report_month_next">Next month</string>
+    <string name="report_month_current">Current month</string>
+    <string name="report_month_last">Last month</string>
+    <string name="monthly_balance_title">Monthly balance</string>
+    <string name="monthly_actual">Confirmed time</string>
+    <string name="monthly_target">Monthly plan</string>
+    <string name="monthly_target_unset">Plan not set</string>
+    <string name="monthly_target_unset_hint">Set this month’s planned hours to see the balance. No plan does not mean missing hours.</string>
+    <string name="monthly_balance_above">Above plan</string>
+    <string name="monthly_balance_below">Below plan</string>
+    <string name="monthly_balance_remaining">Remaining to plan</string>
+    <string name="monthly_balance_met">Plan met</string>
+    <string name="monthly_balance_confirmed_hint">Only confirmed intervals count here. The running interval is added after pause or stop.</string>
+    <string name="monthly_plan_local_only">Monthly plans stay on this device and are not included in backup files. Restoring time records does not replace them.</string>
+    <string name="monthly_target_edit">Edit monthly plan</string>
+    <string name="monthly_target_set">Set monthly plan</string>
+    <string name="monthly_target_hours">Hours</string>
+    <string name="monthly_target_minutes">Minutes (0–59)</string>
+    <string name="monthly_target_estimate">Weekday estimate: %1$s</string>
+    <string name="monthly_target_estimate_hint">Monday–Friday × your current daily goal. Holidays, leave and individual schedules are not included. Apply it only if it fits this month.</string>
+    <string name="monthly_target_use_estimate">Use estimate</string>
+    <string name="monthly_target_remove">Remove plan</string>
+    <string name="monthly_target_error">Enter whole hours and 0–59 minutes, no more than the total hours in this month.</string>
+</resources>

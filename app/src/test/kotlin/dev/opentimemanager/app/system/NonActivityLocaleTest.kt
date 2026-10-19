@@ -22,6 +22,7 @@ import dev.opentimemanager.core.model.TrackingSession
 import dev.opentimemanager.core.model.TrackingState
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -61,8 +62,8 @@ class NonActivityLocaleTest {
                 assertEquals("Tracking", context.getString(R.string.tracking_running))
 
                 val rendered = notification.build(snapshot, privacyMode = false)
-                assertEquals(title, rendered.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-                assertEquals(status, rendered.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+                assertEquals(status, rendered.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+                assertEquals(title, rendered.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
                 assertEquals(primary, rendered.actions.first().title.toString())
                 assertEquals(status, TrackingTileService.presentation(context, snapshot).label)
                 val widget = TrackingWidgetProvider.views(context, snapshot, privacyMode = false).apply(context, null)
@@ -72,7 +73,8 @@ class NonActivityLocaleTest {
                 updater.refresh(snapshot)
                 val active = context.getSystemService(NotificationManager::class.java).activeNotifications
                     .single { it.id == TrackingNotification.ID }.notification
-                assertEquals(status, active.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+                assertEquals(status, active.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+                assertTrue(active.extras.getCharSequence(Notification.EXTRA_TEXT).isNullOrBlank())
             }
             application.deleteFile(APP_COMPAT_LOCALES_RECORD)
             assertEquals("Tracking", notification.build(snapshot).extras.getCharSequence(Notification.EXTRA_TITLE).toString())

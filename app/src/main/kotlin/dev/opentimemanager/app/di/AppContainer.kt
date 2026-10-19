@@ -14,6 +14,7 @@ import dev.opentimemanager.app.tracking.*
 import dev.opentimemanager.app.settings.UserSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 
 /** Владелец process-scoped БД; зависимости передаются потребителям явно. */
 class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatchers.IO, clock: ClockSnapshotSource = AndroidClockSnapshotSource(context)) {
@@ -28,6 +29,7 @@ class AppContainer(context: Context, dispatcher: CoroutineDispatcher = Dispatche
     val trackingCoordinator = TrackingCoordinator(
         RoomTrackingRepository(database, clock, dispatcher),
         defaultProjectId = settings.defaultProjectId,
+        dailyGoalMinutes = settings.values.map { it.dailyGoalMinutes },
     )
     val restore = RestoreRepository(database, dispatcher, settings = settings, settingsJournal = settingsJournal)
     val csvExport = CsvExportCoordinator(

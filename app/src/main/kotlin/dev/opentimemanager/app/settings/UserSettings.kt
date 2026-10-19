@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import java.io.IOException
+import java.time.DateTimeException
+import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -125,6 +127,37 @@ class UserSettings(
     private val observedPreferences = store.data.recoverPreferenceReadFailures()
 
     val values: Flow<UserPreferences> = observedPreferences.map(::decode)
+
+    /** Локальные нормы по месяцам: не входят в переносимые настройки и резервные копии. */
+    val monthlyTargets: Flow<Map<YearMonth, Int>> = observedPreferences
+        .map { preferences ->
+            buildMap {
+                preferences.asMap().forEach { (key, value) ->
+                    if (!key.name.startsWith(MONTHLY_TARGET_PREFIX) || value !is Int) return@forEach
+                    val suffix = key.name.removePrefix(MONTHLY_TARGET_PREFIX)
+                    val month = try {
+                        YearMonth.parse(suffix)
+                    } catch (_: DateTimeException) {
+                        return@forEach
+                    }
+                    if (month.toString() != suffix) return@forEach
+                    val maximum = maximumMonthlyTargetMinutesOrNull(month) ?: return@forEach
+                    if (value in 0..maximum) put(month, value)
+                }
+            }
+        }
+        .distinctUntilChanged()
+
+    suspend fun setMonthlyTargetMinutes(month: YearMonth, minutes: Int?) {
+        val maximum = requireNotNull(maximumMonthlyTargetMinutesOrNull(month)) { "Unsupported target month" }
+        require(minutes == null || minutes in 0..maximum) { "Monthly target exceeds the calendar month" }
+        val key = intPreferencesKey(MONTHLY_TARGET_PREFIX + month)
+        mutationBoundary.serialized {
+            store.edit { preferences ->
+                if (minutes == null) preferences.remove(key) else preferences[key] = minutes
+            }
+        }
+    }
 
     /**
      * Local-only project override; null keeps automatic selection. This key is
@@ -255,9 +288,14 @@ class UserSettings(
         private val PRIVACY = booleanPreferencesKey("privacy")
         private val DAILY_GOAL = intPreferencesKey("daily_goal_minutes")
         private val DEFAULT_PROJECT = stringPreferencesKey("default_project_id")
+        private const val MONTHLY_TARGET_PREFIX = "month_target_"
         private val stores = ConcurrentHashMap<String, DataStore<Preferences>>()
     }
 }
+
+/** Норма ограничена длительностью календарного месяца, нулевая норма допустима. */
+internal fun maximumMonthlyTargetMinutesOrNull(month: YearMonth): Int? =
+    month.takeIf { it.year in 1900..9999 }?.let { it.lengthOfMonth() * 1_440 }
 
 private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
     enumValues<T>().firstOrNull { it.name == this }

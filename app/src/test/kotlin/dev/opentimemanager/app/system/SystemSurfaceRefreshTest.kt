@@ -117,7 +117,8 @@ class SystemSurfaceRefreshTest {
         try {
             assertTrue(preferences.edit().putBoolean("privacy", false).commit())
             updater.refresh(fixture())
-            assertEquals("Secret project", posted().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+            assertEquals("Tracking", posted().extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+            assertEquals("Secret project", posted().extras.getCharSequence(Notification.EXTRA_TEXT).toString())
             assertFalse(posted().publicVersion.extras.toString().contains("Secret project"))
         } finally {
             preferences.edit().remove("privacy").commit()

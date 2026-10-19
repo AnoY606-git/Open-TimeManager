@@ -106,7 +106,8 @@ class SystemSurfaceContractTest {
         assertEquals(listOf("Pause", "Stop"), running.actions.map { it.title.toString() })
         assertFalse(running.extras.toString().contains("Secret"))
         val visible = builder.build(fixture(), privacyMode = false)
-        assertTrue(visible.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains("Secret project"))
+        assertEquals("Tracking", visible.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertTrue(visible.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains("Secret project"))
         assertFalse(visible.publicVersion.extras.toString().contains("Secret"))
         val paused = builder.build(fixture(TrackingState.PAUSED), true)
         assertFalse(paused.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
@@ -129,7 +130,7 @@ class SystemSurfaceContractTest {
             ),
         )
         val englishTitle = TrackingNotification(context).build(snapshot, privacyMode = false)
-            .extras.getCharSequence(Notification.EXTRA_TITLE).toString()
+            .extras.getCharSequence(Notification.EXTRA_TEXT).toString()
         assertEquals("No project", englishTitle)
         val ruConfig = android.content.res.Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag("ru")) }
         val russian = context.createConfigurationContext(ruConfig)

@@ -1,0 +1,28 @@
+<resources>
+    <string name="notification_daily_progress">Сегодня %1$s из %2$s</string>
+    <string name="notification_review_hint">Откройте приложение, чтобы проверить неподтверждённый интервал.</string>
+    <string name="report_month_previous">Предыдущий месяц</string>
+    <string name="report_month_next">Следующий месяц</string>
+    <string name="report_month_current">Текущий месяц</string>
+    <string name="report_month_last">Прошлый месяц</string>
+    <string name="monthly_balance_title">Баланс месяца</string>
+    <string name="monthly_actual">Подтверждённое время</string>
+    <string name="monthly_target">План на месяц</string>
+    <string name="monthly_target_unset">План не задан</string>
+    <string name="monthly_target_unset_hint">Задайте план часов этого месяца, чтобы увидеть баланс. Отсутствие плана не означает недобор.</string>
+    <string name="monthly_balance_above">Сверх плана</string>
+    <string name="monthly_balance_below">Ниже плана</string>
+    <string name="monthly_balance_remaining">Осталось до плана</string>
+    <string name="monthly_balance_met">План выполнен</string>
+    <string name="monthly_balance_confirmed_hint">Здесь учитываются только подтверждённые интервалы. Текущий интервал добавится после паузы или завершения.</string>
+    <string name="monthly_plan_local_only">Планы месяцев хранятся на этом устройстве и не входят в файлы резервных копий. Восстановление записей времени их не заменяет.</string>
+    <string name="monthly_target_edit">Изменить план месяца</string>
+    <string name="monthly_target_set">Задать план месяца</string>
+    <string name="monthly_target_hours">Часы</string>
+    <string name="monthly_target_minutes">Минуты (0–59)</string>
+    <string name="monthly_target_estimate">Оценка по будням: %1$s</string>
+    <string name="monthly_target_estimate_hint">Понедельник–пятница × текущая дневная цель. Праздники, отпуска и индивидуальный график не учтены. Применяйте оценку, только если она подходит этому месяцу.</string>
+    <string name="monthly_target_use_estimate">Использовать оценку</string>
+    <string name="monthly_target_remove">Убрать план</string>
+    <string name="monthly_target_error">Введите целые часы и 0–59 минут, не больше общего числа часов в этом месяце.</string>
+</resources>

@@ -2,13 +2,16 @@ package dev.opentimemanager.app.system
 
 import android.app.*
 import android.content.Context
+import android.graphics.Color
 import android.os.Build
 import android.os.SystemClock
 import android.text.format.DateUtils
 import androidx.core.content.ContextCompat
+import androidx.annotation.RequiresApi
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.tracking.SystemSnapshot
 import dev.opentimemanager.app.data.ProjectRepository
+import dev.opentimemanager.app.ui.formatDuration
 import dev.opentimemanager.core.model.TrackingState
 
 class TrackingNotification(private val context: Context) {
@@ -24,10 +27,20 @@ class TrackingNotification(private val context: Context) {
         // Do not retain a localized wrapper: the same service/builder can outlive a language change.
         val strings = ContextCompat.getContextForLanguage(context)
         val state = snapshot.session.state
-        val title = if (privacyMode) strings.getString(statusString(state)) else projectTitle(strings, snapshot)
+        val title = strings.getString(statusString(state))
+        val daily = snapshot.dailyProgress.takeIf { state == TrackingState.RUNNING || state == TrackingState.PAUSED }
+        val detail = if (state == TrackingState.NEEDS_REVIEW) strings.getString(R.string.notification_review_hint) else daily?.let {
+            strings.getString(
+                R.string.notification_daily_progress,
+                formatDuration(it.trackedMillis, includeSeconds = false),
+                formatDuration(it.goalMinutes * 60_000L, includeSeconds = false),
+            )
+        }
+        val project = if (privacyMode) null else projectTitle(strings, snapshot).takeUnless { it == title }
+        val body = listOfNotNull(detail, project).distinct().joinToString(" · ").takeIf { it.isNotBlank() }
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tracking).setContentTitle(title)
-            .setContentText(strings.getString(statusString(state)))
+            .setContentText(body)
             .setOngoing(true).setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_STOPWATCH)
             .setPublicVersion(Notification.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_tracking).setContentTitle(strings.getString(statusString(state))).build())
@@ -40,6 +53,19 @@ class TrackingNotification(private val context: Context) {
             // Show only the confirmed duration; it must not age while paused or awaiting review.
             builder.setShowWhen(false).setUsesChronometer(false)
                 .setSubText(DateUtils.formatElapsedTime(elapsed / 1000))
+        }
+        if (daily != null) {
+            // Полоса и её кэш используют те же целые минуты, что и видимая подпись.
+            val minutes = (daily.trackedMillis / 60_000L).coerceAtMost(daily.goalMinutes.toLong())
+            val progress = (minutes * DAILY_PROGRESS_MAX / daily.goalMinutes).toInt()
+            if (Build.VERSION.SDK_INT >= 36) {
+                applyProgressStyle(builder, progress)
+            } else {
+                builder.setProgress(DAILY_PROGRESS_MAX, progress, false)
+                if (body != null) builder.setStyle(Notification.BigTextStyle().bigText(body))
+            }
+        } else if (body != null) {
+            builder.setStyle(Notification.BigTextStyle().bigText(body))
         }
         TrackingActions.primary(snapshot)?.let {
             builder.addAction(Notification.Action.Builder(null, strings.getString(primaryString(state)), TrackingActions.pendingIntent(context, it)).build())
@@ -58,9 +84,21 @@ class TrackingNotification(private val context: Context) {
         return builder.build()
     }
 
+    @RequiresApi(36)
+    private fun applyProgressStyle(builder: Notification.Builder, progress: Int) {
+        builder.setColor(Color.rgb(0, 153, 92))
+        builder.setStyle(
+            Notification.ProgressStyle()
+                .setProgressSegments(List(4) { Notification.ProgressStyle.Segment(DAILY_PROGRESS_MAX / 4).setColor(Color.rgb(0, 153, 92)) })
+                .setStyledByProgress(true)
+                .setProgress(progress),
+        )
+    }
+
     companion object {
         const val CHANNEL_ID = "work_time_tracking"
         const val ID = 1
+        private const val DAILY_PROGRESS_MAX = 1_000
         fun statusString(state: TrackingState): Int = when (state) {
             TrackingState.IDLE -> R.string.tracking_ready
             TrackingState.RUNNING -> R.string.tracking_running

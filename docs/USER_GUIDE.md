@@ -63,6 +63,19 @@
 текущий отрезок добавится после паузы, завершения или смены проекта.
 Поэтому работающий таймер может показывать больше, чем отчёт.
 
+В режиме месяца стрелки переключают календарные месяцы, а «Прошлый месяц»
+и «Текущий месяц» позволяют быстро вернуться к нужному периоду. В карточке
+«Баланс месяца» задайте план часов и минут именно для выбранного месяца:
+приложение покажет переработку или недобор, а для незавершённого месяца —
+сколько осталось до плана. Пока план не задан, недобор не рассчитывается.
+Нулевой план допустим, например для месяца без работы.
+
+Оценка по будням использует понедельник–пятницу и текущую дневную цель,
+но не знает праздников, отпусков и вашего графика. Она заполняет форму только
+по нажатию; проверьте и сохраните её самостоятельно. Изменение дневной цели
+не меняет уже сохранённые планы месяцев. Планы хранятся локально и не входят
+в резервные копии; восстановление записей их не заменяет.
+
 Кнопка экспорта сохраняет выбранный период в CSV через системное окно Android.
 Его можно открыть в таблицах. **CSV не подходит для восстановления приложения**
 и может содержать названия проектов и заметки — не публикуйте его случайно.
@@ -91,7 +104,7 @@
 
 Копии содержат проекты, заметки, сохранённые интервалы и основные настройки:
 тему, цвета устройства, скрытие названий и дневную цель. Язык и проект по
-умолчанию остаются на устройстве. Старые зашифрованные копии поддерживаются.
+умолчанию и планы месяцев остаются на устройстве. Старые зашифрованные копии поддерживаются.
 Приложение принимает файл до 4 МиБ и до 20 000 проектов, записей и интервалов
 каждого вида.
 
@@ -246,6 +259,18 @@ your current time zone. Reports include saved intervals; a running interval is
 added after you pause, stop, or switch projects. That is why the live timer can
 show more than the report.
 
+In monthly mode, use the arrows to browse calendar months or jump to the last
+or current month. Set planned hours and minutes for that specific month in
+Monthly balance. The card shows time above or below plan; an unfinished month
+shows how much remains. An unset plan is not treated as missing work, and a
+zero-hour plan is allowed.
+
+The weekday estimate uses Monday–Friday and your current daily goal, not public
+holidays, leave, or individual schedules. It only fills the form when requested;
+review and save it yourself. Changing the daily goal does not change saved
+monthly plans. Plans stay on this device, outside backups; restoring time
+records does not replace them.
+
 Export saves the chosen range as CSV through Android's file picker.
 **CSV is for spreadsheets, not restoring the app.** It can contain project names
 and notes, so keep it private.
@@ -271,7 +296,7 @@ Spaces matter; older copies with shorter passwords still work. If an encrypted
 file does not open, check the password and file. The app does not bypass encryption.
 
 Copies include projects, notes, saved intervals, theme, device colors, hidden
-project labels, and the daily goal. Language and the default-project choice stay
+project labels, and the daily goal. Language, monthly plans, and the default-project choice stay
 on the device. Older encrypted copies remain supported. The app accepts up to
 4 MiB and 20,000 projects, entries, and intervals of each kind.
 

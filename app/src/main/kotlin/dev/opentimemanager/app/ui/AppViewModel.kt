@@ -41,6 +41,7 @@ import dev.opentimemanager.core.report.ReportTotals
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
+import java.time.YearMonth
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -116,6 +117,7 @@ data class AppUiState(
     val todayEntries: List<EntryEntity> = emptyList(),
     val todayProjects: List<ProjectEntity> = emptyList(),
     val defaultProjectId: String? = snapshot?.defaultProjectId,
+    val monthlyTargets: Map<YearMonth, Int> = emptyMap(),
 ) {
     val availableProjects get() = snapshot?.projects.orEmpty().filter { it.archivedAtUtcMillis == null }
     val selectedProjectId: String? get() {
@@ -210,13 +212,18 @@ class AppViewModel(
             )
         }
     }
+    private val preferencesWithMonthlyTargets = combine(
+        container.settings.values,
+        container.settings.monthlyTargets,
+    ) { preferences, targets -> preferences to targets }
     val state: StateFlow<AppUiState> = combine(
         snapshots,
-        container.settings.values,
+        preferencesWithMonthlyTargets,
         controls,
         reportProjection,
         todayProjection,
-    ) { snapshot, preferences, current, report, today ->
+    ) { snapshot, preferencesAndTargets, current, report, today ->
+        val (preferences, monthlyTargets) = preferencesAndTargets
         val currentReport = report.takeIf { it.period == current.reportPeriod }?.summary
         AppUiState(
             snapshot = snapshot,
@@ -230,6 +237,7 @@ class AppViewModel(
             todayEntries = today.entries,
             todayProjects = today.projects,
             defaultProjectId = snapshot.defaultProjectId,
+            monthlyTargets = monthlyTargets,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppUiState())
 
@@ -277,6 +285,10 @@ class AppViewModel(
         updateControls { copy(manualProjectPicker = ManualProjectPickerState()) }
     }
     fun selectReportPeriod(period: ReportPeriod) = updateControls { copy(reportPeriod = period) }
+    fun setMonthlyTargetMinutes(month: YearMonth, minutes: Int?) = launchWrite {
+        container.settings.setMonthlyTargetMinutes(month, minutes)
+        UiMessage.SAVED
+    }
     fun clearMessage() = updateControls { copy(message = null) }
 
     fun performPrimary() {

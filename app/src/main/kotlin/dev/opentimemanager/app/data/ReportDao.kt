@@ -23,6 +23,13 @@ sealed interface EditResult {
 
 @Dao
 abstract class ReportDao {
+    /** Скалярная дневная сумма без загрузки строк закрытых сегментов в память. */
+    @Query("""SELECT COALESCE(SUM(MIN(endUtcMillis, :to) - MAX(startedAtUtcMillis, :from)), 0)
+        FROM segments
+        WHERE durationMillis IS NOT NULL
+          AND startedAtUtcMillis < :to AND endUtcMillis > :from""")
+    abstract fun confirmedMillisInRange(from: Long, to: Long): Long
+
     @Query("""SELECT segments.id, segments.entryId, entries.projectId,
         segments.startedAtUtcMillis, segments.durationMillis
         FROM segments JOIN entries ON entries.id = segments.entryId

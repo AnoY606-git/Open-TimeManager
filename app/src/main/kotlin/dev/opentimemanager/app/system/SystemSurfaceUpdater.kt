@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.time.LocalDate
 
 enum class NotificationAvailability { AVAILABLE, BLOCKED }
 
@@ -29,6 +30,9 @@ internal data class SystemSurfaceKey(
     val primary: TrackingCommand?,
     val stop: TrackingCommand.Stop?,
     val title: String,
+    val dailyDate: LocalDate?,
+    val dailyGoalMinutes: Int?,
+    val dailyTrackedMinutes: Long?,
     val configuration: Configuration,
     val liveUpdates: LiveUpdatePreferenceState,
 )
@@ -36,6 +40,7 @@ internal data class SystemSurfaceKey(
 internal fun systemSurfaceKey(context: Context, snapshot: SystemSnapshot, privacyMode: Boolean): SystemSurfaceKey {
     val strings = ContextCompat.getContextForLanguage(context)
     val state = snapshot.session.state
+    val daily = snapshot.dailyProgress.takeIf { state == TrackingState.RUNNING || state == TrackingState.PAUSED }
     return SystemSurfaceKey(
         state = state,
         confirmedDurationMillis = snapshot.session.confirmedDurationMillis,
@@ -43,6 +48,9 @@ internal fun systemSurfaceKey(context: Context, snapshot: SystemSnapshot, privac
         primary = TrackingActions.primary(snapshot),
         stop = if (state == TrackingState.RUNNING || state == TrackingState.PAUSED) TrackingActions.stop(snapshot) else null,
         title = if (privacyMode) strings.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(strings, snapshot),
+        dailyDate = daily?.date,
+        dailyGoalMinutes = daily?.goalMinutes,
+        dailyTrackedMinutes = daily?.trackedMillis?.div(60_000L),
         configuration = Configuration(strings.resources.configuration),
         liveUpdates = LiveUpdatePreferences(context).current(),
     )

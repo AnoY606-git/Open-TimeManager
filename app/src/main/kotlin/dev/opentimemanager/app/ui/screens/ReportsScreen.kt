@@ -85,6 +85,7 @@ import dev.opentimemanager.app.ui.theme.LocalAppPalette
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
@@ -97,14 +98,15 @@ fun ReportsScreen(
     onBeginCsvExport: ((UtcBounds) -> String)? = null,
     onCancelCsvExport: (() -> Unit)? = null,
     onLaunchCsvDocument: (String) -> Unit = {},
+    onMonthlyTargetChange: ((YearMonth, Int?) -> Unit)? = null,
 ) {
     if (state.snapshot == null) return
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val zone = ZoneId.systemDefault()
     val today = rememberCurrentDate(zone)
-    val bounds = state.controls.reportPeriod.validatedBounds(today, zone).value
-        ?: requireNotNull(ReportPeriod.WEEK.validatedBounds(today, zone).value)
+    val period = state.controls.reportPeriod.takeIf { it.validatedBounds(today, zone).value != null } ?: ReportPeriod.WEEK
+    val bounds = requireNotNull(period.validatedBounds(today, zone).value)
     val totals = state.reportTotals
     // Never label a previous query's totals with the newly selected period or time zone.
     val reportLoading = state.reportLoading || state.reportBounds?.let { it != bounds } == true
@@ -140,6 +142,12 @@ fun ReportsScreen(
         }
     }
     var showCustom by rememberSaveable { mutableStateOf(false) }
+    var editingMonthName by rememberSaveable { mutableStateOf<String?>(null) }
+    val reportMonth = when (period) {
+        ReportPeriod.MONTH -> YearMonth.from(today)
+        is ReportPeriod.CalendarMonth -> period.month
+        else -> null
+    }
     var exportLaunchFailed by remember { mutableStateOf(false) }
     val exportBusy = state.controls.dataTransferBusy
     Box(
@@ -159,18 +167,43 @@ fun ReportsScreen(
             }
             item("periods") {
                 ReportPeriodTabs(
-                    period = state.controls.reportPeriod,
+                    period = period,
                     onSelectPeriod = onSelectPeriod,
                     onCustom = { showCustom = true },
                 )
             }
-            item("total") {
-                if (reportLoading) {
-                    AppCard(modifier = Modifier.testTag("report_loading")) {
-                        CircularProgressIndicator(Modifier.size(24.dp))
-                        Text(stringResource(R.string.data_operation_in_progress))
+            val lastMonth = YearMonth.from(today).minusMonths(1)
+            if (reportMonth != lastMonth && ReportPeriod.CalendarMonth(lastMonth).validatedBounds(today, zone).value != null) {
+                item("last-month") {
+                    TextButton(onClick = { onSelectPeriod(ReportPeriod.CalendarMonth(lastMonth)) },
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("report_month_last")) {
+                        Text(stringResource(R.string.report_month_last))
                     }
-                } else ReportTotalHero(totals.totalMillis, dateRange)
+                }
+            }
+            if (reportMonth != null) {
+                item("month-navigation") {
+                    MonthReportNavigation(reportMonth, today, zone, onSelectPeriod)
+                }
+                item("month-balance") {
+                    MonthlyBalanceCard(
+                        actualMillis = totals.totalMillis,
+                        targetMinutes = state.monthlyTargets[reportMonth],
+                        loading = reportLoading,
+                        finished = reportMonth < YearMonth.from(today),
+                        canEdit = onMonthlyTargetChange != null,
+                        onEdit = { editingMonthName = reportMonth.toString() },
+                    )
+                }
+            } else {
+                item("total") {
+                    if (reportLoading) {
+                        AppCard(modifier = Modifier.testTag("report_loading")) {
+                            CircularProgressIndicator(Modifier.size(24.dp))
+                            Text(stringResource(R.string.data_operation_in_progress))
+                        }
+                    } else ReportTotalHero(totals.totalMillis, dateRange)
+                }
             }
             if (!reportLoading && slices.isNotEmpty() && totals.totalMillis > 0L) {
                 item("distribution") { ReportDistribution(slices) }
@@ -231,6 +264,19 @@ fun ReportsScreen(
             }
         }
     }
+    editingMonthName?.let { name ->
+        val month = YearMonth.parse(name)
+        MonthlyTargetDialog(
+            month = month,
+            targetMinutes = state.monthlyTargets[month],
+            dailyGoalMinutes = state.preferences.dailyGoalMinutes,
+            onDismiss = { editingMonthName = null },
+            onSave = { value ->
+                onMonthlyTargetChange?.invoke(month, value)
+                editingMonthName = null
+            },
+        )
+    }
     if (showCustom) CustomPeriodDialog(
         initial = state.controls.reportPeriod as? ReportPeriod.Custom ?: defaultCustomReport(today),
         onDismiss = { showCustom = false },
@@ -259,13 +305,13 @@ private fun ReportPeriodTabs(period: ReportPeriod, onSelectPeriod: (ReportPeriod
             if (maxWidth.value / LocalDensity.current.fontScale < 240f) {
                 Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     ReportPeriodOption(stringResource(R.string.report_week), period == ReportPeriod.WEEK, { onSelectPeriod(ReportPeriod.WEEK) }, Modifier.fillMaxWidth())
-                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.fillMaxWidth())
+                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH || period is ReportPeriod.CalendarMonth, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.fillMaxWidth())
                     ReportPeriodOption(stringResource(R.string.report_custom), period is ReportPeriod.Custom, onCustom, Modifier.fillMaxWidth())
                 }
             } else {
                 Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     ReportPeriodOption(stringResource(R.string.report_week), period == ReportPeriod.WEEK, { onSelectPeriod(ReportPeriod.WEEK) }, Modifier.weight(1f))
-                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.weight(1f))
+                    ReportPeriodOption(stringResource(R.string.report_month), period == ReportPeriod.MONTH || period is ReportPeriod.CalendarMonth, { onSelectPeriod(ReportPeriod.MONTH) }, Modifier.weight(1f))
                     ReportPeriodOption(stringResource(R.string.report_custom), period is ReportPeriod.Custom, onCustom, Modifier.weight(1f))
                 }
             }

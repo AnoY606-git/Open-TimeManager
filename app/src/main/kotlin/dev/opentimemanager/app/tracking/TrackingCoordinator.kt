@@ -5,6 +5,7 @@ import dev.opentimemanager.app.settings.canonicalDefaultProjectIdOrNull
 import dev.opentimemanager.core.model.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -50,6 +51,7 @@ data class SystemSnapshot(
     val activeProject: ProjectEntity?,
     /** Valid preferred project, or the sole non-archived project when no valid override exists. */
     val quickStartProject: ProjectEntity?,
+    val dailyProgress: DailyTrackingProgress? = null,
 )
 
 data class AppSnapshot(
@@ -70,16 +72,23 @@ data class AppSnapshot(
 class TrackingCoordinator(
     private val repository: RoomTrackingRepository,
     defaultProjectId: Flow<String?> = flowOf(null),
+    dailyGoalMinutes: Flow<Int> = flowOf(480),
 ) {
     private val defaultProjectIds = defaultProjectId
         .map(::canonicalDefaultProjectIdOrNull)
         .distinctUntilChanged()
+    private val systemPreferences = combine(defaultProjectIds, dailyGoalMinutes.distinctUntilChanged()) { preferred, goal ->
+        preferred to goal
+    }
 
-    suspend fun execute(command: TrackingCommand): TrackingResult =
-        repository.execute(command, defaultProjectIds.first())
+    suspend fun execute(command: TrackingCommand): TrackingResult {
+        val (preferred, goal) = systemPreferences.first()
+        return repository.execute(command, preferred, goal)
+    }
 
-    fun observeSystemSnapshot(): Flow<SystemSnapshot> = defaultProjectIds.flatMapLatest { preferred ->
-        repository.observeSystemSnapshot(preferred)
+    // Смена цели инициирует новое чтение: к новой цели не приклеивается старый снимок сессии.
+    fun observeSystemSnapshot(): Flow<SystemSnapshot> = systemPreferences.flatMapLatest { (preferred, goal) ->
+        repository.observeSystemSnapshot(preferred, goal)
     }
     fun observeSnapshot(
         historyLimit: Int = 100,

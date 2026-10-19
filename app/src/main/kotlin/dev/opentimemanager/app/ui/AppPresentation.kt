@@ -391,6 +391,7 @@ data class UtcBounds(val fromUtcMillis: Long, val toUtcMillis: Long)
 sealed interface ReportPeriod {
     data object WEEK : ReportPeriod
     data object MONTH : ReportPeriod
+    data class CalendarMonth(val month: java.time.YearMonth) : ReportPeriod
     data class Custom(val from: LocalDate, val through: LocalDate) : ReportPeriod
 
     fun validatedBounds(today: LocalDate, zoneId: ZoneId): ValidatedInput<UtcBounds> {
@@ -398,6 +399,7 @@ sealed interface ReportPeriod {
             when (this) {
                 WEEK -> today.with(java.time.DayOfWeek.MONDAY) to today.with(java.time.DayOfWeek.SUNDAY)
                 MONTH -> today.withDayOfMonth(1) to today.withDayOfMonth(today.lengthOfMonth())
+                is CalendarMonth -> month.atDay(1) to month.atEndOfMonth()
                 is Custom -> from to through
             }
         } catch (_: DateTimeException) {

@@ -114,8 +114,8 @@ class LocaleRecreationTest {
                 compose.onNodeWithTag("language_$language").assertIsSelected()
 
                 val rendered = notification.build(snapshot, privacyMode = false)
-                assertEquals(defaultName, rendered.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-                assertEquals(running, rendered.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+                assertEquals(running, rendered.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+                assertEquals(defaultName, rendered.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
                 assertEquals(listOf(pause, stop), rendered.actions.map { it.title.toString() })
                 assertEquals(running, TrackingTileService.presentation(app, snapshot).label)
                 val widget = TrackingWidgetProvider.views(app, snapshot, privacyMode = false).apply(app, null)

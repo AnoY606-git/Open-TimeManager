@@ -244,6 +244,10 @@ private fun DestinationContent(
             onBeginCsvExport = viewModel?.let { model -> model::beginCsvExport },
             onCancelCsvExport = viewModel?.let { model -> model::cancelCsvExport },
             onLaunchCsvDocument = onLaunchCsvDocument,
+            onMonthlyTargetChange = if (viewModel == null) null else { month, minutes ->
+                viewModel.setMonthlyTargetMinutes(month, minutes)
+                Unit
+            },
         )
         AppDestination.SETTINGS -> SettingsScreen(
             state = state,
