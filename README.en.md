@@ -82,7 +82,7 @@ it does not establish app approval.
 </details>
 
 The gallery contains 20 genuine `main` development screenshots from an AOSP
-Android 16 / API 36 emulator with made-up records. They show OTM's interface and
+Android 16 / API 36 emulator with made-up records or a fresh empty installation for settings. They show OTM's interface and
 ordinary Android notification, not HyperOS or a working island. Capture provenance
 is documented separately.
 [About the screenshots](docs/screenshots/README.md#english).
