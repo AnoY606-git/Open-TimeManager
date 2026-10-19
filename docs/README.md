@@ -2,10 +2,8 @@
 
 [На главную](../README.md) · [English](#english)
 
-Руководство и новые скриншоты описывают текущую ветку `main` после 1.1.0.
-Изменения, которые ещё не выпущены, перечислены в разделе Unreleased
-[истории версий](../CHANGELOG.md); возможности стабильных выпусков — в их
-отдельных заметках.
+Руководство описывает стабильную **1.2.0**. Галерея показывает её возможности
+на снимках dev-сборок перед выпуском; происхождение изображений сохранено.
 
 ## Пользователям
 
@@ -14,7 +12,7 @@
 | Начать работу, настроить проекты, сохранить копию | [Руководство пользователя](USER_GUIDE.md) |
 | Узнать, где хранятся данные и что защищает пароль | [Безопасность и приватность](SECURITY.md) |
 | Посмотреть интерфейс | [Скриншоты](screenshots/README.md) |
-| Узнать, что изменилось | [История версий](../CHANGELOG.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md) |
+| Узнать, что изменилось | [История версий](../CHANGELOG.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md) |
 
 ## Разработчикам
 
@@ -31,16 +29,15 @@
 
 ## English
 
-The guide and new screenshots cover the current `main` branch after 1.1.0.
-See Unreleased in the [changelog](../CHANGELOG.md) for changes still in development
-and the individual release notes for stable versions.
+The guide covers stable **1.2.0**. The gallery illustrates its features using
+pre-release development captures, with original provenance retained.
 
 | I need to… | Read |
 | --- | --- |
 | Use the app, manage projects, or restore a copy | [User guide](USER_GUIDE.md#english) |
 | Understand storage and backup protection | [Security and privacy](SECURITY.md#english) |
 | See the interface | [Screenshots](screenshots/README.md#english) |
-| Read release changes | [Changelog](../CHANGELOG.md) · [1.1.0](releases/1.1.0.md#english) · [1.0.0](releases/1.0.0.md#english) |
+| Read release changes | [Changelog](../CHANGELOG.md) · [1.2.0](releases/1.2.0.md#english) · [1.1.0](releases/1.1.0.md#english) · [1.0.0](releases/1.0.0.md#english) |
 | Build the project or run tests | [Building from source](BUILDING.md#english) |
 | Suggest a change or contribute a fix | [Contributing](../CONTRIBUTING.md#english) |
 | Work with backup and CSV files | [Format reference](BACKUP_FORMAT.md) — detailed specification in Russian |

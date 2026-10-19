@@ -4,11 +4,8 @@
 
 ## Русский
 
-Это руководство для текущей ветки `main` OTM (Open TimeManager) после выпуска
-1.1.0. Мастер первого запуска, месячные планы, поиск по разделам настроек, обновлённый дневной прогресс
-уведомления и экспериментальный клиент HyperIsland пока доступны в dev-сборках.
-Последний стабильный релиз — 1.1.0;
-его возможности описаны в [заметках к выпуску](releases/1.1.0.md). Справка с поиском также доступна
+Это руководство для OTM (Open TimeManager) **1.2.0**.
+[Изменения выпуска](releases/1.2.0.md). Справка с поиском также доступна
 без интернета в «Настройки → Как работать с приложением».
 
 ### Подготовка при первом запуске
@@ -322,26 +319,21 @@ Android. В разделе «Android и устройство» видны при
 ### Безопасное обновление
 
 Сохраните и проверьте зашифрованную копию, затем установите APK нового релиза
-поверх старого. Для обновления нужна совместимая подпись. В 1.1.0 сохранён
-ключ версии 1.0.0; тестовая сборка может использовать другой ключ.
+поверх старого. Для обновления нужна совместимая подпись. В 1.2.0 сохранён
+production-ключ версий 1.0.0 и 1.1.0; тестовая сборка может использовать другой ключ.
 При ошибке подписи не удаляйте приложение и не очищайте данные ради установки.
 
-У стабильного релиза 1.1.0 файл называется `Open-TimeManager-1.1.0.apk`.
-Текущие локальные и CI-сборки создают `OTM.apk`, а на устройстве приложение
-называется **OTM**. Идентификатор приложения не изменён; короткое имя APK
-само по себе не меняет совместимость подписи. Для текущей ветки `main` см.
-[инструкцию по сборке](BUILDING.md).
+У релиза 1.2.0 файл называется **`OTM.apk`**, а приложение на устройстве — **OTM**.
+Идентификатор приложения не изменён; короткое имя APK само по себе не меняет
+совместимость подписи. У файлов прежних выпусков сохранены длинные имена.
 
 [Скачать релиз](https://github.com/AnoY606-git/Open-TimeManager/releases/latest) ·
 [Подробнее о защите данных](SECURITY.md)
 
 ## English
 
-This guide covers the current `main` branch of OTM (Open TimeManager) after
-1.1.0. First-run setup, monthly plans, settings-section search, updated daily notification progress,
-and the experimental HyperIsland client are currently available in development builds. The latest
-stable release is 1.1.0; see its
-[release notes](releases/1.1.0.md#english) for that version's features.
+This guide covers OTM (Open TimeManager) **1.2.0**.
+See the [release notes](releases/1.2.0.md#english) for what's new.
 Searchable help is also available offline under Settings → How to use the app.
 
 ### First-run setup
@@ -623,14 +615,13 @@ list of tested devices. Battery savings have not been measured.
 ### Update safely
 
 Save and check an encrypted backup, then install the new release over the old
-one. Updates need a compatible signature. Version 1.1.0 keeps 1.0.0's signing key;
+one. Updates need a compatible signature. Version 1.2.0 keeps the production key used by 1.0.0 and 1.1.0;
 test builds may use another. Do not uninstall or clear data to force an update
 after a signature mismatch.
 
-The stable 1.1.0 APK is named `Open-TimeManager-1.1.0.apk`. Current local and CI
-builds produce `OTM.apk` and display **OTM** on the device. The application ID
-is unchanged; shortening the APK name does not change signing compatibility.
-For the current `main` branch, see [Building from source](BUILDING.md#english).
+The 1.2.0 installer is **`OTM.apk`**, and the app displays **OTM** on the device.
+The application ID is unchanged; shortening the APK name does not change signing
+compatibility. Files from older releases retain their original names.
 
 [Download a release](https://github.com/AnoY606-git/Open-TimeManager/releases/latest) ·
 [More about data protection](SECURITY.md#english)

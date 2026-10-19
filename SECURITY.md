@@ -7,7 +7,7 @@
 ### Какие версии поддерживаются
 
 Исправления безопасности выпускаются для последней стабильной версии
-**1.1.0** и основной ветки разработки. Ранние тестовые версии не поддерживаются.
+**1.2.0** и основной ветки разработки. Ранние тестовые версии не поддерживаются.
 
 ### Как написать приватно
 
@@ -35,7 +35,7 @@ issue с описанием эксплуатации. Если приватна�
 
 ### Supported versions
 
-Security fixes target the latest stable release, **1.1.0**, and the default
+Security fixes target the latest stable release, **1.2.0**, and the default
 development branch. Older preview builds are unsupported.
 
 ### Report privately

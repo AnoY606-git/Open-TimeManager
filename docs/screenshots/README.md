@@ -13,7 +13,8 @@ AOSP Android 16 / API 36 из **dev/debug-сборок `main`**, указанн�
 Ещё два кадра показывают форму создания проекта с системным шрифтом 200%.
 Два новых кадра показывают переработанный виджет на рабочем столе со шрифтом 200%.
 Номер версии всех пяти APK остаётся `1.1.0` (`versionCode = 3`);
-новый стабильный релиз для этой галереи не создавался.
+так они были помечены при съёмке. Снимки сохранены как иллюстрации возможностей
+релиза 1.2.0, но не выдаются за захват его окончательного подписанного APK.
 
 Использованы только вымышленные проекты и записи либо пустая новая установка,
 не личный телефон или рабочие данные. Съёмка прежних 18 кадров предшествует
@@ -146,8 +147,9 @@ monthly-balance capture. They do not show the published stable 1.1.0.
 Two new scenes show the first Android setup step.
 Two further scenes show the create-project form at 200% system font scale.
 Two new scenes show the redesigned home-screen widget at 200% font scale.
-All five APKs report `1.1.0` (`versionCode = 3`); no new stable release was created
-for this gallery. Only made-up data or a fresh empty installation was used,
+All five capture APKs report `1.1.0` (`versionCode = 3`), as labeled at capture
+time. The images illustrate features released in 1.2.0, not its exact final signed
+APK. Only made-up data or a fresh empty installation was used,
 never a personal phone or work records. The table above links to every scene
 in both languages. The earlier 18 captures predate the experimental HyperIsland
 client, while the newer scenes show settings, setup, the project form and widget on AOSP.

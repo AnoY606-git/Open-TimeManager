@@ -24,10 +24,8 @@ Choose a project, start the timer, and get on with your work. OTM
 keeps your sessions, lets you fill in missing entries, and shows where your time
 went. Your records stay on your device; no internet connection is needed.
 
-The description and screenshots below cover the current `main` branch after
-1.1.0. The latest stable release is **1.1.0**; first-run setup, monthly plans, settings-section
-search, updated notification progress, and the experimental HyperIsland client
-are currently available in builds from current source.
+The latest stable release is **1.2.0**, with monthly plans, Android setup,
+settings search, and a redesigned widget. [What's new](docs/releases/1.2.0.md#english).
 
 ## What you can do
 
@@ -105,21 +103,21 @@ is documented separately.
 ## Install or update
 
 1. Open the [latest stable release](https://github.com/AnoY606-git/Open-TimeManager/releases/latest).
-2. Download the APK. For version 1.1.0, choose **`Open-TimeManager-1.1.0.apk`**.
+2. Download **`OTM.apk`** from release 1.2.0.
 3. Open it on a device running Android 12 or later. If Android asks, allow
    installation from the app you used to open the APK.
 
 The app is distributed through GitHub Releases, not Google Play.
-[What's new in 1.1.0](docs/releases/1.1.0.md#english).
+[What's new in 1.2.0](docs/releases/1.2.0.md#english).
 
-New local and CI builds are named **OTM** on your device.
-They produce **`OTM.apk`**; the application ID is unchanged. Previously published
-releases keep their original APK names. To use current `main` features,
-[build from source](docs/BUILDING.md#english).
+The app is now named **OTM** on your device and its installer is **`OTM.apk`**.
+The application ID is unchanged: this updates Open TimeManager rather than
+installing a separate app. Older releases keep their original filenames.
 
-Before updating, save and check an encrypted backup. Version 1.1.0 uses the same
-signing key as 1.0.0; an emulator upgrade preserved existing data. Test builds
-may use a different key. **If Android reports a signature mismatch, do not
+Before updating, save and check an encrypted backup. Version 1.2.0 keeps the
+production signing key used by 1.0.0 and 1.1.0. See `VERIFICATION.md` beside the
+APK for upgrade-test results. Test builds may use a different key.
+**If Android reports a signature mismatch, do not
 uninstall the app or clear its data:** that can erase your history.
 
 ## Get started

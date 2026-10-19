@@ -5,6 +5,8 @@
 
 ## В разработке / Unreleased
 
+## 1.2.0 — 19 октября 2026
+
 - Виджет переработан в адаптивную карточку: выразительный таймер, широкие кнопки в высоком варианте и отдельные компактная и широкая компоновки. Светлые и тёмные цвета следуют системной теме рабочего стола; управление и скрытие названий проектов сохранены. На паузе озвучивание длительности больше не увеличивается при обновлении виджета.
 - Формы и подтверждения теперь прокручиваются целиком, включая заголовок и действия: крупный шрифт и короткое окно с клавиатурой не вытесняют поля ввода. Компактный виджет получил отдельные кнопки-иконки 48 dp с полными русскими/английскими названиями для средств доступности; длинное имя проекта больше не выталкивает таймер и управление за границы.
 - Добавлен необязательный мастер первого запуска на русском и английском: Android и семейство устройства, проверка уведомлений и фоновых ограничений, явные действия и возможность пропустить. Пропуск и завершение запоминаются локально без повторных показов; мастер доступен вручную в «Android и устройство». Разрешения и Live Updates не включаются автоматически, точная прошивка не угадывается по бренду.
@@ -17,7 +19,7 @@
 - На узких экранах с крупным шрифтом кнопки навигации располагаются в два ряда, длинные диалоги прокручиваются. Черновики форм и заметок сохраняются при пересоздании экрана и смене компоновки; отказ в необязательных уведомлениях больше не выдаётся за сбой таймера.
 - В локальных и CI-сборках приложение называется OTM, а APK — `OTM.apk`. Идентификатор приложения и правила подписи не изменены; имена уже опубликованных APK сохранены.
 - Переписана документация: короче README, понятнее руководство, отдельная страница сборки.
-- Обновлены русская и английская галереи текущей ветки `main`, добавлены уведомление и ручной план месяца. Снимки dev-сборки сделаны 19 октября 2026 года; стабильный выпуск 1.1.0 остаётся отдельным.
+- Обновлены русская и английская галереи, добавлены уведомление, ручной план месяца, мастер настройки, крупный шрифт и новый виджет. Снимки dev-сборок сделаны 19 октября 2026 года; их происхождение указано отдельно.
 
 **English:** optional first-run setup in Russian and English shows Android and
 device-family information, notification and background-restriction status,
@@ -47,8 +49,8 @@ scrollable dialogs, and restored form and note drafts improve small-window use;
 blocked optional notifications no longer appear as timer failures. Current local
 and CI builds use OTM and `OTM.apk`, with the application ID and signing rules
 unchanged. Updated bilingual documentation and development screenshots dated
-19 October 2026, including notifications and monthly plans. The stable release
-remains 1.1.0.
+19 October 2026, including notifications and monthly plans, with original capture
+provenance retained. Released as stable 1.2.0 with version code 4.
 
 Settings now has compact section rows, a search by real setting/action labels and keywords, query
 clearing, and a no-results state. The query and overview scroll position survive
@@ -78,6 +80,8 @@ ordinary notification. Lifetime estimates and OEM timeout behavior are not
 physically verified. No new SDK, network access, permissions, or database
 schema changes were added. OEM compatibility and privacy are not certified.
 [Details](docs/USER_GUIDE.md#live-updates-and-hyperisland).
+
+[Подробнее / Release notes](docs/releases/1.2.0.md)
 
 ## 1.1.0 — 18 октября 2026
 
