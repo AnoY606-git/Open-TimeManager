@@ -72,6 +72,9 @@ Version 1.1.0, captured on an emulator with made-up records.
 The app is distributed through GitHub Releases, not Google Play.
 [What's new in 1.1.0](docs/releases/1.1.0.md#english).
 
+New local and CI builds produce `OTM.apk`. Files in previously published
+releases keep their original names.
+
 Before updating, save and check an encrypted backup. Version 1.1.0 uses the same
 signing key as 1.0.0; an emulator upgrade preserved existing data. Test builds
 may use a different key. **If Android reports a signature mismatch, do not

@@ -1,3 +1,5 @@
+import com.android.build.gradle.api.ApkVariantOutput
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,6 +25,13 @@ android {
     }
     testOptions.unitTests.isIncludeAndroidResources = true
     buildFeatures.compose = true
+}
+
+// В закреплённом AGP 8.13.2 имя APK задаётся через этот публичный API.
+android.applicationVariants.configureEach {
+    outputs.withType<ApkVariantOutput>().configureEach {
+        outputFileName = "OTM.apk"
+    }
 }
 kotlin { jvmToolchain(17) }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }

@@ -55,7 +55,8 @@
 
 Для Linux-bootstrap используйте `scripts/with-toolchain.sh`, на Windows —
 `.\gradlew.bat`. Неподписанный APK появится в
-`app/build/outputs/apk/release/app-release-unsigned.apk`.
+`app/build/outputs/apk/release/OTM.apk`. Короткое имя не означает наличие подписи:
+это по-прежнему неподписанная сборка.
 
 Используйте `zipalign` **до** подписи и `apksigner` из Android SDK. Не меняйте файл
 после подписи. Ключи, пароли и их резервные копии не должны попадать в Git,
@@ -87,7 +88,7 @@ python3 scripts/check_release_apk.py path/to/final-signed.apk
 
 | Файл | Что положить |
 | --- | --- |
-| `Open-TimeManager-<version>.apk` | Окончательный подписанный APK. |
+| `OTM.apk` | Окончательный подписанный APK. |
 | `SHA256SUMS` | Суммы всех публикуемых файлов, рассчитанные после подписи. |
 | `SIGNING_CERT.txt` | Публичные данные сертификата и результат сравнения с прошлой версией. |
 | `SOURCE_COMMIT.txt` | Полный commit исходников этой сборки. |
@@ -141,7 +142,7 @@ separately. Keep the production key outside Git and CI.
    `./gradlew --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease`
    locally (use `scripts/with-toolchain.sh` for Linux bootstrap or
    `.\gradlew.bat` on Windows). This produces
-   `app/build/outputs/apk/release/app-release-unsigned.apk`.
+   `app/build/outputs/apk/release/OTM.apk` (still unsigned despite the short name).
    Run `zipalign` before signing, then `apksigner`. Verify
    the final signature and run `scripts/check_release_apk.py` against that file.
    Keep keys and passwords out of every public artifact.
@@ -149,7 +150,7 @@ separately. Keep the production key outside Git and CI.
    and install over it without uninstalling, clearing data, or downgrading.
    Compare records and settings. For a signature mismatch, stop and plan a
    separate migration using a checked encrypted backup.
-5. **Prepare downloads.** Include the signed APK, `SHA256SUMS`, `SIGNING_CERT.txt`,
+5. **Prepare downloads.** Include the signed `OTM.apk`, `SHA256SUMS`, `SIGNING_CERT.txt`,
    `SOURCE_COMMIT.txt`, matching source archive, and `VERIFICATION.md`. Calculate
    checksums after signing. Record real results, CI links, and untested scenarios.
 6. **Provide source and notices.** Recipients need matching Corresponding Source

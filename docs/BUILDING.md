@@ -94,14 +94,14 @@ python scripts/check_repository.py
 
 ```bash
 scripts/with-toolchain.sh adb devices -l
-scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/OTM.apk
 ```
 
 На Windows:
 
 ```powershell
 & "$env:ANDROID_HOME\platform-tools\adb.exe" devices -l
-& "$env:ANDROID_HOME\platform-tools\adb.exe" -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+& "$env:ANDROID_HOME\platform-tools\adb.exe" -s SERIAL install -r app/build/outputs/apk/debug/OTM.apk
 ```
 
 Для инструментальных тестов оставьте подключённым только тестовый эмулятор
@@ -123,8 +123,8 @@ CI запускает эти тесты на API 31 и 36. Компиляция 
 
 | Файл | Назначение |
 | --- | --- |
-| `app/build/outputs/apk/debug/app-debug.apk` | Тестовая сборка с debug-подписью. |
-| `app/build/outputs/apk/release/app-release-unsigned.apk` | Неподписанная release-сборка; перед установкой её нужно подписать. |
+| `app/build/outputs/apk/debug/OTM.apk` | Тестовая сборка с debug-подписью. |
+| `app/build/outputs/apk/release/OTM.apk` | Неподписанная release-сборка; перед установкой её нужно подписать. |
 
 Debug-подпись отличается от подписи опубликованного приложения. Не удаляйте
 приложение с рабочими данными ради установки тестовой сборки. Для распространения
@@ -228,14 +228,14 @@ replace `SERIAL` in the install command:
 
 ```bash
 scripts/with-toolchain.sh adb devices -l
-scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/OTM.apk
 ```
 
 On Windows:
 
 ```powershell
 & "$env:ANDROID_HOME\platform-tools\adb.exe" devices -l
-& "$env:ANDROID_HOME\platform-tools\adb.exe" -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
+& "$env:ANDROID_HOME\platform-tools\adb.exe" -s SERIAL install -r app/build/outputs/apk/debug/OTM.apk
 ```
 
 For instrumentation, leave only the test emulator connected or select it explicitly:
@@ -254,8 +254,8 @@ Do not run restore tests against an installation containing important records.
 
 ### Build outputs and common problems
 
-- `app/build/outputs/apk/debug/app-debug.apk` is signed with a test key.
-- `app/build/outputs/apk/release/app-release-unsigned.apk` needs signing before installation.
+- `app/build/outputs/apk/debug/OTM.apk` is signed with a test key.
+- `app/build/outputs/apk/release/OTM.apk` needs signing before installation.
 
 Test builds cannot update the official release if their signatures differ.
 Do not erase working data to install them. See the [release checklist](RELEASING.md#english)

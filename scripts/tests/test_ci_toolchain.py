@@ -79,10 +79,12 @@ class CiToolchainTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             apk_root = root / "app/build/outputs/apk"
-            debug = apk_root / "debug/app-debug.apk"
+            debug = apk_root / "debug/OTM.apk"
             debug.parent.mkdir(parents=True)
             contents = b"debug APK fixture"
             debug.write_bytes(contents)
+            # Старая локальная сборка не должна попасть в новый артефакт через wildcard.
+            (debug.parent / "app-debug.apk").write_bytes(b"stale debug APK")
             result = subprocess.run(
                 ["bash", "-eu", "-c", textwrap.dedent(step.group(1))],
                 cwd=apk_root, env={**os.environ, "GIT_DIR": git_dir},
@@ -91,7 +93,7 @@ class CiToolchainTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 (apk_root / "metadata/SHA256SUMS").read_text(encoding="utf-8"),
-                f"{hashlib.sha256(contents).hexdigest()}  debug/app-debug.apk\n",
+                f"{hashlib.sha256(contents).hexdigest()}  debug/OTM.apk\n",
             )
             self.assertEqual(
                 (apk_root / "metadata/SOURCE_COMMIT.txt").read_text(encoding="utf-8"),
@@ -108,7 +110,7 @@ class CiToolchainTest(unittest.TestCase):
                 self.assertTrue(matches, f"Missing artifact: {pattern}")
                 uploaded.update(path.relative_to(apk_root).as_posix() for path in matches)
             self.assertEqual(uploaded, {
-                "debug/app-debug.apk",
+                "debug/OTM.apk",
                 "metadata/SHA256SUMS",
                 "metadata/SOURCE_COMMIT.txt",
             })

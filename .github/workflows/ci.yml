@@ -58,14 +58,14 @@ jobs:
         working-directory: app/build/outputs/apk
         run: |
           mkdir -p metadata
-          sha256sum debug/app-debug.apk > metadata/SHA256SUMS
+          sha256sum debug/OTM.apk > metadata/SHA256SUMS
           git rev-parse HEAD > metadata/SOURCE_COMMIT.txt
       - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: open-timemanager-debug-apk
+          name: OTM
           path: |
-            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/OTM.apk
             app/build/outputs/apk/metadata/SHA256SUMS
             app/build/outputs/apk/metadata/SOURCE_COMMIT.txt
           if-no-files-found: error

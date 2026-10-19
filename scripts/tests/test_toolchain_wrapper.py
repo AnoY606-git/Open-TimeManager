@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = ROOT / "scripts/with-toolchain.sh"
 DOCUMENTED_ADB_COMMANDS = (
     "scripts/with-toolchain.sh adb devices -l",
-    "scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk",
+    "scripts/with-toolchain.sh adb -s SERIAL install -r app/build/outputs/apk/debug/OTM.apk",
 )
 
 
