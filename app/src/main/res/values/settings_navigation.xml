@@ -9,7 +9,7 @@
     <string name="settings_search_keywords_appearance">appearance theme dark light system dynamic device colors colours language English Russian</string>
     <string name="settings_search_keywords_tracking">tracking time default project daily goal minutes privacy hide names</string>
     <string name="settings_search_keywords_data">backup backups restore password encrypted unprotected plain copy import export records data otmbackup otmplain</string>
-    <string name="settings_search_keywords_system">Android notifications permission Live Updates HyperIsland HyperOS Xiaomi widget widgets tile Quick Settings battery background controls device</string>
+    <string name="settings_search_keywords_system">Android notifications permission Live Updates HyperIsland HyperOS Xiaomi widget widgets tile Quick Settings battery background controls device setup wizard</string>
     <string name="settings_search_keywords_help">help guide instructions timer history reports recovery battery backup offline</string>
     <string name="settings_search_keywords_about">about version legal license licenses privacy policy open source security copyright</string>
 </resources>

@@ -9,7 +9,7 @@
     <string name="settings_search_keywords_appearance">оформление тема тёмная светлая системная динамические цвета язык русский английский</string>
     <string name="settings_search_keywords_tracking">учёт время проект по умолчанию дневная ежедневная цель минуты приватность скрывать названия</string>
     <string name="settings_search_keywords_data">резервные копии резервная копия бэкап восстановление пароль шифрование зашифрованная незащищённая экспорт импорт данные otmbackup otmplain</string>
-    <string name="settings_search_keywords_system">Android уведомления разрешение Live Updates HyperIsland HyperOS Xiaomi виджет виджеты плитка быстрые настройки батарея фон фоновые системные элементы управление устройство</string>
+    <string name="settings_search_keywords_system">Android уведомления разрешение Live Updates HyperIsland HyperOS Xiaomi виджет виджеты плитка быстрые настройки батарея фон фоновые системные элементы управление устройство мастер настройка</string>
     <string name="settings_search_keywords_help">справка помощь руководство инструкция таймер история отчёты восстановление батарея копии офлайн</string>
     <string name="settings_search_keywords_about">о приложении версия правовая информация лицензии конфиденциальность политика открытый исходный код безопасность авторские права</string>
 </resources>

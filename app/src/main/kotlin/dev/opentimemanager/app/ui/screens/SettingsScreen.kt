@@ -178,6 +178,7 @@ fun SettingsScreen(
     onCloseProjectPicker: () -> Unit = {},
     notificationStatus: NotificationControlStatus = NotificationControlStatus.AVAILABLE,
     onManageNotifications: () -> Unit = {},
+    onOpenDeviceSetup: () -> Unit = {},
 ) {
     val preferences = state.preferences
     val context = LocalContext.current
@@ -559,7 +560,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item(key = "platform") { PlatformIntegrationCard() }
+        item(key = "platform") { PlatformIntegrationCard(onOpenDeviceSetup = onOpenDeviceSetup) }
         }
         if (page == SettingsPage.ABOUT) {
         item(key = "legal_heading") {

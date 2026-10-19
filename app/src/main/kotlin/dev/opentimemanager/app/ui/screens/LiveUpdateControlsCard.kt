@@ -80,6 +80,9 @@ fun LiveUpdateControlsCard(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, preferences, application) {
+        val choiceChanges = preferences.observeChanges { choice = it }
+        // Читаем после регистрации: выбор мог измениться между remember и подпиской.
+        choice = preferences.current()
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && !saving) {
                 choice = preferences.current()
@@ -87,7 +90,10 @@ fun LiveUpdateControlsCard(modifier: Modifier = Modifier) {
             }
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        onDispose {
+            choiceChanges.close()
+            lifecycle.removeObserver(observer)
+        }
     }
     AppCard(modifier.testTag("live_updates_card")) {
         Text(stringResource(R.string.live_updates_title), style = MaterialTheme.typography.titleMedium)

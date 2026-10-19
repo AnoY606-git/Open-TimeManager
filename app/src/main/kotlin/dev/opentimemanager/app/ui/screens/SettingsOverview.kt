@@ -89,6 +89,7 @@ private fun settingsSectionLabels(page: SettingsPage): List<String> {
             R.string.notifications_settings_title,
             R.string.manage_notifications,
             R.string.platform_controls_title,
+            R.string.device_setup_open,
             R.string.platform_add_tile,
             R.string.platform_pin_widget,
             R.string.platform_app_settings,

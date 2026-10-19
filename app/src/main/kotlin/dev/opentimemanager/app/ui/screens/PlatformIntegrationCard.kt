@@ -33,7 +33,7 @@ import dev.opentimemanager.app.ui.requestTrackingWidget
 import dev.opentimemanager.app.ui.components.AppCard
 
 @Composable
-fun PlatformIntegrationCard() {
+fun PlatformIntegrationCard(onOpenDeviceSetup: (() -> Unit)? = null) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var status by remember { mutableStateOf(readDeviceBackgroundStatus(context)) }
@@ -50,8 +50,12 @@ fun PlatformIntegrationCard() {
     AppCard {
         Text(stringResource(R.string.platform_controls_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.platform_controls_summary), style = MaterialTheme.typography.bodyMedium)
-        if (status.powerSave) Text(stringResource(R.string.platform_battery_saver), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (status.backgroundRestricted) Text(stringResource(R.string.platform_background_restricted), color = MaterialTheme.colorScheme.error)
+        if (onOpenDeviceSetup != null) OutlinedButton(
+            onClick = onOpenDeviceSetup,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("open_device_setup"),
+        ) { Text(stringResource(R.string.device_setup_open)) }
+        if (status.powerSave == true) Text(stringResource(R.string.platform_battery_saver), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (status.backgroundRestricted == true) Text(stringResource(R.string.platform_background_restricted), color = MaterialTheme.colorScheme.error)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { requestTrackingTile(context) { feedback = it } },

@@ -25,7 +25,7 @@ keeps your sessions, lets you fill in missing entries, and shows where your time
 went. Your records stay on your device; no internet connection is needed.
 
 The description and screenshots below cover the current `main` branch after
-1.1.0. The latest stable release is **1.1.0**; monthly plans, settings-section
+1.1.0. The latest stable release is **1.1.0**; first-run setup, monthly plans, settings-section
 search, updated notification progress, and the experimental HyperIsland client
 are currently available in builds from current source.
 
@@ -37,6 +37,11 @@ are currently available in builds from current source.
 - **Keep a backup.** Save password-encrypted files, move your records, and choose whether to merge or replace data.
 - **Stay in control.** Use the notification, home-screen widget, or Quick Settings tile. The notification shows daily goal progress across all projects.
 - **Make it yours.** Choose a theme, language, daily goal, and default project. Find the right section by a setting name or keyword. Built-in help works offline.
+
+On a fresh installation, optional **Android setup** helps you check the device,
+notifications and background restrictions. Skip it without repeated prompts,
+or reopen it under Settings → Android and device → Open setup wizard.
+Permissions are requested only after a tap; setup does not change work records.
 
 Settings → Android and device includes an optional **Live Updates and
 HyperIsland** switch, off by default. On supporting Android 16 builds, the

@@ -58,6 +58,13 @@ class LiveUpdatePreferences internal constructor(
     // Never hold the IO commit monitor from a notification/receiver/main-thread read.
     fun current(): LiveUpdatePreferenceState = readState()
 
+    /** Подписка принадлежит карточке; close снимает её при уходе из композиции. */
+    internal fun observeChanges(onChanged: (LiveUpdatePreferenceState) -> Unit): AutoCloseable {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> onChanged(current()) }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        return AutoCloseable { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     suspend fun setEnabled(enabled: Boolean): Boolean = withContext(dispatcher) {
         synchronized(preferences) {
             val before = readState()

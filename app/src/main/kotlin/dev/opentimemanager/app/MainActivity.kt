@@ -28,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.opentimemanager.app.settings.ThemeMode
 import dev.opentimemanager.app.ui.AppViewModel
 import dev.opentimemanager.app.ui.OpenTimeManagerApp
+import dev.opentimemanager.app.ui.DeviceSetupState
 import dev.opentimemanager.app.ui.NotificationControlStatus
 import dev.opentimemanager.app.ui.NotificationControlAction
 import dev.opentimemanager.app.ui.notificationControlAction
@@ -147,6 +148,8 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     },
+                    showDeviceSetupInitially = application.deviceSetupPreferences.state() == DeviceSetupState.PENDING,
+                    onFinishDeviceSetup = application.deviceSetupPreferences::finish,
                 )
             }
         }

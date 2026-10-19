@@ -35,7 +35,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +49,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.backup.BackupFileCoordinator
 import dev.opentimemanager.app.dataexport.CsvExportCoordinator
@@ -54,8 +61,10 @@ import dev.opentimemanager.app.ui.screens.SettingsScreen
 import dev.opentimemanager.app.ui.screens.TimerScreen
 import dev.opentimemanager.app.ui.screens.TodayPane
 import dev.opentimemanager.app.ui.screens.BackupActions
+import dev.opentimemanager.app.ui.screens.DeviceSetupScreen
 import dev.opentimemanager.app.ui.components.AppGlyph
 import dev.opentimemanager.app.ui.components.AppIcon
+import kotlinx.coroutines.launch
 
 @Composable
 fun OpenTimeManagerApp(
@@ -66,12 +75,22 @@ fun OpenTimeManagerApp(
     selectedLanguage: AppLanguage,
     onLanguage: (AppLanguage) -> Unit,
     modifier: Modifier = Modifier,
+    showDeviceSetupInitially: Boolean = false,
+    onFinishDeviceSetup: (DeviceSetupState) -> Boolean = { true },
 ) {
     val snapshot = state.snapshot
     val density = LocalDensity.current
     val fontScale = density.fontScale
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var showDeviceSetup by rememberSaveable { mutableStateOf(showDeviceSetupInitially) }
+    val saveSetupFailure = stringResource(R.string.device_setup_save_failed)
+    fun finishDeviceSetup(outcome: DeviceSetupState) {
+        val saved = onFinishDeviceSetup(outcome)
+        showDeviceSetup = false
+        if (!saved) scope.launch { snackbar.showSnackbar(saveSetupFailure) }
+    }
     BackHandler(enabled = state.controls.destination != AppDestination.TIMER) {
         viewModel?.navigate(AppDestination.TIMER)
     }
@@ -190,9 +209,26 @@ fun OpenTimeManagerApp(
                         onLaunchCsvDocument = csvDocument::launch,
                         onLaunchBackupDocument = backupDocument::launch,
                         onLaunchOpenBackupDocument = openBackupDocument::launch,
+                        onOpenDeviceSetup = { showDeviceSetup = true },
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+        }
+    }
+    if (snapshot != null && showDeviceSetup) {
+        // Отдельное модальное окно сохраняет страницу и черновики Settings в композиции.
+        Dialog(
+            onDismissRequest = { finishDeviceSetup(DeviceSetupState.SKIPPED) },
+            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false),
+        ) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                DeviceSetupScreen(
+                    notificationStatus = notificationStatus,
+                    onManageNotifications = onManageNotifications,
+                    onSkip = { finishDeviceSetup(DeviceSetupState.SKIPPED) },
+                    onComplete = { finishDeviceSetup(DeviceSetupState.COMPLETED) },
+                )
             }
         }
     }
@@ -225,6 +261,7 @@ private fun DestinationContent(
     onLaunchCsvDocument: (String) -> Unit,
     onLaunchBackupDocument: (String) -> Unit,
     onLaunchOpenBackupDocument: (Array<String>) -> Unit,
+    onOpenDeviceSetup: () -> Unit,
     modifier: Modifier,
 ) {
     when (state.controls.destination) {
@@ -268,6 +305,7 @@ private fun DestinationContent(
             onCloseProjectPicker = { viewModel?.closeManualProjectPicker() },
             notificationStatus = notificationStatus,
             onManageNotifications = onManageNotifications,
+            onOpenDeviceSetup = onOpenDeviceSetup,
             modifier = modifier,
             onLaunchBackupDocument = onLaunchBackupDocument,
             onLaunchOpenBackupDocument = onLaunchOpenBackupDocument,

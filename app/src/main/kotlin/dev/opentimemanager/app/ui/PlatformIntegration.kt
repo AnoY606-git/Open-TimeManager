@@ -25,7 +25,7 @@ enum class DeviceFamily(val hint: Int) {
 
 /** Manufacturer hints are advisory, never proof of the installed ROM or a settings path. */
 fun deviceFamily(manufacturer: String, brand: String): DeviceFamily {
-    val names = setOf(manufacturer.lowercase(Locale.ROOT), brand.lowercase(Locale.ROOT))
+    val names = setOf(manufacturer.trim().lowercase(Locale.ROOT), brand.trim().lowercase(Locale.ROOT))
     return when {
         names.any { it in setOf("xiaomi", "redmi", "poco") } -> DeviceFamily.XIAOMI
         "samsung" in names -> DeviceFamily.SAMSUNG
@@ -34,13 +34,13 @@ fun deviceFamily(manufacturer: String, brand: String): DeviceFamily {
     }
 }
 
-data class DeviceBackgroundStatus(val powerSave: Boolean = false, val backgroundRestricted: Boolean = false)
+data class DeviceBackgroundStatus(val powerSave: Boolean? = null, val backgroundRestricted: Boolean? = null)
 
 fun readDeviceBackgroundStatus(context: Context): DeviceBackgroundStatus = DeviceBackgroundStatus(
-    powerSave = runCatching { context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true }.getOrDefault(false),
+    powerSave = runCatching { context.getSystemService(PowerManager::class.java)?.isPowerSaveMode }.getOrNull(),
     backgroundRestricted = runCatching {
-        context.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true
-    }.getOrDefault(false),
+        context.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted
+    }.getOrNull(),
 )
 
 /** Called only from an explicit user tap; decline/failure never schedules another prompt. */

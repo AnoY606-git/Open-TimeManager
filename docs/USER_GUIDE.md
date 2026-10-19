@@ -5,11 +5,29 @@
 ## Русский
 
 Это руководство для текущей ветки `main` OTM (Open TimeManager) после выпуска
-1.1.0. Месячные планы, поиск по разделам настроек, обновлённый дневной прогресс
+1.1.0. Мастер первого запуска, месячные планы, поиск по разделам настроек, обновлённый дневной прогресс
 уведомления и экспериментальный клиент HyperIsland пока доступны в dev-сборках.
 Последний стабильный релиз — 1.1.0;
 его возможности описаны в [заметках к выпуску](releases/1.1.0.md). Справка с поиском также доступна
 без интернета в «Настройки → Как работать с приложением».
+
+### Подготовка при первом запуске
+
+На новой установке OTM предлагает необязательный мастер: сведения об Android и
+семействе устройства, состояние уведомлений и фоновых ограничений, затем быстрый
+доступ к системным возможностям. Производитель не выдаётся за точное название
+прошивки: если её нельзя подтвердить, мастер прямо сообщает об этом.
+
+Разрешение на уведомления запрашивается только по нажатию кнопки. Мастер не
+включает автозапуск, не снимает ограничения батареи и не включает Live Updates
+самостоятельно. После возврата из системных настроек статусы проверяются заново.
+
+Любой шаг можно пропустить. «Пропустить», системная кнопка «Назад» или завершение
+мастера сохраняются только на этом устройстве: при следующем запуске он не
+появится снова. При обновлении существующей установки мастер автоматически не
+навязывается. Открыть его вручную можно в «Настройки → Android и устройство».
+Этот выбор не переносится в резервных копиях. Пропуск не мешает учёту времени
+внутри приложения.
 
 ### Первая рабочая сессия
 
@@ -312,11 +330,28 @@ Android. В разделе «Android и устройство» видны при
 ## English
 
 This guide covers the current `main` branch of OTM (Open TimeManager) after
-1.1.0. Monthly plans, settings-section search, updated daily notification progress,
+1.1.0. First-run setup, monthly plans, settings-section search, updated daily notification progress,
 and the experimental HyperIsland client are currently available in development builds. The latest
 stable release is 1.1.0; see its
 [release notes](releases/1.1.0.md#english) for that version's features.
 Searchable help is also available offline under Settings → How to use the app.
+
+### First-run setup
+
+A fresh OTM installation offers an optional setup wizard: Android and device-family
+information, notification and background-restriction status, then access to
+optional system features. The manufacturer is not presented as a confirmed ROM
+name; the wizard clearly says when firmware identification is unavailable.
+
+Notification permission is requested only after you tap its button. The wizard
+does not enable autostart, remove battery restrictions or opt into Live Updates
+on its own. Status is checked again after returning from system settings.
+
+You can skip at any step. Skip, system Back or completion is remembered on this
+device, so the wizard does not reappear on the next launch. Existing installations
+are not interrupted automatically after an update. Reopen it manually under
+Settings → Android and device. This local choice is excluded from backups.
+Skipping does not prevent in-app time tracking.
 
 ### Your first work session
 

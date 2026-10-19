@@ -5,6 +5,8 @@ import android.content.res.Configuration
 import dev.opentimemanager.app.di.AppContainer
 import dev.opentimemanager.app.system.SystemSurfaceUpdater
 import dev.opentimemanager.app.system.containSystemSurfaceFailure
+import dev.opentimemanager.app.ui.DeviceSetupPreferences
+import dev.opentimemanager.app.ui.existingDeviceSetupInstallation
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 
@@ -12,8 +14,12 @@ class OpenTimeManagerApplication : Application() {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     lateinit var container: AppContainer
         private set
+    lateinit var deviceSetupPreferences: DeviceSetupPreferences
+        private set
     override fun onCreate() {
         super.onCreate()
+        deviceSetupPreferences = DeviceSetupPreferences(this)
+        deviceSetupPreferences.initialize(existingDeviceSetupInstallation(this))
         container = AppContainer(this)
         applicationScope.launch {
             containSystemSurfaceFailure { container.restore.reconcilePendingPreferences() }
