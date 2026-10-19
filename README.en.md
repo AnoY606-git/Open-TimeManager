@@ -67,7 +67,9 @@ it does not establish app approval.
 | <img src="docs/screenshots/en-reports.png" width="280" alt="Last month's report with confirmed time, a monthly plan, and the balance"> | <img src="docs/screenshots/en-notification.png" width="280" alt="Expanded OTM notification with segmented daily progress on Android 16"> |
 
 <details>
-<summary>Settings, help, default project, and unprotected backup</summary>
+<summary>First-run setup, settings, help, default project, and unprotected backup</summary>
+
+<img src="docs/screenshots/en-setup.png" width="280" alt="Optional Android setup wizard in OTM">
 
 | Settings | Help |
 | :---: | :---: |
@@ -86,8 +88,8 @@ it does not establish app approval.
 
 </details>
 
-The gallery contains 20 genuine `main` development screenshots from an AOSP
-Android 16 / API 36 emulator with made-up records or a fresh empty installation for settings. They show OTM's interface and
+The gallery contains 22 genuine `main` development screenshots from an AOSP
+Android 16 / API 36 emulator with made-up records or a fresh empty installation for settings and setup. They show OTM's interface and
 ordinary Android notification, not HyperOS or a working island. Capture provenance
 is documented separately.
 [About the screenshots](docs/screenshots/README.md#english).

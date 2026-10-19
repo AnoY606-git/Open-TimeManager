@@ -4,18 +4,19 @@
 
 ## Русский
 
-Все 20 снимков сделаны **19 октября 2026 года** на выделенном эмуляторе
+Все 22 снимка сделаны **19 октября 2026 года** на выделенном эмуляторе
 AOSP Android 16 / API 36 из **dev/debug-сборок `main`**, указанных ниже.
 Два кадра настроек обновлены после добавления поиска и нового раздела
 «Android и устройство»; остальные 18 сохранены из предыдущей съёмки интерфейса,
 уведомления и месячного баланса. Это не опубликованная стабильная 1.1.0.
-Номер версии обоих APK остаётся `1.1.0` (`versionCode = 3`);
+Добавлены два кадра первого шага мастера настройки Android.
+Номер версии всех трёх APK остаётся `1.1.0` (`versionCode = 3`);
 новый стабильный релиз для этой галереи не создавался.
 
 Использованы только вымышленные проекты и записи либо пустая новая установка,
 не личный телефон или рабочие данные. Съёмка прежних 18 кадров предшествует
-экспериментальному клиенту HyperIsland; новые кадры показывают только обзор
-настроек на AOSP. В галерее нет кадров HyperOS или острова Xiaomi;
+экспериментальному клиенту HyperIsland; новые кадры показывают только настройки
+и мастер на AOSP. В галерее нет кадров HyperOS или острова Xiaomi;
 изображения не подтверждают совместимость с Now Bar, Live Alerts
 и другими OEM-поверхностями.
 
@@ -28,6 +29,7 @@ AOSP Android 16 / API 36 из **dev/debug-сборок `main`**, указанн�
 | Баланс прошлого месяца | [ru-reports.png](ru-reports.png) | [en-reports.png](en-reports.png) |
 | Уведомление Android 16 | [ru-notification.png](ru-notification.png) | [en-notification.png](en-notification.png) |
 | Настройки | [ru-settings.png](ru-settings.png) | [en-settings.png](en-settings.png) |
+| Мастер настройки Android | [ru-setup.png](ru-setup.png) | [en-setup.png](en-setup.png) |
 | Справка | [ru-help.png](ru-help.png) | [en-help.png](en-help.png) |
 | Проект по умолчанию | [ru-default-project.png](ru-default-project.png) | [en-default-project.png](en-default-project.png) |
 | Предупреждение о копии без пароля | [ru-backup-warning.png](ru-backup-warning.png) | [en-backup-warning.png](en-backup-warning.png) |
@@ -45,13 +47,19 @@ AOSP Android 16 / API 36 из **dev/debug-сборок `main`**, указанн�
 Названия проектов и заметки одинаковы на обоих языках; локализуется интерфейс.
 Два обновлённых кадра настроек сняты с новой пустой установки после UI-тестов;
 таймер не запускался, записи или проекты для этих кадров не импортировались.
+Два кадра мастера показывают первый шаг, вручную открытый повторно на пустой
+установке после проверки разрешений. Автоматический первый запуск, отказ в
+уведомлениях, обновление статуса после системных настроек и отсутствие повтора
+после пропуска проверены отдельно. Записи и проекты для этих кадров не добавлялись.
 
 ### Параметры и происхождение
 
 - PNG сняты напрямую в **720 × 1560**, 280 dpi, портретная ориентация,
   масштаб шрифта 100%. Масштабирования, ретуши, генерации и коллажей нет.
 - Светлая тема для основных экранов, тёмная — для двух кадров таймера;
-  цвета устройства выключены. Язык Android — английский, OTM — RU или EN.
+  цвета устройства выключены для прежних 20 кадров. Для двух кадров мастера
+  используются начальные настройки: системная светлая тема и цвета устройства
+  включены. Язык Android — английский, OTM — RU или EN.
 - Стандартный demo mode фиксирует часы и батарею только в строке состояния.
   Для кадров уведомления служебные уведомления эмулятора временно отложены
   штатной функцией Android. Текст, прогресс и действия OTM не менялись.
@@ -74,6 +82,12 @@ SHA-256 APK `dc30320408082053b9f4741f27f64c76b9f6639deeddb5e9e26c532194c19798`.
 320 dp с 200% шрифтом и экранной клавиатурой. Проверочные кадры узкого окна
 не входят в эту галерею; основные снимки по-прежнему имеют масштаб шрифта 100%.
 
+**Два кадра `ru-setup.png` и `en-setup.png`:** исходники
+[`7e656a0de691ce8fb718e7b7b1b7a8a5051ffd21`](https://github.com/AnoY606-git/Open-TimeManager/commit/7e656a0de691ce8fb718e7b7b1b7a8a5051ffd21),
+SHA-256 APK `6fcdb847388efe9473c65a40279543f25aaef881fe995a925f5f9475e38fde34`.
+Код прошёл 85 UI-тестов на API 36. Горизонтальный экран с 200% шрифтом
+проверен отдельно; его проверочные снимки в галерею не входят.
+
 ### Обновление снимков
 
 APK, демонстрационная копия, служебные скрипты и SDK в Git не добавляются.
@@ -87,16 +101,17 @@ APK, демонстрационная копия, служебные скрип�
 
 ## English
 
-All 20 screenshots were captured on **19 October 2026** using a dedicated
+All 22 screenshots were captured on **19 October 2026** using a dedicated
 AOSP Android 16 / API 36 emulator and the **`main` dev/debug builds** identified
 above. The two settings scenes were refreshed after adding search and Android
 and device; the remaining 18 scenes retain their earlier UI, notification and
 monthly-balance capture. They do not show the published stable 1.1.0.
-Both APKs report `1.1.0` (`versionCode = 3`); no new stable release was created
+Two new scenes show the first Android setup step.
+All three APKs report `1.1.0` (`versionCode = 3`); no new stable release was created
 for this gallery. Only made-up data or a fresh empty installation was used,
 never a personal phone or work records. The table above links to every scene
 in both languages. The earlier 18 captures predate the experimental HyperIsland
-client, while the refreshed pair shows only the settings overview on AOSP.
+client, while the newer scenes show only settings and setup on AOSP.
 The gallery contains no HyperOS or Xiaomi island scenes and does not establish
 compatibility with Now Bar, Live Alerts, or other OEM surfaces.
 
@@ -110,9 +125,15 @@ the session chronometer vary slightly. Project names and notes remain the same;
 the app interface is localized. The two refreshed settings scenes use a fresh
 empty installation after UI testing; no timer was started and no records or
 projects were imported for these scenes.
+The setup pair shows the first step manually reopened on an empty installation
+after permission testing. Automatic first launch, notification denial, status
+refresh after system settings and no repeat after skipping were checked separately.
+No records or projects were added for the setup captures.
 
 PNGs were captured directly at **720 × 1560**, 280 dpi, portrait orientation,
-100% font scale, device colors off, with light and dark themes as shown.
+100% font scale, with light and dark themes as shown. Device colors are off for
+the earlier 20 scenes. The setup pair uses fresh defaults: system light theme
+and device colors on.
 There was no resizing, retouching, generation or compositing. Android remained
 in English while OTM used RU or EN, so notification-shade system labels stay English.
 Demo mode stabilizes the status-bar clock and battery only. Emulator service
@@ -122,12 +143,15 @@ OTM's content, progress and actions were not altered. These show standard Androi
 captures, not HyperIsland mockups, and do not establish promotion, OEM animations,
 native HyperOS timing, OEM lockscreen/AOD privacy, or physical-device battery performance.
 
-The two source commits and their APK hashes are listed separately above,
+The three source commits and their APK hashes are listed separately above,
 alongside the debug task, package and AVD. The refreshed settings pair uses
 `b8fcdf1f4fbac6db33481edee2629483e5f4587e`, whose code passed 77 UI tests on API 36,
 including a real 320 dp window at 200% font scale with the software keyboard.
 Those narrow-window QA captures are not part of this gallery; the main images
 remain at 100% font scale.
+The setup pair uses `7e656a0de691ce8fb718e7b7b1b7a8a5051ffd21`, whose code passed
+85 UI tests on API 36. A landscape window at 200% font scale was checked separately;
+those QA captures are not included in the gallery.
 The APK, demo backup, local helpers and SDK are not committed. To refresh the
 gallery, explicitly select a dedicated emulator, navigate the actual interface
 in both languages, inspect every image and both README galleries, and record

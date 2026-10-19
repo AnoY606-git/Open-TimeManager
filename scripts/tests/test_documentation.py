@@ -92,7 +92,7 @@ class DocumentationTest(unittest.TestCase):
     def test_readme_galleries_include_all_localized_screens(self) -> None:
         screens = (
             "timer", "history", "reports", "settings", "timer-dark",
-            "help", "default-project", "backup-warning", "notification", "monthly-plan",
+            "help", "default-project", "backup-warning", "notification", "monthly-plan", "setup",
         )
         for language, filename in (("ru", "README.md"), ("en", "README.en.md")):
             with self.subTest(language=language):
