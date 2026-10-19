@@ -4,9 +4,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.Locales
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
@@ -16,7 +16,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.then
 import androidx.compose.ui.text.intl.Locale
@@ -79,9 +79,8 @@ class HistoryReportsRestorationTest {
     }
 
     private fun replaceField(label: String, value: String) {
-        compose.onNode(hasScrollToNodeAction() and hasAnyAncestor(isDialog()))
-            .performScrollToNode(hasText(label))
-        compose.onNode(hasText(label) and hasSetTextAction()).performTextReplacement(value)
+        compose.onNode(hasText(label) and hasSetTextAction() and hasAnyAncestor(isDialog()))
+            .performScrollTo().assertIsDisplayed().performTextReplacement(value)
     }
 
     @Test fun manualDraftSurvivesRestorationAndKeepsOpeningGeneration() {
@@ -105,7 +104,7 @@ class HistoryReportsRestorationTest {
 
         restorer.emulateSavedInstanceStateRestore()
 
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Save").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle {
             val result = requireNotNull(saved)
             assertNull(result.first)
@@ -136,7 +135,7 @@ class HistoryReportsRestorationTest {
 
         restorer.emulateSavedInstanceStateRestore()
 
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Save").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle {
             val result = requireNotNull(saved)
             assertEquals("entry", result.first)
@@ -153,12 +152,12 @@ class HistoryReportsRestorationTest {
         var selected: ReportPeriod? = null
         val restorer = show { ReportsScreen(state(), onSelectPeriod = { selected = it }) }
         compose.onNodeWithText("Custom").performClick()
-        compose.onNode(hasText("From (YYYY-MM-DD)") and hasSetTextAction()).performTextReplacement("2026-09-03")
-        compose.onNode(hasText("Through (YYYY-MM-DD)") and hasSetTextAction()).performTextReplacement("2026-09-19")
+        replaceField("From (YYYY-MM-DD)", "2026-09-03")
+        replaceField("Through (YYYY-MM-DD)", "2026-09-19")
 
         restorer.emulateSavedInstanceStateRestore()
 
-        compose.onNodeWithText("Apply").performClick()
+        compose.onNodeWithText("Apply").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertEquals(ReportPeriod.Custom(LocalDate.parse("2026-09-03"), LocalDate.parse("2026-09-19")), selected)
         }

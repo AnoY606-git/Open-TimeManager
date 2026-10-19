@@ -1,12 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="12dp" android:background="?android:attr/colorBackground" tools:ignore="Overdraw">
-    <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="?android:attr/textColorPrimary" android:textSize="16sp" />
-    <Chronometer android:id="@+id/widget_timer" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="?android:attr/textColorPrimary" android:textSize="24sp" />
-    <LinearLayout style="?android:attr/buttonBarStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        <Button style="?android:attr/buttonBarButtonStyle" android:id="@+id/widget_primary" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" />
-        <Button style="?android:attr/buttonBarButtonStyle" android:id="@+id/widget_stop" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" />
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:padding="4dp"
+    android:background="?android:attr/colorBackground"
+    tools:ignore="Overdraw">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="14sp" />
+
+        <Chronometer
+            android:id="@+id/widget_timer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeMaxTextSize="24sp"
+            android:autoSizeStepGranularity="1sp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="24sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="48dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- RemoteViews создаёт нативные ImageButton: для них нужен android:tint, а не атрибут AppCompat. -->
+        <ImageButton
+            android:id="@+id/widget_primary"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/tracking_start"
+            android:padding="12dp"
+            android:src="@drawable/ic_island_resume"
+            android:tint="?android:attr/textColorPrimary"
+            tools:ignore="UseAppTint" />
+
+        <ImageButton
+            android:id="@+id/widget_stop"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/tracking_stop"
+            android:padding="12dp"
+            android:src="@drawable/ic_island_stop"
+            android:tint="?android:attr/textColorPrimary"
+            tools:ignore="UseAppTint" />
     </LinearLayout>
 </LinearLayout>

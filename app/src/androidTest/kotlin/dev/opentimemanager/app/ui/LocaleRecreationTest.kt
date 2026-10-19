@@ -120,7 +120,7 @@ class LocaleRecreationTest {
                 assertEquals(running, TrackingTileService.presentation(app, snapshot).label)
                 val widget = TrackingWidgetProvider.views(app, snapshot, privacyMode = false).apply(app, null)
                 assertEquals(defaultName, widget.findViewById<TextView>(R.id.widget_status).text.toString())
-                assertEquals(pause, widget.findViewById<TextView>(R.id.widget_primary).text.toString())
+                assertEquals(pause, widget.findViewById<android.view.View>(R.id.widget_primary).contentDescription.toString())
 
                 // No pinned default can hide a mismatch between the displayed name and the search.
                 compose.activityRule.scenario.onActivity {

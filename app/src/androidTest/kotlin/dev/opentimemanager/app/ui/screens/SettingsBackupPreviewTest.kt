@@ -35,6 +35,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -116,10 +117,10 @@ class SettingsBackupPreviewTest {
         show(fixture, locale = "ru", fontScale = 1.3f)
         inspectOnce()
 
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         assertDialogFailure("ru", R.string.backup_preview_active_timer_error)
         assertActionsFitDialog()
-        compose.onNodeWithTag("backup_preview_hide").performClick()
+        compose.onNodeWithTag("backup_preview_hide").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
         compose.runOnIdle {
             assertSame(fixture.candidate, fixture.retained)
@@ -131,7 +132,7 @@ class SettingsBackupPreviewTest {
         compose.onNodeWithText(text("ru", R.string.tracking_stop)).performScrollTo().performClick()
         compose.onNodeWithTag("test_settings_destination").performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
         scrollToPageStatus()
         compose.onNodeWithTag("backup_transfer_status").assertTextEquals(text("ru", R.string.backup_restored_success))
@@ -152,7 +153,7 @@ class SettingsBackupPreviewTest {
         show(fixture)
         inspectOnce()
 
-        compose.onNodeWithTag("backup_preview_hide").performClick()
+        compose.onNodeWithTag("backup_preview_hide").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("backup_preview_resume"))
         compose.onNodeWithTag("backup_preview_resume").assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
@@ -163,7 +164,7 @@ class SettingsBackupPreviewTest {
             assertEquals(0, fixture.discardCalls)
         }
 
-        compose.onNodeWithTag("backup_preview_discard").performClick()
+        compose.onNodeWithTag("backup_preview_discard").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
         compose.onNodeWithTag("backup_preview_resume").assertDoesNotExist()
         compose.onNodeWithTag("test_timer_destination").performClick()
@@ -195,7 +196,7 @@ class SettingsBackupPreviewTest {
             assertEquals(0, fixture.discardCalls)
         }
 
-        compose.onNodeWithText(text("en", R.string.cancel)).performClick()
+        compose.onNodeWithText(text("en", R.string.cancel)).performScrollTo().assertIsDisplayed().performClick()
 
         compose.onNodeWithTag("backup_password_input").assertDoesNotExist()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
@@ -255,14 +256,14 @@ class SettingsBackupPreviewTest {
             assertTrue(fixture.candidate.hasPayload)
         }
         compose.onNodeWithText(text("en", R.string.backup_preview_modes)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("backup_preview_merge").assertIsEnabled().performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         assertDialogFailure("en", R.string.backup_preview_conflict_error)
         compose.runOnIdle {
             assertSame(fixture.candidate, fixture.retained)
             assertTrue(fixture.candidate.hasPayload)
         }
 
-        compose.onNodeWithTag("backup_preview_hide").performClick()
+        compose.onNodeWithTag("backup_preview_hide").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("test_timer_destination").performClick()
         compose.runOnIdle {
             localConflictsResolved = true
@@ -272,7 +273,7 @@ class SettingsBackupPreviewTest {
         compose.onNodeWithTag("test_settings_destination").performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
         compose.onNodeWithTag("backup_password_input").assertDoesNotExist()
-        compose.onNodeWithTag("backup_preview_merge").assertIsEnabled().performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
         scrollToPageStatus()
         compose.onNodeWithTag("backup_transfer_status").assertTextEquals(text("en", R.string.backup_restored_success))
@@ -298,18 +299,18 @@ class SettingsBackupPreviewTest {
                 RestoreResult.Conflicts(listOf(BackupConflict(BackupConflictKind.PROJECT, fixture.project.id)))
             }
         }
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         assertDialogFailure("en", R.string.backup_preview_conflict_error)
         compose.onNodeWithTag("backup_preview_retention_hint").performScrollTo()
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         assertDialogFailure("en", R.string.backup_preview_conflict_error)
 
         compose.runOnIdle { fixture.operation = { RestoreResult.LimitExceeded(20_000) } }
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         assertDialogFailure("en", R.string.backup_preview_limit_error)
 
         compose.runOnIdle { fixture.operation = { throw IOException("Synthetic local write failure") } }
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         assertDialogFailure("en", R.string.backup_preview_io_error)
         compose.runOnIdle {
             assertEquals(4, fixture.restoreCalls)
@@ -328,13 +329,14 @@ class SettingsBackupPreviewTest {
         show(fixture)
         inspectOnce()
         val click = requireNotNull(
-            compose.onNodeWithTag("backup_preview_merge").fetchSemanticsNode().config[SemanticsActions.OnClick].action,
+            compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed()
+                .fetchSemanticsNode().config[SemanticsActions.OnClick].action,
         )
         // Invoke the same enabled callback twice before recomposition: the local gate must also protect this race.
         compose.runOnIdle { click(); click() }
 
         for (tag in actionTags) compose.onNodeWithTag(tag).assertIsNotEnabled()
-        compose.onNodeWithTag("backup_preview_busy").assertIsDisplayed()
+        compose.onNodeWithTag("backup_preview_busy").performScrollTo().assertIsDisplayed()
         for (tag in actionTags) {
             compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick) { it() }
         }
@@ -358,11 +360,12 @@ class SettingsBackupPreviewTest {
         fixture.operation = { completion.await() }
         show(fixture)
         inspectOnce()
-        compose.onNodeWithTag("backup_preview_replace").performClick()
+        compose.onNodeWithTag("backup_preview_replace").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_replace_confirmation").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, fixture.restoreCalls) }
         val confirm = requireNotNull(
-            compose.onNodeWithTag("backup_replace_confirm").fetchSemanticsNode().config[SemanticsActions.OnClick].action,
+            compose.onNodeWithTag("backup_replace_confirm").performScrollTo().assertIsDisplayed()
+                .fetchSemanticsNode().config[SemanticsActions.OnClick].action,
         )
         compose.runOnIdle { confirm(); confirm() }
 
@@ -412,7 +415,7 @@ class SettingsBackupPreviewTest {
         fixture.operation = { throw CancellationException("Synthetic cancelled restore") }
         show(fixture)
         inspectOnce()
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
 
         compose.onNodeWithTag("backup_preview_failure").assertDoesNotExist()
         compose.onNodeWithTag("backup_preview_merge").assertIsEnabled()
@@ -422,7 +425,7 @@ class SettingsBackupPreviewTest {
             assertEquals(0, fixture.discardCalls)
             fixture.operation = { RestoreResult.Applied(1, 0, 0) }
         }
-        compose.onNodeWithTag("backup_preview_merge").performClick()
+        compose.onNodeWithTag("backup_preview_merge").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(2, fixture.restoreCalls)
@@ -487,16 +490,19 @@ class SettingsBackupPreviewTest {
     }
 
     private fun inspectOnce() {
-        compose.onNodeWithTag("backup_password_input").performTextInput("x")
-        compose.onNodeWithTag("backup_password_continue").performClick()
+        compose.onNodeWithTag("backup_password_input").performScrollTo().performTextInput("x")
+        compose.onNodeWithTag("backup_password_continue").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
     }
 
     private fun assertDialogFailure(locale: String, resource: Int) {
         compose.onNodeWithTag("backup_preview_dialog").assertIsDisplayed()
-        compose.onNode(
+        val failure = compose.onNode(
             hasTestTag("backup_preview_failure") and hasAnyAncestor(hasTestTag("backup_preview_dialog")),
-        ).assertIsDisplayed().assertTextEquals(text(locale, resource))
+        )
+        // Проверяем автоматический показ причины, в том числе повтор того же отказа.
+        compose.waitUntil(10_000) { failure.isDisplayed() }
+        failure.assertIsDisplayed().assertTextEquals(text(locale, resource))
     }
 
     private fun scrollToPageStatus() {
@@ -532,13 +538,15 @@ class SettingsBackupPreviewTest {
     }
 
     private fun assertActionsFitDialog() {
-        val dialog = compose.onNodeWithTag("backup_preview_dialog").getUnclippedBoundsInRoot()
-        val bounds = actionTags.map { tag ->
-            compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot().also { button ->
+        actionTags.forEach { tag ->
+            compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot().also { button ->
+                val dialog = compose.onNodeWithTag("backup_preview_dialog").getUnclippedBoundsInRoot()
                 assertTrue(button.left >= dialog.left && button.right <= dialog.right)
                 assertTrue(button.top >= dialog.top && button.bottom <= dialog.bottom)
             }
         }
+        // Все координаты порядка считываются после последней прокрутки, при одном смещении.
+        val bounds = actionTags.map { tag -> compose.onNodeWithTag(tag).getUnclippedBoundsInRoot() }
         assertTrue(bounds.take(2).maxOf { it.bottom } <= bounds.drop(2).minOf { it.top })
     }
 

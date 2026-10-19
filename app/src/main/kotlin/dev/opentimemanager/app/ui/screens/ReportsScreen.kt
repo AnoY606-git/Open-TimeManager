@@ -23,13 +23,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import dev.opentimemanager.app.ui.components.AdaptiveAlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -469,14 +467,14 @@ private fun CustomPeriodDialog(
     var from by rememberSaveable { mutableStateOf(initial.from.toString()) }
     var through by rememberSaveable { mutableStateOf(initial.through.toString()) }
     var error by rememberSaveable { mutableStateOf<DateInputError?>(null) }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
         icon = { AccentIcon(AppGlyph.Reports) },
         title = { Text(stringResource(R.string.report_custom)) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     from,
                     { from = it; error = null },

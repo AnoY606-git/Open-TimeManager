@@ -153,7 +153,7 @@ class SystemSurfaceContractTest {
     @Test fun ambiguousWidgetStartHonestlyAsksForAProject() {
         val idle = fixture(TrackingState.IDLE).copy(activeProject = null, quickStartProject = null)
         val views = TrackingWidgetProvider.views(context, idle).apply(context, null)
-        assertEquals("Choose project", views.findViewById<TextView>(R.id.widget_primary).text.toString())
+        assertEquals("Choose project", views.findViewById<View>(R.id.widget_primary).contentDescription.toString())
     }
 
     @Test fun widgetAndTileProjectIdleRunningPausedAndReviewWithoutPrivateText() {
@@ -164,7 +164,7 @@ class SystemSurfaceContractTest {
             val snapshot = fixture(state)
             val views = TrackingWidgetProvider.views(context, snapshot, true, 4000).apply(context, null)
             assertEquals(label, views.findViewById<TextView>(R.id.widget_status).text.toString())
-            assertEquals(action, views.findViewById<TextView>(R.id.widget_primary).text.toString())
+            assertEquals(action, views.findViewById<View>(R.id.widget_primary).contentDescription.toString())
             assertFalse(views.findViewById<TextView>(R.id.widget_status).text.toString().contains("Secret"))
             assertEquals(if (state == TrackingState.IDLE || state == TrackingState.NEEDS_REVIEW) View.GONE else View.VISIBLE, views.findViewById<View>(R.id.widget_stop).visibility)
             val tile = TrackingTileService.presentation(context, snapshot)

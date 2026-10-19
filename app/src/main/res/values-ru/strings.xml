@@ -39,7 +39,7 @@
     <string name="no_history">Завершённых записей пока нет</string>
     <string name="entry_date">Дата (ГГГГ-ММ-ДД)</string>
     <string name="entry_time">Начало (ЧЧ:ММ)</string>
-    <string name="entry_duration_minutes">Длительность в минутах</string>
+    <string name="entry_duration_minutes">Длительность, мин</string>
     <string name="entry_note">Заметка</string>
     <string name="save_note">Сохранить заметку</string>
     <string name="resolve_review">Разрешить прерванную запись</string>

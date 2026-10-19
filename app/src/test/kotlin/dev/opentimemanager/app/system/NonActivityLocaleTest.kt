@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.res.Configuration
+import android.view.View
 import android.widget.TextView
 import androidx.core.app.LocaleManagerCompat
 import androidx.test.core.app.ApplicationProvider
@@ -68,7 +69,7 @@ class NonActivityLocaleTest {
                 assertEquals(status, TrackingTileService.presentation(context, snapshot).label)
                 val widget = TrackingWidgetProvider.views(context, snapshot, privacyMode = false).apply(context, null)
                 assertEquals(title, widget.findViewById<TextView>(R.id.widget_status).text.toString())
-                assertEquals(primary, widget.findViewById<TextView>(R.id.widget_primary).text.toString())
+                assertEquals(primary, widget.findViewById<View>(R.id.widget_primary).contentDescription.toString())
 
                 updater.refresh(snapshot)
                 val active = context.getSystemService(NotificationManager::class.java).activeNotifications

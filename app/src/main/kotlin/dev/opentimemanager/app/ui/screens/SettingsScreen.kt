@@ -29,14 +29,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
+import dev.opentimemanager.app.ui.components.AdaptiveAlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -54,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +69,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -117,6 +120,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -639,11 +643,11 @@ fun SettingsScreen(
             onCloseProjectPicker()
         },
     )
-    if (confirmPlainBackup) AlertDialog(
+    if (confirmPlainBackup) AdaptiveAlertDialog(
         onDismissRequest = { confirmPlainBackup = false },
         modifier = Modifier.testTag("plain_backup_warning"),
         title = { Text(stringResource(R.string.backup_plain_warning_title)) },
-        text = { Text(stringResource(R.string.backup_plain_warning), modifier = Modifier.verticalScroll(rememberScrollState())) },
+        text = { Text(stringResource(R.string.backup_plain_warning)) },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -725,12 +729,12 @@ fun SettingsScreen(
             }
         },
     )
-    if (restoreUri != null && restoreFormat == BackupFormat.PLAINTEXT) AlertDialog(
+    if (restoreUri != null && restoreFormat == BackupFormat.PLAINTEXT) AdaptiveAlertDialog(
         onDismissRequest = { backupActions?.clearSelectedDocument?.invoke() },
         modifier = Modifier.testTag("plain_backup_inspect_warning"),
         title = { Text(stringResource(R.string.backup_plain_inspect_title)) },
         text = {
-            Text(stringResource(R.string.backup_plain_inspect_warning), modifier = Modifier.verticalScroll(rememberScrollState()))
+            Text(stringResource(R.string.backup_plain_inspect_warning))
         },
         confirmButton = {
             TextButton(
@@ -789,7 +793,7 @@ fun SettingsScreen(
             onReplace = { if (!busy && !restoreInFlight) confirmReplace = true },
         )
     }
-    if (confirmReplace && restoreUri == null) AlertDialog(
+    if (confirmReplace && restoreUri == null) AdaptiveAlertDialog(
         onDismissRequest = { if (!busy) confirmReplace = false },
         properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         modifier = Modifier.testTag("backup_replace_confirmation"),
@@ -922,14 +926,13 @@ private fun LegalDocumentDialog(
             LegalDocumentRepository(context).read(document)
         }
     }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(document.titleResource)) },
         text = {
             SelectionContainer {
                 Text(
                     text = text,
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -959,11 +962,11 @@ private fun PasswordDialog(
         password = ""
         onDismiss()
     }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column {
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -1025,18 +1028,14 @@ private fun BackupPreviewDialog(
 ) {
     val scroll = rememberScrollState()
     val failureResource = status?.previewFailureResource()
-    // Identical fast failures must scroll into view even if their intervening busy state was never drawn.
-    LaunchedEffect(failureResource, attempt) {
-        if (failureResource != null) scroll.scrollTo(0)
-    }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = { if (!busy) onHide() },
         properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         modifier = Modifier.testTag("backup_preview_dialog"),
+        scrollState = scroll,
         title = { Text(stringResource(if (preview.format == BackupFormat.PLAINTEXT) R.string.backup_plain_preview_title else R.string.backup_preview_title)) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (preview.format == BackupFormat.PLAINTEXT) {
@@ -1047,11 +1046,20 @@ private fun BackupPreviewDialog(
                     )
                 }
                 failureResource?.let { resource ->
+                    val failureInView = remember { BringIntoViewRequester() }
+                    var positioned by remember { mutableStateOf(false) }
                     Text(
                         stringResource(resource),
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("backup_preview_failure"),
+                        modifier = Modifier.testTag("backup_preview_failure")
+                            .bringIntoViewRequester(failureInView).onGloballyPositioned { positioned = true },
                     )
+                    // Эффект принадлежит окну Dialog, а не Activity: ждём регистрации и
+                    // измерения его текста. Одинаковый быстрый отказ повторяет запрос по attempt.
+                    LaunchedEffect(resource, attempt) {
+                        snapshotFlow { positioned }.first { it }
+                        failureInView.bringIntoView()
+                    }
                 }
                 if (busy) {
                     Text(stringResource(R.string.data_operation_in_progress), modifier = Modifier.testTag("backup_preview_busy"))

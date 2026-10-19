@@ -5,6 +5,7 @@
 
 ## В разработке / Unreleased
 
+- Формы и подтверждения теперь прокручиваются целиком, включая заголовок и действия: крупный шрифт и короткое окно с клавиатурой не вытесняют поля ввода. Компактный виджет получил отдельные кнопки-иконки 48 dp с полными русскими/английскими названиями для средств доступности; длинное имя проекта больше не выталкивает таймер и управление за границы.
 - Добавлен необязательный мастер первого запуска на русском и английском: Android и семейство устройства, проверка уведомлений и фоновых ограничений, явные действия и возможность пропустить. Пропуск и завершение запоминаются локально без повторных показов; мастер доступен вручную в «Android и устройство». Разрешения и Live Updates не включаются автоматически, точная прошивка не угадывается по бренду.
 - Нижняя навигация временно скрывается при экранной клавиатуре, освобождая место для ввода. Поиск настроек удерживает строку поиска, а не большой заголовок, в видимой области; это особенно важно на узких экранах с крупным шрифтом.
 - Обзор настроек стал компактнее; добавлены поиск разделов по реальным названиям настроек, действий и ключевым словам, очистка запроса и сообщение об отсутствии совпадений. Запрос и прокрутка обзора сохраняются после возврата и восстановления экрана. Новый раздел «Android и устройство» после «Копий данных» объединяет уведомления, виджет, плитку, ограничения фона и «Live Updates и HyperIsland». Сведения о совместимости и прошивках изначально свёрнуты; основные кнопки и действующие предупреждения остаются видны. Проект по умолчанию, дневная цель и скрытие названий остаются в «Учёт и проекты»; поиск и переходы сами не меняют данные или значения настроек.
@@ -23,6 +24,12 @@ explicit actions and Skip. Dismissal/completion is local and prevents repeated
 prompts; setup can be reopened under Android and device. Permissions and Live
 Updates are never enabled automatically, and the brand is not treated as proof
 of the exact firmware.
+
+Forms and confirmations now scroll as a whole, including their headings and
+actions, so large text and short keyboard windows do not displace input fields.
+The compact widget uses separate 48 dp icon controls with full localized
+accessibility labels; long project names no longer push the timer or controls
+outside the widget.
 
 Per-month plans with signed balances, remaining time, calendar
 navigation, and an opt-in Monday–Friday estimate without holidays. Plans are

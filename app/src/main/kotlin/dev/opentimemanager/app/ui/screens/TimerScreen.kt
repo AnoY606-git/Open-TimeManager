@@ -24,14 +24,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import dev.opentimemanager.app.ui.components.AdaptiveAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -250,7 +248,7 @@ fun TimerScreen(
         )
     }
     switchCandidate?.let { project ->
-        AlertDialog(
+        AdaptiveAlertDialog(
             onDismissRequest = { switchCandidate = null },
             title = { Text(stringResource(R.string.ux_switch_project_title, context.projectName(project))) },
             text = { Text(stringResource(R.string.ux_switch_project_message)) },
@@ -274,7 +272,7 @@ fun TimerScreen(
         },
     )
     archiveCandidate?.let { project ->
-        AlertDialog(
+        AdaptiveAlertDialog(
             onDismissRequest = { archiveCandidate = null },
             title = { Text(stringResource(R.string.archive_project)) },
             text = { Text(stringResource(R.string.archive_project_question, context.projectName(project))) },
@@ -771,11 +769,11 @@ private fun ReviewEndDialog(unconfirmedStartUtcMillis: Long?, onDismiss: () -> U
     // Do not suggest "now" as if the unknown interval had been tracked until this moment.
     var time by rememberSaveable { mutableStateOf("") }
     var invalid by rememberSaveable { mutableStateOf(false) }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ux_review_end_title)) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.ux_review_end_hint), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.entry_time_zone, zone.id), style = MaterialTheme.typography.bodySmall)
                 unconfirmedStartUtcMillis?.let {
@@ -818,11 +816,11 @@ private fun ProjectDialog(onDismiss: () -> Unit, onCreate: (String, Int) -> Unit
     val context = LocalContext.current
     var name by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableIntStateOf(ProjectColors.first()) }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.create_project)) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name, onValueChange = { name = it },
                     label = { Text(stringResource(R.string.project_name)) },

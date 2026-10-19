@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import dev.opentimemanager.app.ui.components.AdaptiveAlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
@@ -234,7 +234,7 @@ fun HistoryScreen(
         )
     }
     deleteCandidate?.let { deletion ->
-        AlertDialog(
+        AdaptiveAlertDialog(
             onDismissRequest = { deleteCandidate = null },
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
@@ -491,15 +491,15 @@ private fun EntryDialog(
         val validation = validateEntryForm(form, zone)
         validation.value?.let(onSave) ?: run { invalid = true }
     }
-    AlertDialog(
+    AdaptiveAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
         icon = { AccentIcon(if (editing) AppGlyph.Edit else AppGlyph.Plus) },
         title = { Text(stringResource(if (editing) R.string.edit_entry else R.string.add_manual_entry)) },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item("project") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(stringResource(R.string.selected_project), style = MaterialTheme.typography.labelLarge)
                         OutlinedButton(
@@ -515,10 +515,10 @@ private fun EntryDialog(
                         }
                     }
                 }
-                item("zone") {
+                Column {
                     Text(stringResource(R.string.entry_time_zone, zone.id), style = MaterialTheme.typography.bodySmall)
                 }
-                item {
+                Column {
                     OutlinedTextField(
                         form.dateInput,
                         { value ->
@@ -531,7 +531,7 @@ private fun EntryDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                item {
+                Column {
                     OutlinedTextField(
                         form.timeInput,
                         { value ->
@@ -544,7 +544,7 @@ private fun EntryDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                item {
+                Column {
                     OutlinedTextField(
                         form.durationMinutesInput,
                         { raw ->
@@ -562,7 +562,7 @@ private fun EntryDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                item {
+                Column {
                     OutlinedTextField(
                         form.noteInput,
                         { form = form.copy(noteInput = it); invalid = false },
@@ -572,7 +572,7 @@ private fun EntryDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                if (invalid) item { FormErrorText(stringResource(R.string.error_invalid_entry)) }
+                if (invalid) FormErrorText(stringResource(R.string.error_invalid_entry))
             }
         },
         confirmButton = {

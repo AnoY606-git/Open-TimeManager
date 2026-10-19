@@ -48,11 +48,17 @@ class TrackingWidgetProvider : AppWidgetProvider() {
             val title = if (privacyMode) strings.getString(TrackingNotification.statusString(state)) else TrackingNotification.projectTitle(strings, snapshot)
             return RemoteViews(context.packageName, R.layout.tracking_widget).apply {
                 setTextViewText(R.id.widget_status, title)
-                setTextViewText(R.id.widget_primary, strings.getString(
+                setContentDescription(R.id.widget_status, title)
+                setContentDescription(R.id.widget_primary, strings.getString(
                     if (state == TrackingState.IDLE && command == null) R.string.ux_choose_project
                     else TrackingNotification.primaryString(state),
                 ))
-                setTextViewText(R.id.widget_stop, strings.getString(R.string.tracking_stop))
+                setImageViewResource(R.id.widget_primary, when {
+                    state == TrackingState.RUNNING -> R.drawable.ic_island_pause
+                    state == TrackingState.NEEDS_REVIEW || command == null -> R.drawable.ic_island_timer
+                    else -> R.drawable.ic_island_resume
+                })
+                setContentDescription(R.id.widget_stop, strings.getString(R.string.tracking_stop))
                 setChronometer(R.id.widget_timer, nowElapsedMillis - TrackingNotification.elapsedMillis(snapshot, nowElapsedMillis), null, state == TrackingState.RUNNING)
                 // Host может применить RemoteViews позднее: paused показывает только подтверждённое время.
                 if (state != TrackingState.RUNNING) setTextViewText(R.id.widget_timer, android.text.format.DateUtils.formatElapsedTime(TrackingNotification.elapsedMillis(snapshot, nowElapsedMillis) / 1000))

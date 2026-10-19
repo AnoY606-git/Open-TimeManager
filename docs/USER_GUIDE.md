@@ -175,7 +175,11 @@
   сессию. Если уведомления запрещены, откройте их системные настройки; внутри
   приложения таймер по-прежнему доступен.
 - **Виджет** можно добавить кнопкой в приложении, если это поддерживает ваш
-  рабочий стол. Иначе найдите OTM в обычном списке виджетов.
+  рабочий стол. Иначе найдите OTM в обычном списке виджетов. Справа находятся
+  кнопки-иконки запуска/паузы/продолжения и завершения; завершение видно только
+  у активной сессии. Их полные названия читаются средствами доступности.
+  Длинное имя проекта сокращается в одну строку, а размер цифр таймера
+  подбирается по доступной ширине. Увеличьте виджет, если хотите больше места.
 - **Плитка быстрых настроек** добавляется через системный запрос на Android 13+.
   На Android 12 откройте редактор быстрых настроек и добавьте её вручную.
 - **«Скрывать названия проектов»** в разделе «Учёт и проекты» убирает имена из этих системных элементов.
@@ -478,7 +482,10 @@ Find system controls under Settings → Android and device.
 - **Notification:** pause, resume, or stop the session. If notifications are blocked,
   open their system settings. You can still use the timer inside the app.
 - **Widget:** use the in-app add button if your launcher supports it, or find
-  OTM in the launcher's widget list.
+  OTM in the launcher's widget list. The right-hand icons start/pause/resume
+  and stop; Stop is shown only for an active session. Accessibility services
+  read the full action labels. Long project names use one ellipsized line,
+  and timer digits fit the available width. Resize the widget for more room.
 - **Quick Settings tile:** Android 13+ can show a system add dialog. On Android 12,
   add the tile manually through the Quick Settings editor.
 - **Hide project names:** under Tracking and projects, removes labels from these controls; it does not encrypt data.
