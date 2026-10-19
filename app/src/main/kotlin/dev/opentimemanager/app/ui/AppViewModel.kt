@@ -498,8 +498,8 @@ class AppViewModel(
             if (result is RestoreResult.Applied) {
                 val controlsWarning = systemSurfaceWarning {
                     val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-                    SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
-                        snapshot.session.state == TrackingState.IDLE
+                    SystemSurfaceUpdater(application).refresh(snapshot)
+                    true
                 }
                 restoreCompletionWarning(result, controlsWarning)?.let(::show)
             }
@@ -530,8 +530,9 @@ class AppViewModel(
                 systemSurfaceWarning {
                     refreshAndEnsureSystemControls(
                         refresh = {
-                            updater.refresh(result.snapshot) ==
-                                dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE
+                            // Запрет необязательных уведомлений уже отражён карточкой UI.
+                            updater.refresh(result.snapshot)
+                            true
                         },
                         ensureForeground = { updater.ensureForegroundControls(result.snapshot) },
                     )
@@ -551,8 +552,8 @@ class AppViewModel(
         }
         systemSurfaceWarning {
             val snapshot = container.trackingCoordinator.observeSystemSnapshot().first()
-            SystemSurfaceUpdater(application).refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
-                snapshot.session.state == TrackingState.IDLE
+            SystemSurfaceUpdater(application).refresh(snapshot)
+            true
         }?.let(::show)
     }
 
@@ -563,8 +564,8 @@ class AppViewModel(
             val updater = SystemSurfaceUpdater(application)
             refreshAndEnsureSystemControls(
                 refresh = {
-                    updater.refresh(snapshot) == dev.opentimemanager.app.system.NotificationAvailability.AVAILABLE ||
-                        snapshot.session.state == TrackingState.IDLE
+                    updater.refresh(snapshot)
+                    true
                 },
                 ensureForeground = { updater.ensureForegroundControls(snapshot) },
             )

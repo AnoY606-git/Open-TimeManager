@@ -5,8 +5,9 @@
 ## Русский
 
 Этот список нужен для публикации APK, который можно связать с конкретными
-исходниками и безопасно установить как обновление. CI собирает debug APK
-и неподписанный release APK. Ключ официальной подписи хранится отдельно от Git и CI.
+исходниками и безопасно установить как обновление. CI собирает только debug APK
+для тестов. Стабильную release-сборку владелец готовит самостоятельно;
+ключ официальной подписи хранится отдельно от Git и CI.
 
 ### 1. Подготовить исходники
 
@@ -46,6 +47,16 @@
 
 ### 3. Подписать APK
 
+Соберите release APK локально из проверенного commit:
+
+```bash
+./gradlew --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+```
+
+Для Linux-bootstrap используйте `scripts/with-toolchain.sh`, на Windows —
+`.\gradlew.bat`. Неподписанный APK появится в
+`app/build/outputs/apk/release/app-release-unsigned.apk`.
+
 Используйте `zipalign` **до** подписи и `apksigner` из Android SDK. Не меняйте файл
 после подписи. Ключи, пароли и их резервные копии не должны попадать в Git,
 исходный архив или публичные артефакты.
@@ -83,7 +94,7 @@ python3 scripts/check_release_apk.py path/to/final-signed.apk
 | `Open-TimeManager-<version>-source.tar.gz` | Исходники того же commit с материалами сборки и лицензиями. |
 | `VERIFICATION.md` | Выполненные проверки, ссылка на CI, проверка обновления и известные пробелы. |
 
-Контрольная сумма после подписи отличается от суммы неподписанного APK из CI.
+Контрольная сумма после подписи отличается от суммы локального неподписанного APK.
 Вычислите её заново через `sha256sum` или `Get-FileHash -Algorithm SHA256`.
 В отчёт не включайте личные данные, а непроверенную совместимость с прошивками,
 расход батареи или продвижение уведомления не записывайте как успех.
@@ -115,8 +126,8 @@ GPL-3.0-only. Создавайте архив через `git archive` из то
 
 ## English
 
-CI produces test-signed debug and unsigned release APKs, not production releases.
-Keep the production key outside Git and CI.
+CI produces only test-signed debug APKs. The owner builds stable releases
+separately. Keep the production key outside Git and CI.
 
 1. **Prepare the source.** Set the version and increase the version code. Update
    the changelog, notes, and affected screenshots. Commit and push, build from a
@@ -126,7 +137,12 @@ Keep the production key outside Git and CI.
    real CSV export, both backup formats, old-file compatibility, failure handling,
    Merge/Replace, settings recovery, languages, layouts, and system controls.
    Check Live Updates as a request contract, not a guarantee of actual promotion.
-3. **Sign separately.** Run `zipalign` before signing, then `apksigner`. Verify
+3. **Build and sign separately.** From the verified commit, run
+   `./gradlew --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease`
+   locally (use `scripts/with-toolchain.sh` for Linux bootstrap or
+   `.\gradlew.bat` on Windows). This produces
+   `app/build/outputs/apk/release/app-release-unsigned.apk`.
+   Run `zipalign` before signing, then `apksigner`. Verify
    the final signature and run `scripts/check_release_apk.py` against that file.
    Keep keys and passwords out of every public artifact.
 4. **Test an update.** Compare the certificate with the previous stable release

@@ -38,9 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.backup.BackupFileCoordinator
@@ -66,7 +67,7 @@ fun OpenTimeManagerApp(
     modifier: Modifier = Modifier,
 ) {
     val snapshot = state.snapshot
-    val configuration = LocalConfiguration.current
+    val fontScale = LocalDensity.current.fontScale
     val snackbar = remember { SnackbarHostState() }
     BackHandler(enabled = state.controls.destination != AppDestination.TIMER) {
         viewModel?.navigate(AppDestination.TIMER)
@@ -94,18 +95,18 @@ fun OpenTimeManagerApp(
         val widthDp = maxWidth.value.toInt()
         val heightDp = maxHeight.value.toInt()
         val layout = navigationLayout(widthDp, heightDp)
-        val compactTimer = timerUsesCompactLayout(heightDp, configuration.fontScale)
+        val compactTimer = timerUsesCompactLayout(heightDp, fontScale)
         if (snapshot == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
             val destinations = AppDestination.entries
-            if (layout == NavigationLayout.BOTTOM) {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                    containerColor = MaterialTheme.colorScheme.background,
-                    snackbarHost = { SnackbarHost(snackbar) },
-                    bottomBar = {
+            Scaffold(
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                containerColor = MaterialTheme.colorScheme.background,
+                snackbarHost = { SnackbarHost(snackbar) },
+                bottomBar = {
+                    if (layout == NavigationLayout.BOTTOM) {
                         Surface(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             shape = MaterialTheme.shapes.large,
@@ -113,43 +114,46 @@ fun OpenTimeManagerApp(
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
                             shadowElevation = 6.dp,
                         ) {
-                            NavigationBar(
-                                modifier = Modifier.testTag("compact_navigation"),
-                                containerColor = Color.Transparent,
-                                tonalElevation = 0.dp,
-                                windowInsets = WindowInsets(0, 0, 0, 0),
-                            ) {
-                                destinations.forEach { destination ->
-                                    NavigationBarItem(
-                                        selected = state.controls.destination == destination,
-                                        onClick = { viewModel?.navigate(destination) },
-                                        icon = { DestinationMarker(destination) },
-                                        label = { Text(stringResource(destination.label()), style = MaterialTheme.typography.labelMedium) },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        ),
-                                    )
+                            // При крупном тексте два ряда дают подписям место без уменьшения шрифта.
+                            val columns = if (widthDp / fontScale < 260f) 2 else destinations.size
+                            Column(Modifier.testTag("compact_navigation")) {
+                                destinations.chunked(columns).forEach { row ->
+                                    NavigationBar(
+                                        containerColor = Color.Transparent,
+                                        tonalElevation = 0.dp,
+                                        windowInsets = WindowInsets(0, 0, 0, 0),
+                                    ) {
+                                        row.forEach { destination ->
+                                            NavigationBarItem(
+                                                selected = state.controls.destination == destination,
+                                                onClick = { viewModel?.navigate(destination) },
+                                                icon = { DestinationMarker(destination) },
+                                                label = {
+                                                    Text(
+                                                        stringResource(destination.label()),
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        textAlign = TextAlign.Center,
+                                                    )
+                                                },
+                                                colors = NavigationBarItemDefaults.colors(
+                                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                ),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                    },
-                ) { padding ->
-                    DestinationContent(
-                        state, viewModel, layout, compactTimer, notificationStatus,
-                        onManageNotifications, selectedLanguage, onLanguage,
-                        onLaunchCsvDocument = csvDocument::launch,
-                        onLaunchBackupDocument = backupDocument::launch,
-                        onLaunchOpenBackupDocument = openBackupDocument::launch,
-                        modifier = Modifier.padding(padding),
-                    )
-                }
-            } else {
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    Row(Modifier.fillMaxSize()) {
+                    }
+                },
+            ) { padding ->
+                Row(Modifier.fillMaxSize().padding(padding)) {
+                    if (layout != NavigationLayout.BOTTOM) {
                         NavigationRail(
                             modifier = Modifier.testTag("expanded_navigation"),
                             containerColor = MaterialTheme.colorScheme.surface,
@@ -175,16 +179,15 @@ fun OpenTimeManagerApp(
                                 }
                             }
                         }
-                        DestinationContent(
-                            state, viewModel, layout, compactTimer, notificationStatus,
-                            onManageNotifications, selectedLanguage, onLanguage,
-                            onLaunchCsvDocument = csvDocument::launch,
-                            onLaunchBackupDocument = backupDocument::launch,
-                            onLaunchOpenBackupDocument = openBackupDocument::launch,
-                            modifier = Modifier.weight(1f),
-                        )
                     }
-                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+                    DestinationContent(
+                        state, viewModel, layout, compactTimer, notificationStatus,
+                        onManageNotifications, selectedLanguage, onLanguage,
+                        onLaunchCsvDocument = csvDocument::launch,
+                        onLaunchBackupDocument = backupDocument::launch,
+                        onLaunchOpenBackupDocument = openBackupDocument::launch,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -221,9 +224,7 @@ private fun DestinationContent(
     modifier: Modifier,
 ) {
     when (state.controls.destination) {
-        AppDestination.TIMER -> if (layout == NavigationLayout.TWO_PANE) {
-            AdaptiveTimerSurface(state, layout, compactTimer, modifier = modifier, viewModel = viewModel, notificationStatus = notificationStatus, onManageNotifications = onManageNotifications)
-        } else AdaptiveTimerSurface(state, layout, compactTimer, modifier = modifier, viewModel = viewModel, notificationStatus = notificationStatus, onManageNotifications = onManageNotifications)
+        AppDestination.TIMER -> AdaptiveTimerSurface(state, layout, compactTimer, modifier = modifier, viewModel = viewModel, notificationStatus = notificationStatus, onManageNotifications = onManageNotifications)
         AppDestination.HISTORY -> HistoryScreen(
             state = state,
             onSearch = { viewModel?.searchHistory(it) },
@@ -306,14 +307,13 @@ fun AdaptiveTimerSurface(
             onManageNotifications = onManageNotifications,
         )
     }
-    if (layout == NavigationLayout.TWO_PANE) {
-        Row(modifier.fillMaxSize()) {
-            Box(Modifier.weight(1.1f).fillMaxSize().testTag("timer_primary_pane")) { timer() }
+    // Основная панель остаётся в той же композиции при изменении ширины окна.
+    Row(modifier.fillMaxSize()) {
+        Box(Modifier.weight(if (layout == NavigationLayout.TWO_PANE) 1.1f else 1f).fillMaxSize().testTag("timer_primary_pane")) { timer() }
+        if (layout == NavigationLayout.TWO_PANE) {
             VerticalDivider()
             Box(Modifier.weight(0.9f).fillMaxSize().testTag("timer_today_pane")) { TodayPane(state) }
         }
-    } else {
-        Box(modifier.fillMaxSize().testTag("timer_primary_pane")) { timer() }
     }
 }
 

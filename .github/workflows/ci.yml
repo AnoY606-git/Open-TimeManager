@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Policy, tests, lint, and APKs
+    name: Policy, debug tests, lint, and APK
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -47,30 +47,25 @@ jobs:
           ./gradlew --no-daemon
           :core:test
           :app:testDebugUnitTest
-          :app:testReleaseUnitTest
           :app:lintDebug
-          :app:lintRelease
           :app:compileDebugAndroidTestKotlin
           :app:assembleDebug
-          :app:assembleRelease
       - name: Recheck policy and generated Room schemas
         run: |
           python3 scripts/check_repository.py
-          python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
           git diff --exit-code -- app/schemas
       - name: Record APK checksums and source commit
         working-directory: app/build/outputs/apk
         run: |
           mkdir -p metadata
-          sha256sum debug/app-debug.apk release/app-release-unsigned.apk > metadata/SHA256SUMS
+          sha256sum debug/app-debug.apk > metadata/SHA256SUMS
           git rev-parse HEAD > metadata/SOURCE_COMMIT.txt
-      - name: Upload debug and unsigned release APKs
+      - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: open-timemanager-debug-and-unsigned-release-apks
+          name: open-timemanager-debug-apk
           path: |
             app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
             app/build/outputs/apk/metadata/SHA256SUMS
             app/build/outputs/apk/metadata/SOURCE_COMMIT.txt
           if-no-files-found: error

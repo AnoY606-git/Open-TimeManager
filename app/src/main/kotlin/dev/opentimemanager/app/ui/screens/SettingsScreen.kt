@@ -76,10 +76,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.settings.AppLanguage
 import dev.opentimemanager.app.settings.ThemeMode
@@ -176,14 +178,14 @@ fun SettingsScreen(
 ) {
     val preferences = state.preferences
     val context = LocalContext.current
-    var goal by remember(preferences.dailyGoalMinutes) { mutableStateOf(preferences.dailyGoalMinutes.toString()) }
+    var goal by rememberSaveable(preferences.dailyGoalMinutes) { mutableStateOf(preferences.dailyGoalMinutes.toString()) }
     var restoreInFlight by remember { mutableStateOf(false) }
     var restoreAttempt by remember { mutableIntStateOf(0) }
     val busy = state.controls.dataTransferBusy || restoreInFlight
     var status by remember(state.controls.lastRestoreResult) {
         mutableStateOf(state.controls.lastRestoreResult?.status())
     }
-    var showBackupPassword by remember { mutableStateOf(false) }
+    var showBackupPassword by rememberSaveable { mutableStateOf(false) }
     val restoreUri = state.controls.pendingRestoreUri?.let(Uri::parse)
     var restoreFormat by remember(restoreUri) { mutableStateOf<BackupFormat?>(null) }
     var checkingFormat by remember(restoreUri) { mutableStateOf(false) }
@@ -195,14 +197,15 @@ fun SettingsScreen(
         mutableStateOf(state.controls.lastRestoreResult?.status()?.takeUnless { it == TransferUiStatus.BACKUP_RESTORED })
     }
     var confirmReplace by remember { mutableStateOf(false) }
-    var selectedLegalDocument by remember { mutableStateOf<LegalDocument?>(null) }
+    var selectedLegalDocumentName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedLegalDocument = selectedLegalDocumentName?.let(LegalDocument::valueOf)
     var pageName by rememberSaveable {
         mutableStateOf((if (preview != null) SettingsPage.DATA else initialPage).name)
     }
     val page = SettingsPage.valueOf(pageName)
     val listState = rememberSaveable(page, saver = LazyListState.Saver) { LazyListState() }
-    var showDefaultProjectPicker by remember { mutableStateOf(false) }
-    var confirmPlainBackup by remember { mutableStateOf(false) }
+    var showDefaultProjectPicker by rememberSaveable { mutableStateOf(false) }
+    var confirmPlainBackup by rememberSaveable { mutableStateOf(false) }
     BackHandler(
         enabled = page != SettingsPage.OVERVIEW && !showPreview && restoreUri == null &&
             !showBackupPassword && !showDefaultProjectPicker && !confirmPlainBackup && selectedLegalDocument == null,
@@ -536,7 +539,7 @@ fun SettingsScreen(
                 LegalDocument.entries.forEachIndexed { index, document ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
-                            .clickable(role = Role.Button) { selectedLegalDocument = document }
+                            .clickable(role = Role.Button) { selectedLegalDocumentName = document.name }
                             .heightIn(min = 56.dp)
                             .padding(horizontal = 18.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -775,7 +778,7 @@ fun SettingsScreen(
     selectedLegalDocument?.let { document ->
         LegalDocumentDialog(
             document = document,
-            onDismiss = { selectedLegalDocument = null },
+            onDismiss = { selectedLegalDocumentName = null },
         )
     }
 }
@@ -820,64 +823,84 @@ private fun DefaultProjectDialog(
     val context = LocalContext.current
     val projects = (listOfNotNull(picker.pinnedProject) + picker.projects)
         .filter { it.archivedAtUtcMillis == null }.distinctBy { it.id }
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("default_project_dialog"),
-        title = { Text(stringResource(R.string.default_project_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = picker.query,
-                    onValueChange = onSearch,
-                    label = { Text(stringResource(R.string.search_projects)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("default_project_search"),
-                )
-                LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 360.dp).selectableGroup().testTag("default_project_list"),
-                ) {
-                    item(key = "automatic") {
-                        Column(
-                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(16.dp).testTag("default_project_dialog"),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            // Поиск, варианты и закрытие делят одну прокрутку даже при низком окне и открытой клавиатуре.
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).selectableGroup().testTag("default_project_list"),
+                contentPadding = PaddingValues(24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item("heading") {
+                    Text(
+                        stringResource(R.string.default_project_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                }
+                item("search") {
+                    OutlinedTextField(
+                        value = picker.query,
+                        onValueChange = onSearch,
+                        label = { Text(stringResource(R.string.search_projects)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("default_project_search"),
+                    )
+                }
+                item(key = "automatic") {
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                            .selectable(
+                                selected = state.defaultProjectId == null,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(null) },
+                            ).padding(12.dp).testTag("default_project_automatic"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(stringResource(R.string.default_project_automatic), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.default_project_automatic_hint), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                projects.forEach { project ->
+                    item(key = project.id) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 52.dp)
                                 .selectable(
-                                    selected = state.defaultProjectId == null,
+                                    selected = state.defaultProjectId == project.id,
                                     role = Role.RadioButton,
-                                    onClick = { onSelect(null) },
-                                ).padding(12.dp).testTag("default_project_automatic"),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    onClick = { onSelect(project.id) },
+                                ).padding(12.dp).testTag("default_choice_${project.id}"),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(stringResource(R.string.default_project_automatic), style = MaterialTheme.typography.titleSmall)
-                            Text(stringResource(R.string.default_project_automatic_hint), style = MaterialTheme.typography.bodySmall)
+                            Text(context.projectName(project), modifier = Modifier.weight(1f))
+                            if (state.defaultProjectId == project.id) AppIcon(AppGlyph.Check, modifier = Modifier.size(20.dp))
                         }
                     }
-                    projects.forEach { project ->
-                        item(key = project.id) {
-                            Row(
-                                Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                                    .selectable(
-                                        selected = state.defaultProjectId == project.id,
-                                        role = Role.RadioButton,
-                                        onClick = { onSelect(project.id) },
-                                    ).padding(12.dp).testTag("default_choice_${project.id}"),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(context.projectName(project), modifier = Modifier.weight(1f))
-                                if (state.defaultProjectId == project.id) AppIcon(AppGlyph.Check, modifier = Modifier.size(20.dp))
-                            }
-                        }
+                }
+                if (picker.loading) item("loading") { Text(stringResource(R.string.data_operation_in_progress)) }
+                if (picker.hasMore) item("more") {
+                    TextButton(onClick = onLoadMore, enabled = !picker.loading, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(stringResource(R.string.load_more_projects))
                     }
-                    if (picker.loading) item("loading") { Text(stringResource(R.string.data_operation_in_progress)) }
-                    if (picker.hasMore) item("more") {
-                        TextButton(onClick = onLoadMore, enabled = !picker.loading, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.load_more_projects))
+                }
+                item("close") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.close))
                         }
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
-    )
+        }
+    }
 }
 
 @Composable
@@ -933,18 +956,20 @@ private fun PasswordDialog(
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text(stringResource(R.string.backup_password)) },
-                supportingText = { Text(stringResource(supportingResource)) },
-                isError = input.error != null,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().testTag("backup_password_input")
-                    .semantics { contentDescription = passwordDescription },
-            )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text(stringResource(R.string.backup_password)) },
+                    supportingText = { Text(stringResource(supportingResource)) },
+                    isError = input.error != null,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("backup_password_input")
+                        .semantics { contentDescription = passwordDescription },
+                )
+            }
         },
         confirmButton = {
             Button(

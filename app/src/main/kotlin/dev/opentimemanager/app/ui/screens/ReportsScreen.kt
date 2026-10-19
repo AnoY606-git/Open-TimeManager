@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -138,7 +139,7 @@ fun ReportsScreen(
             )
         }
     }
-    var showCustom by remember { mutableStateOf(false) }
+    var showCustom by rememberSaveable { mutableStateOf(false) }
     var exportLaunchFailed by remember { mutableStateOf(false) }
     val exportBusy = state.controls.dataTransferBusy
     Box(
@@ -419,9 +420,9 @@ private fun CustomPeriodDialog(
     onDismiss: () -> Unit,
     onApply: (ReportPeriod.Custom) -> Unit,
 ) {
-    var from by remember { mutableStateOf(initial.from.toString()) }
-    var through by remember { mutableStateOf(initial.through.toString()) }
-    var error by remember { mutableStateOf<DateInputError?>(null) }
+    var from by rememberSaveable { mutableStateOf(initial.from.toString()) }
+    var through by rememberSaveable { mutableStateOf(initial.through.toString()) }
+    var error by rememberSaveable { mutableStateOf<DateInputError?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),

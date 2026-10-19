@@ -70,10 +70,8 @@ sdkmanager --sdk_root="$env:ANDROID_HOME" 'platform-tools' 'platforms;android-36
 python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python3 scripts/check_repository.py
 scripts/with-toolchain.sh ./gradlew --no-daemon \
-  :core:test :app:testDebugUnitTest :app:testReleaseUnitTest \
-  :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease \
+  :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug \
   :app:compileDebugAndroidTestKotlin
-scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
 На Windows с окружением из примера выше:
@@ -81,13 +79,13 @@ scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs
 ```powershell
 python -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python scripts/check_repository.py
-.\gradlew.bat --no-daemon :core:test :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :app:compileDebugAndroidTestKotlin
-python scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+.\gradlew.bat --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin
 ```
 
 Тесты исполнения Bash пропускаются на нативном Windows; запускайте их в Linux
-или WSL. Проверка APK использует `aapt2` из Build Tools 36.0.0. При необходимости
-путь можно передать через `--aapt2`.
+или WSL. CI для push, pull request и ручного запуска выполняет только debug-проверки
+и публикует debug APK с SHA-256 и commit исходников. Стабильную release-сборку
+владелец выполняет отдельно по [инструкции выпуска](RELEASING.md).
 
 ### Запуск на эмуляторе
 
@@ -205,10 +203,8 @@ On Linux with bootstrapped tools:
 python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python3 scripts/check_repository.py
 scripts/with-toolchain.sh ./gradlew --no-daemon \
-  :core:test :app:testDebugUnitTest :app:testReleaseUnitTest \
-  :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease \
+  :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug \
   :app:compileDebugAndroidTestKotlin
-scripts/with-toolchain.sh python3 scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
 With your own JDK/SDK, omit `scripts/with-toolchain.sh`. On Windows with the
@@ -217,12 +213,13 @@ environment above:
 ```powershell
 python -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python scripts/check_repository.py
-.\gradlew.bat --no-daemon :core:test :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :app:compileDebugAndroidTestKotlin
-python scripts/check_release_apk.py app/build/outputs/apk/release/app-release-unsigned.apk
+.\gradlew.bat --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin
 ```
 
 Only Bash execution tests are skipped on native Windows; run those in Linux or WSL.
-APK validation needs Build Tools 36.0.0's `aapt2`, selected from the SDK or passed with `--aapt2`.
+CI for pushes, pull requests, and manual runs performs debug checks and uploads
+the debug APK with its SHA-256 and source commit. The owner builds stable releases
+separately using the [release checklist](RELEASING.md#english).
 
 ### Run on an emulator
 

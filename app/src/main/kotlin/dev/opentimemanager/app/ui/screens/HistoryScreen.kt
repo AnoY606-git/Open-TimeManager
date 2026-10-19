@@ -38,6 +38,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -103,7 +105,7 @@ fun HistoryScreen(
     val timeFormatter = remember(locale) {
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)
     }
-    var editor by remember { mutableStateOf<HistoryEditSession?>(null) }
+    var editor by rememberSaveable(stateSaver = HistoryEditSession.Saver) { mutableStateOf<HistoryEditSession?>(null) }
     var deleteCandidate by remember { mutableStateOf<HistoryDeleteRequest?>(null) }
     val groups = remember(snapshot.entries, snapshot.projects, state.controls.historySearch, context, locale, zone) {
         state.completedEntries(context::projectName).groupBy {
@@ -263,15 +265,31 @@ fun HistoryScreen(
 
 /** Frozen at the opening click, not rebound when a restore publishes another snapshot. */
 internal class HistoryEditSession private constructor(
-    val entry: EntryEntity?,
+    val entryId: String?,
+    val expectedRevision: Long?,
     val expectedGeneration: String,
     val initialForm: EntryFormState,
 ) {
     fun save(draft: ManualEntryDraft, onSave: (String?, Long?, ManualEntryDraft) -> Unit) {
-        onSave(entry?.id, entry?.revision, draft.copy(expectedGeneration = expectedGeneration))
+        onSave(entryId, expectedRevision, draft.copy(expectedGeneration = expectedGeneration))
     }
 
     companion object {
+        // Восстанавливаем исходный контракт, даже если snapshot уже заменён восстановлением БД.
+        val Saver = listSaver<HistoryEditSession?, Any?>(
+            save = { session ->
+                if (session == null) emptyList() else listOf(
+                    session.entryId, session.expectedRevision, session.expectedGeneration,
+                ) + session.initialForm.saveableFields()
+            },
+            restore = { fields ->
+                HistoryEditSession(
+                    fields[0] as String?, fields[1] as Long?, fields[2] as String,
+                    restoreEntryForm(fields.drop(3)),
+                )
+            },
+        )
+
         fun open(state: AppUiState, entry: EntryEntity? = null, zoneId: ZoneId = ZoneId.systemDefault()): HistoryEditSession {
             val snapshot = requireNotNull(state.snapshot)
             val form = entry?.let { entryFormState(it, entryDurationMillis(it.id, state), zoneId) } ?: run {
@@ -285,10 +303,35 @@ internal class HistoryEditSession private constructor(
                     zoneId = zoneId.id,
                 )
             }
-            return HistoryEditSession(entry, snapshot.generation, form)
+            return HistoryEditSession(entry?.id, entry?.revision, snapshot.generation, form)
         }
     }
 }
+
+// Порядок полей един для исходной формы сеанса и изменяемого черновика.
+private fun EntryFormState.saveableFields(): List<Any?> = listOf(
+    projectId, dateInput, timeInput, durationMinutesInput, noteInput,
+    originalStartUtcMillis, originalDurationMillis, dateEdited, timeEdited, durationEdited, zoneId,
+)
+
+private fun restoreEntryForm(fields: List<Any?>) = EntryFormState(
+    projectId = fields[0] as String,
+    dateInput = fields[1] as String,
+    timeInput = fields[2] as String,
+    durationMinutesInput = fields[3] as String,
+    noteInput = fields[4] as String,
+    originalStartUtcMillis = fields[5] as Long?,
+    originalDurationMillis = fields[6] as Long?,
+    dateEdited = fields[7] as Boolean,
+    timeEdited = fields[8] as Boolean,
+    durationEdited = fields[9] as Boolean,
+    zoneId = fields[10] as String?,
+)
+
+private val EntryFormSaver = listSaver<EntryFormState, Any?>(
+    save = { it.saveableFields() },
+    restore = ::restoreEntryForm,
+)
 
 internal class HistoryDeleteRequest private constructor(val entry: EntryEntity, val expectedGeneration: String) {
     fun confirm(onDelete: (String, Long, String) -> Unit) {
@@ -423,13 +466,14 @@ private fun EntryDialog(
     onCloseProjectPicker: () -> Unit,
     onSave: (ManualEntryDraft) -> Unit,
 ) {
-    val entry = session.entry
+    val editing = session.entryId != null
     val zone = remember(session) { ZoneId.of(requireNotNull(session.initialForm.zoneId)) }
     val context = LocalContext.current
     val initialForm = session.initialForm
-    var form by remember(session) { mutableStateOf(initialForm) }
-    var invalid by remember(session) { mutableStateOf(false) }
-    var showProjects by remember(session) { mutableStateOf(false) }
+    var form by rememberSaveable(session, stateSaver = EntryFormSaver) { mutableStateOf(initialForm) }
+    var invalid by rememberSaveable(session) { mutableStateOf(false) }
+    var showProjects by rememberSaveable(session) { mutableStateOf(false) }
+    var projectQuery by rememberSaveable(session) { mutableStateOf("") }
     var chosenProject by remember(session) { mutableStateOf<ProjectEntity?>(null) }
     val picker = state.controls.manualProjectPicker
     val selectedProject = chosenProject?.takeIf { it.id == form.projectId }
@@ -437,7 +481,8 @@ private fun EntryDialog(
         ?: picker.projects.firstOrNull { it.id == form.projectId }
         ?: state.snapshot?.projects?.firstOrNull { it.id == form.projectId }
     LaunchedEffect(session) {
-        onOpenProjectPicker(entry?.projectId ?: form.projectId.ifBlank { null })
+        onOpenProjectPicker(form.projectId.ifBlank { null })
+        if (projectQuery.isNotEmpty()) onSearchProjects(projectQuery)
     }
     DisposableEffect(Unit) {
         onDispose(onCloseProjectPicker)
@@ -450,8 +495,8 @@ private fun EntryDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
-        icon = { AccentIcon(if (entry == null) AppGlyph.Plus else AppGlyph.Edit) },
-        title = { Text(stringResource(if (entry == null) R.string.add_manual_entry else R.string.edit_entry)) },
+        icon = { AccentIcon(if (editing) AppGlyph.Edit else AppGlyph.Plus) },
+        title = { Text(stringResource(if (editing) R.string.edit_entry else R.string.add_manual_entry)) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item("project") {
@@ -542,8 +587,8 @@ private fun EntryDialog(
             projects = picker.projects,
             pinnedProject = selectedProject,
             selectedProjectId = form.projectId,
-            query = picker.query,
-            onSearch = onSearchProjects,
+            query = projectQuery,
+            onSearch = { query -> projectQuery = query; onSearchProjects(query) },
             hasMore = picker.hasMore,
             loading = picker.loading,
             onLoadMore = onLoadMoreProjects,

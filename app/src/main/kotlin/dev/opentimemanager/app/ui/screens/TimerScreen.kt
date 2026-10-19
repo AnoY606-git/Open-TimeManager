@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -53,6 +54,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,12 +68,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import dev.opentimemanager.app.R
 import dev.opentimemanager.app.data.ProjectEntity
 import dev.opentimemanager.app.data.ProjectRepository
@@ -132,14 +137,26 @@ fun TimerScreen(
     val selectedProjectId = state.selectedProjectId
     val selected = availableProjects.firstOrNull { it.id == selectedProjectId }
     val sessionProject = snapshot.projects.firstOrNull { it.id == snapshot.session.projectId?.value } ?: selected
-    var showCreate by remember { mutableStateOf(false) }
-    var showProjects by remember { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showProjects by rememberSaveable { mutableStateOf(false) }
     var projectQuery by rememberSaveable { mutableStateOf("") }
     var switchCandidate by remember { mutableStateOf<ProjectEntity?>(null) }
-    var showManualReview by remember { mutableStateOf(false) }
+    var showManualReview by rememberSaveable { mutableStateOf(false) }
     var archiveCandidate by remember { mutableStateOf<ProjectEntity?>(null) }
     val activeEntry = snapshot.entries.firstOrNull { it.id == snapshot.session.entryId?.value }
-    var activeNote by remember(activeEntry?.id, activeEntry?.note) { mutableStateOf(activeEntry?.note.orEmpty()) }
+    val noteOwner = Triple(snapshot.generation, activeEntry?.id.orEmpty(), activeEntry?.note.orEmpty())
+    val noteSaver = remember(noteOwner) {
+        listSaver<String, String>(
+            save = { listOf(noteOwner.first, noteOwner.second, noteOwner.third, it) },
+            // inputs сбрасывают обычную композицию, но не проверяют владельца значения из Bundle.
+            restore = { saved ->
+                saved.takeIf {
+                    it.size == 4 && it[0] == noteOwner.first && it[1] == noteOwner.second && it[2] == noteOwner.third
+                }?.get(3) ?: noteOwner.third
+            },
+        )
+    }
+    var activeNote by rememberSaveable(noteOwner, stateSaver = noteSaver) { mutableStateOf(noteOwner.third) }
 
     LazyColumn(
         state = listState,
@@ -596,6 +613,7 @@ internal fun filterTimerProjects(
 
 /** A bounded list shared with manual entry, rather than a wall of project chips. */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun ProjectChooserDialog(
     projects: List<ProjectEntity>,
     selectedProjectId: String?,
@@ -611,90 +629,110 @@ internal fun ProjectChooserDialog(
     onCreate: (() -> Unit)? = null,
     onArchive: (() -> Unit)? = null,
 ) {
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ux_choose_project)) },
-        text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onSearch,
-                    label = { Text(stringResource(R.string.search_projects)) },
-                    leadingIcon = { AppIcon(AppGlyph.Search) },
-                    trailingIcon = if (query.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { onSearch("") }, modifier = Modifier.size(48.dp)) {
-                                AppIcon(AppGlyph.Close, contentDescription = stringResource(R.string.insights_clear_search))
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(16.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            // Один список не даёт поиску и кнопкам вытеснить проекты в низком окне или при IME.
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).selectableGroup().testTag("project_picker_list"),
+                contentPadding = PaddingValues(24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item("heading") {
+                    Text(
+                        stringResource(R.string.ux_choose_project),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                }
+                item("search") {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onSearch,
+                        label = { Text(stringResource(R.string.search_projects)) },
+                        leadingIcon = { AppIcon(AppGlyph.Search) },
+                        trailingIcon = if (query.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { onSearch("") }, modifier = Modifier.size(48.dp)) {
+                                    AppIcon(AppGlyph.Close, contentDescription = stringResource(R.string.insights_clear_search))
+                                }
                             }
-                        }
-                    } else null,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    modifier = Modifier.fillMaxWidth().testTag("project_picker_search"),
-                )
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false).selectableGroup().testTag("project_picker_list"),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (searchHint != null) {
-                        item("search-scope") {
-                            Text(searchHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        } else null,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        modifier = Modifier.fillMaxWidth().testTag("project_picker_search"),
+                    )
+                }
+                if (searchHint != null) {
+                    item("search-scope") {
+                        Text(searchHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    pinnedProject?.let { project ->
-                        item("pinned-${project.id}") { ProjectChoiceRow(project, selectedProjectId) { onSelect(project) } }
-                    }
-                    if (onArchive != null) {
-                        item("archive-selected") {
-                            TextButton(onClick = onArchive, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                Text(stringResource(R.string.ux_archive_selected_project), textAlign = TextAlign.Center)
-                            }
+                }
+                pinnedProject?.let { project ->
+                    item("pinned-${project.id}") { ProjectChoiceRow(project, selectedProjectId) { onSelect(project) } }
+                }
+                if (onArchive != null) {
+                    item("archive-selected") {
+                        TextButton(onClick = onArchive, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.ux_archive_selected_project), textAlign = TextAlign.Center)
                         }
                     }
-                    items(projects.filterNot { it.id == pinnedProject?.id }, key = { it.id }) { project ->
-                        ProjectChoiceRow(project, selectedProjectId) { onSelect(project) }
-                    }
-                    if (loading) {
-                        item("loading") {
-                            Row(
-                                Modifier.padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                                Text(stringResource(R.string.ux_loading_projects), style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    } else if (projects.isEmpty()) {
-                        item("empty") {
-                            Text(
-                                stringResource(if (query.isBlank()) R.string.ux_no_projects else R.string.ux_no_matching_projects),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(vertical = 12.dp),
-                            )
+                }
+                items(projects.filterNot { it.id == pinnedProject?.id }, key = { it.id }) { project ->
+                    ProjectChoiceRow(project, selectedProjectId) { onSelect(project) }
+                }
+                if (loading) {
+                    item("loading") {
+                        Row(
+                            Modifier.padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text(stringResource(R.string.ux_loading_projects), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (hasMore) {
-                        item("more") {
-                            TextButton(onClick = onLoadMore, enabled = !loading, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                Text(stringResource(R.string.load_more_projects), textAlign = TextAlign.Center)
+                } else if (projects.isEmpty()) {
+                    item("empty") {
+                        Text(
+                            stringResource(if (query.isBlank()) R.string.ux_no_projects else R.string.ux_no_matching_projects),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    }
+                }
+                if (hasMore) {
+                    item("more") {
+                        TextButton(onClick = onLoadMore, enabled = !loading, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.load_more_projects), textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+                item("actions") {
+                    FlowRow(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.close))
+                        }
+                        if (onCreate != null) {
+                            TextButton(onClick = onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(stringResource(R.string.create_project), textAlign = TextAlign.Center)
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            if (onCreate != null) {
-                TextButton(onClick = onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.create_project), textAlign = TextAlign.Center)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.close)) }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -726,12 +764,13 @@ private fun ProjectChoiceRow(project: ProjectEntity, selectedProjectId: String?,
 
 @Composable
 private fun ReviewEndDialog(unconfirmedStartUtcMillis: Long?, onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
-    val zone = remember { ZoneId.systemDefault() }
+    val zoneName = rememberSaveable { ZoneId.systemDefault().id }
+    val zone = remember(zoneName) { ZoneId.of(zoneName) }
     val now = remember(zone) { LocalDateTime.now(zone).withSecond(0).withNano(0) }
-    var date by remember { mutableStateOf(now.toLocalDate().toString()) }
+    var date by rememberSaveable { mutableStateOf(now.toLocalDate().toString()) }
     // Do not suggest "now" as if the unknown interval had been tracked until this moment.
-    var time by remember { mutableStateOf("") }
-    var invalid by remember { mutableStateOf(false) }
+    var time by rememberSaveable { mutableStateOf("") }
+    var invalid by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ux_review_end_title)) },
@@ -777,8 +816,8 @@ internal fun validProjectName(name: String): Boolean {
 @Composable
 private fun ProjectDialog(onDismiss: () -> Unit, onCreate: (String, Int) -> Unit) {
     val context = LocalContext.current
-    var name by remember { mutableStateOf("") }
-    var color by remember { mutableIntStateOf(ProjectColors.first()) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var color by rememberSaveable { mutableIntStateOf(ProjectColors.first()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.create_project)) },
