@@ -1,0 +1,15 @@
+<resources>
+    <string name="settings_navigation_subtitle">Find a setting or choose a section.</string>
+    <string name="settings_system_title">Android and device</string>
+    <string name="settings_system_summary">Notifications, Live Updates, widgets and tile</string>
+    <string name="settings_search_title">Search settings</string>
+    <string name="settings_search_clear">Clear search</string>
+    <string name="settings_search_empty_title">No matching sections</string>
+    <string name="settings_search_empty_hint">Try a setting name, such as language, notifications or backup. Clear the search to see all sections.</string>
+    <string name="settings_search_keywords_appearance">appearance theme dark light system dynamic device colors colours language English Russian</string>
+    <string name="settings_search_keywords_tracking">tracking time default project daily goal minutes privacy hide names</string>
+    <string name="settings_search_keywords_data">backup backups restore password encrypted unprotected plain copy import export records data otmbackup otmplain</string>
+    <string name="settings_search_keywords_system">Android notifications permission Live Updates HyperIsland HyperOS Xiaomi widget widgets tile Quick Settings battery background controls device</string>
+    <string name="settings_search_keywords_help">help guide instructions timer history reports recovery battery backup offline</string>
+    <string name="settings_search_keywords_about">about version legal license licenses privacy policy open source security copyright</string>
+</resources>

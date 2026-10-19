@@ -68,6 +68,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -133,10 +135,11 @@ class BackupActions(
 )
 
 enum class SettingsPage(val title: Int, val summary: Int, val glyph: AppGlyph) {
-    OVERVIEW(R.string.settings_heading, R.string.settings_overview_subtitle, AppGlyph.Settings),
+    OVERVIEW(R.string.settings_heading, R.string.settings_navigation_subtitle, AppGlyph.Settings),
     APPEARANCE(R.string.appearance, R.string.settings_appearance_summary, AppGlyph.Palette),
     TRACKING(R.string.settings_tracking_title, R.string.settings_tracking_summary, AppGlyph.Target),
     DATA(R.string.settings_data_title, R.string.settings_data_summary, AppGlyph.Lock),
+    SYSTEM(R.string.settings_system_title, R.string.settings_system_summary, AppGlyph.Notifications),
     HELP(R.string.help_title, R.string.help_summary, AppGlyph.Note),
     ABOUT(R.string.settings_about_title, R.string.settings_about_summary, AppGlyph.Shield),
 }
@@ -178,6 +181,9 @@ fun SettingsScreen(
 ) {
     val preferences = state.preferences
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
     var goal by rememberSaveable(preferences.dailyGoalMinutes) { mutableStateOf(preferences.dailyGoalMinutes.toString()) }
     var restoreInFlight by remember { mutableStateOf(false) }
     var restoreAttempt by remember { mutableIntStateOf(0) }
@@ -203,14 +209,34 @@ fun SettingsScreen(
         mutableStateOf((if (preview != null) SettingsPage.DATA else initialPage).name)
     }
     val page = SettingsPage.valueOf(pageName)
-    val listState = rememberSaveable(page, saver = LazyListState.Saver) { LazyListState() }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val overviewListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val detailListState = rememberSaveable(page, saver = LazyListState.Saver) { LazyListState() }
+    val listState = if (page == SettingsPage.OVERVIEW) overviewListState else detailListState
+    val searchEntries = settingsSearchEntries()
+    val matchingSections = remember(searchEntries, searchQuery) { searchSettingsEntries(searchEntries, searchQuery) }
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+        // При вводе держим поле и результаты над IME, а не возвращаем большой заголовок.
+        // Запускается только явным изменением запроса и не сбрасывает восстановленную прокрутку.
+        scope.launch { overviewListState.scrollToItem(1) }
+    }
+    fun openPage(destination: SettingsPage) {
+        focusManager.clearFocus()
+        keyboard?.hide()
+        pageName = destination.name
+    }
     var showDefaultProjectPicker by rememberSaveable { mutableStateOf(false) }
     var confirmPlainBackup by rememberSaveable { mutableStateOf(false) }
     BackHandler(
         enabled = page != SettingsPage.OVERVIEW && !showPreview && restoreUri == null &&
             !showBackupPassword && !showDefaultProjectPicker && !confirmPlainBackup && selectedLegalDocument == null,
-    ) { pageName = SettingsPage.OVERVIEW.name }
-    val scope = rememberCoroutineScope()
+    ) { openPage(SettingsPage.OVERVIEW) }
+    BackHandler(enabled = page == SettingsPage.OVERVIEW && searchQuery.isNotEmpty()) {
+        updateSearchQuery("")
+        focusManager.clearFocus()
+        keyboard?.hide()
+    }
     LaunchedEffect(restoreUri) {
         val uri = restoreUri ?: return@LaunchedEffect
         pageName = SettingsPage.DATA.name
@@ -288,16 +314,16 @@ fun SettingsScreen(
     }
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     if (page == SettingsPage.HELP) {
-        HelpScreen(onBack = { pageName = SettingsPage.OVERVIEW.name }, modifier = Modifier.widthIn(max = 760.dp))
+        HelpScreen(onBack = { openPage(SettingsPage.OVERVIEW) }, modifier = Modifier.widthIn(max = 760.dp))
     } else LazyColumn(
         Modifier.widthIn(max = 760.dp).fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("settings_list"),
         state = listState,
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(if (page == SettingsPage.OVERVIEW) 0.dp else 14.dp),
     ) {
         if (page != SettingsPage.OVERVIEW) item(key = "back") {
             TextButton(
-                onClick = { pageName = SettingsPage.OVERVIEW.name },
+                onClick = { openPage(SettingsPage.OVERVIEW) },
                 modifier = Modifier.testTag("settings_back"),
             ) { Text("‹  " + stringResource(R.string.back_to_settings)) }
         }
@@ -308,9 +334,15 @@ fun SettingsScreen(
             )
         }
         if (page == SettingsPage.OVERVIEW) {
-            SettingsPage.entries.filter { it != SettingsPage.OVERVIEW }.forEach { destination ->
-                item(key = destination.name) {
-                    SettingsCategory(destination) { pageName = destination.name }
+            item(key = "search") {
+                SettingsSearchField(query = searchQuery, onQueryChange = ::updateSearchQuery)
+            }
+            if (matchingSections.isEmpty()) item(key = "search_empty") { SettingsSearchEmptyState() }
+            matchingSections.forEachIndexed { index, entry ->
+                item(key = entry.page.name) {
+                    SettingsCategory(entry, first = index == 0, last = index == matchingSections.lastIndex) {
+                        openPage(entry.page)
+                    }
                 }
             }
         }
@@ -402,19 +434,6 @@ fun SettingsScreen(
                 )
             }
         }
-        item(key = "notifications") {
-            SettingsCard {
-                SettingsCardHeading(AppGlyph.Timer, stringResource(R.string.notifications_settings_title))
-                Spacer(Modifier.height(12.dp))
-                Text(stringResource(if (notificationStatus == NotificationControlStatus.AVAILABLE) {
-                    R.string.notifications_available_hint
-                } else R.string.notification_channel_blocked))
-                OutlinedButton(onClick = onManageNotifications, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.manage_notifications))
-                }
-            }
-        }
-        item(key = "platform") { PlatformIntegrationCard() }
         }
         if (page == SettingsPage.DATA) {
         item(key = "data_heading") {
@@ -526,6 +545,21 @@ fun SettingsScreen(
                 }
             }
         }
+        }
+        if (page == SettingsPage.SYSTEM) {
+        item(key = "notifications") {
+            SettingsCard {
+                SettingsCardHeading(AppGlyph.Notifications, stringResource(R.string.notifications_settings_title))
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(if (notificationStatus == NotificationControlStatus.AVAILABLE) {
+                    R.string.notifications_available_hint
+                } else R.string.notification_channel_blocked))
+                OutlinedButton(onClick = onManageNotifications, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.manage_notifications))
+                }
+            }
+        }
+        item(key = "platform") { PlatformIntegrationCard() }
         }
         if (page == SettingsPage.ABOUT) {
         item(key = "legal_heading") {
@@ -780,34 +814,6 @@ fun SettingsScreen(
             document = document,
             onDismiss = { selectedLegalDocumentName = null },
         )
-    }
-}
-
-@Composable
-private fun SettingsCategory(page: SettingsPage, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().testTag("settings_category_${page.name.lowercase()}"),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp).heightIn(min = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AccentIcon(page.glyph)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(page.title), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    stringResource(page.summary),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            AppIcon(AppGlyph.ChevronRight, modifier = Modifier.size(20.dp))
-        }
     }
 }
 

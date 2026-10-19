@@ -92,7 +92,7 @@ fun LiveUpdateControlsCard(modifier: Modifier = Modifier) {
     AppCard(modifier.testTag("live_updates_card")) {
         Text(stringResource(R.string.live_updates_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.live_updates_description), style = MaterialTheme.typography.bodyMedium)
-        if (!platform.supported) {
+        if (!platform.supported && !platform.hyperIslandProtocolAvailable) {
             Text(stringResource(R.string.live_updates_requires_android16), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Row(
@@ -133,10 +133,13 @@ fun LiveUpdateControlsCard(modifier: Modifier = Modifier) {
                 Switch(checked = choice.enabled, onCheckedChange = null, enabled = !saving)
             }
             if (saving) Text(stringResource(R.string.live_updates_saving))
-            if (!platform.requestApiAvailable) Text(
+            if (platform.hyperIslandProtocolAvailable) Text(
+                stringResource(R.string.live_updates_hyperisland_hint), style = MaterialTheme.typography.bodySmall,
+            )
+            if (platform.supported && !platform.requestApiAvailable) Text(
                 stringResource(R.string.live_updates_request_api_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(stringResource(when (platform.canPost) {
+            if (platform.supported) Text(stringResource(when (platform.canPost) {
                 true -> R.string.live_updates_android_allows
                 false -> R.string.live_updates_android_blocks
                 null -> R.string.live_updates_status_unknown
@@ -148,7 +151,7 @@ fun LiveUpdateControlsCard(modifier: Modifier = Modifier) {
                 onClick = { if (!openLiveUpdateSettings(context)) feedback = R.string.live_updates_settings_unavailable },
                 enabled = !saving,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("live_updates_settings"),
-            ) { Text(stringResource(R.string.live_updates_manage)) }
+            ) { Text(stringResource(if (platform.supported) R.string.live_updates_manage else R.string.platform_app_settings)) }
         }
         Text(stringResource(R.string.live_updates_dismissal_hint), style = MaterialTheme.typography.bodySmall)
         feedback?.let { message ->

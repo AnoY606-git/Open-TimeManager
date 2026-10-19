@@ -109,6 +109,27 @@ class DailyTrackingProgressRepositoryTest {
         assertEquals(LocalDate.of(2026, 10, 11), paused.dailyProgress?.date)
     }
 
+    @Test fun longPauseCannotRestartTheTwelveHourIslandLifetime() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        org.robolectric.Shadows.shadowOf(context).grantPermissions("${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build::class.java, "MANUFACTURER", "Xiaomi")
+        android.provider.Settings.System.putInt(context.contentResolver, "notification_focus_protocol", 3)
+        val keyguard = org.robolectric.Shadows.shadowOf(context.getSystemService(android.app.KeyguardManager::class.java))
+        keyguard.setIsDeviceLocked(false)
+        keyguard.setKeyguardLocked(false)
+        dev.opentimemanager.app.system.LiveUpdatePreferences(context).setEnabled(true)
+        val started = start()
+        now = now.copy(wallUtcMillis = now.wallUtcMillis + 60_000, elapsedRealtimeMillis = now.elapsedRealtimeMillis + 60_000)
+        val paused = (tracker.execute(TrackingCommand.Pause(CommandTarget(
+            started.session.entryId!!, started.session.revision, CommandId("pause-for-thirteen-hours"),
+        ))) as TrackingResult.Applied).snapshot
+        val renderer = dev.opentimemanager.app.system.TrackingNotification(context)
+        assertTrue(renderer.build(paused, nowWallMillis = now.wallUtcMillis, nowElapsedMillis = now.elapsedRealtimeMillis).extras.containsKey("miui.focus.param"))
+        val expired = renderer.build(paused, nowWallMillis = now.wallUtcMillis + 46_800_000, nowElapsedMillis = now.elapsedRealtimeMillis + 46_800_000)
+        assertNull(expired.extras.getString("miui.focus.param"))
+        assertEquals(60_000L, paused.session.confirmedDurationMillis)
+    }
+
     @Test fun changedGoalReadsTheCurrentCommittedSessionInsteadOfReusingAnOldSnapshot() = runBlocking {
         val started = start()
         val snapshots = Channel<SystemSnapshot>(Channel.UNLIMITED)

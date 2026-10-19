@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -67,7 +68,9 @@ fun OpenTimeManagerApp(
     modifier: Modifier = Modifier,
 ) {
     val snapshot = state.snapshot
-    val fontScale = LocalDensity.current.fontScale
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val snackbar = remember { SnackbarHostState() }
     BackHandler(enabled = state.controls.destination != AppDestination.TIMER) {
         viewModel?.navigate(AppDestination.TIMER)
@@ -106,7 +109,8 @@ fun OpenTimeManagerApp(
                 containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    if (layout == NavigationLayout.BOTTOM) {
+                    // Клавиатура и двухрядная панель не должны забирать место у ввода.
+                    if (layout == NavigationLayout.BOTTOM && !imeVisible) {
                         Surface(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             shape = MaterialTheme.shapes.large,

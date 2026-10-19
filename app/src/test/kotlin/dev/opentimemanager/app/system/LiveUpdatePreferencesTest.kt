@@ -29,6 +29,7 @@ internal fun liveUpdateSnapshot(
     entryId: String = "entry-a",
     generation: String = "generation-a",
     revision: Long = 1,
+    entryStartedAtUtcMillis: Long? = System.currentTimeMillis(),
 ): SystemSnapshot {
     val project = ProjectEntity("project", "Private project", 0, 0)
     val session = if (state == TrackingState.IDLE) TrackingSession.idle() else TrackingSession.restore(
@@ -36,7 +37,7 @@ internal fun liveUpdateSnapshot(
         if (state == TrackingState.RUNNING) OpenSegment(SegmentId("open"), ClockSnapshot(7_000, 2_000, 1)) else null,
         emptyList(), 5_000, 6_000,
     )
-    return SystemSnapshot(session, generation, project.takeUnless { state == TrackingState.IDLE }, project)
+    return SystemSnapshot(session, generation, project.takeUnless { state == TrackingState.IDLE }, project, entryStartedAtUtcMillis = entryStartedAtUtcMillis)
 }
 
 @RunWith(RobolectricTestRunner::class)

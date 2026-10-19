@@ -270,6 +270,58 @@ class SystemSurfaceContractTest {
         }
     }
 
+    @Test
+    @Config(application = OpenTimeManagerApplication::class)
+    fun screenOffRemovesOemPayloadImmediatelyAndUnlockRestoresOnlyAnEligibleSession() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<OpenTimeManagerApplication>()
+        org.robolectric.util.ReflectionHelpers.setStaticField(android.os.Build::class.java, "MANUFACTURER", "Xiaomi")
+        android.provider.Settings.System.putInt(app.contentResolver, "notification_focus_protocol", 3)
+        android.provider.Settings.Global.putInt(app.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 1)
+        val keyguard = shadowOf(app.getSystemService(android.app.KeyguardManager::class.java))
+        keyguard.setIsDeviceLocked(false)
+        val preferences = LiveUpdatePreferences(app)
+        preferences.setEnabled(true)
+        val coordinator = app.container.trackingCoordinator
+        val initial = coordinator.observeSnapshot().first()
+        coordinator.execute(TrackingCommand.Start(CommandId("island-start"), ProjectRepository.DEFAULT_PROJECT_ID, initial.session.revision))
+        val before = coordinator.observeSnapshot().first().session
+        val controller = org.robolectric.Robolectric.buildService(TrackingService::class.java).create()
+        val manager = app.getSystemService(NotificationManager::class.java)
+        suspend fun awaitPayload(present: Boolean) = withTimeout(5_000) {
+            while ((shadowOf(manager).getNotification(TrackingNotification.ID)?.extras?.getString("miui.focus.param") != null) != present) {
+                shadowOf(Looper.getMainLooper()).idle()
+                yield()
+            }
+        }
+        try {
+            awaitPayload(true)
+            // Deliberately keep PowerManager interactive: the event must fail closed even if
+            // the OEM updates its screen/lock state after delivering SCREEN_OFF.
+            app.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(shadowOf(manager).getNotification(TrackingNotification.ID).extras.getString("miui.focus.param"))
+            SystemSurfaceUpdater(app).refresh(coordinator.observeSystemSnapshot().first())
+            assertNull("Another renderer must not reopen island data before the screen state catches up",
+                shadowOf(manager).getNotification(TrackingNotification.ID).extras.getString("miui.focus.param"))
+            keyguard.setIsDeviceLocked(true)
+            app.sendBroadcast(Intent(Intent.ACTION_SCREEN_ON))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(shadowOf(manager).getNotification(TrackingNotification.ID).extras.getString("miui.focus.param"))
+            keyguard.setIsDeviceLocked(false)
+            app.sendBroadcast(Intent(Intent.ACTION_USER_PRESENT))
+            awaitPayload(true)
+            val posted = shadowOf(manager).getNotification(TrackingNotification.ID)
+            LiveUpdateDismissReceiver().onReceive(app, shadowOf(posted.deleteIntent).savedIntent)
+            app.sendBroadcast(Intent(Intent.ACTION_USER_PRESENT))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(shadowOf(manager).getNotification(TrackingNotification.ID).extras.getString("miui.focus.param"))
+            val after = coordinator.observeSnapshot().first().session
+            assertEquals(before.entryId, after.entryId)
+            assertEquals(before.revision, after.revision)
+            assertEquals(TrackingState.RUNNING, after.state)
+        } finally { controller.destroy() }
+    }
+
     @Test fun systemComponentsHaveOnlyTheirRequiredExposureAndPermissions() {
         val pm = context.packageManager
         val permissions = pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toSet()

@@ -1,16 +1,17 @@
 <resources>
-    <string name="live_updates_title">Live Updates Android 16</string>
-    <string name="live_updates_description">Необязательная функция, изначально выключена. Запрашивает более заметное системное уведомление запущенного таймера с прежним счётчиком времени и кнопками. Android решает, продвигать ли его, и может вернуть обычный вид. Частная интеграция с «островами» и сертификация производителями не обещаются.</string>
-    <string name="live_updates_requires_android16">Доступно только в поддерживаемых сборках Android 16. На Android 12–15 остаются обычное уведомление, виджет и плитка.</string>
-    <string name="live_updates_enable">Запрашивать Live Updates запущенного таймера</string>
-    <string name="live_updates_request_api_unavailable">Эта сборка Android 16 не предоставляет новый API запроса продвижения. Уведомление может остаться обычным; для нового отображения нужно поддерживаемое обновление системы.</string>
+    <string name="live_updates_title">Live Updates и HyperIsland</string>
+    <string name="live_updates_description">Необязательная функция, изначально выключена. Время и кнопки таймера на поддерживаемых системных поверхностях. Доступность и оформление зависят от Android и устройства.</string>
+    <string name="live_updates_requires_android16">Нужна поддерживающая сборка Android 16 или протокол острова HyperOS 3. Обычное уведомление, виджет и плитка остаются на Android 12+.</string>
+    <string name="live_updates_enable">Запрашивать расширенный статус таймера</string>
+    <string name="live_updates_hyperisland_hint">Экспериментальный клиент HyperOS. Допуск Xiaomi для OTM пока не получен — остров может не появиться. Передаются только время, дневной итог и кнопки, но не проекты или заметки. Снятие данных при блокировке или выключении экрана требует работающего процесса OTM; мгновенное удаление не гарантируется. Вид на HyperOS не проверен.</string>
+    <string name="live_updates_request_api_unavailable">Эта сборка Android может оставить обычное уведомление: новый API продвижения недоступен.</string>
     <string name="live_updates_android_allows">Android разрешает запросы продвижения. Разрешение уведомлений, настройки канала и критерии системы или производителя всё ещё действуют; появление чипа не гарантируется.</string>
     <string name="live_updates_android_blocks">Android сейчас запрещает продвинутые уведомления этому приложению. Обычные кнопки таймера доступны, если уведомления разрешены.</string>
     <string name="live_updates_status_unknown">Не удалось прочитать доступность продвижения Android. Это не подтверждает наличие Live Updates.</string>
     <string name="live_updates_layout_eligible">Текущее уведомление имеет подходящие характеристики. Это не доказывает, что Android продвинет его.</string>
     <string name="live_updates_layout_ineligible">Текущее уведомление не соответствует критериям продвижения Android и остаётся обычным.</string>
     <string name="live_updates_manage">Настройки Live Updates в Android</string>
-    <string name="live_updates_dismissal_hint">Этот выбор хранится на устройстве и не входит в копии. После скрытия уведомления запросы продвижения этой записи не повторяются, в том числе после паузы и продолжения. Новая запись снова подходит. Для явного сброса скрытия выключите и включите эту опцию. Улучшение времени работы батареи не заявляется.</string>
+    <string name="live_updates_dismissal_hint">Выбор остаётся на устройстве, вне копий. После скрытия уведомления запросы для этой записи не повторяются, включая паузу и продолжение. Новая запись или выключение и включение опции сбрасывает скрытие.</string>
     <string name="live_updates_saving">Сохраняем локальный выбор…</string>
     <string name="live_updates_saved">Выбор сохранён. Окончательное отображение определяет Android.</string>
     <string name="live_updates_save_failed">Не удалось сохранить выбор. Повторите попытку; обычный таймер не изменён.</string>

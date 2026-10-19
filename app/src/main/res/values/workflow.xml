@@ -1,8 +1,7 @@
 <resources>
-    <string name="settings_overview_subtitle">Everything in its place. Your records stay on this device.</string>
     <string name="settings_appearance_summary">Theme, device colors and language</string>
     <string name="settings_tracking_title">Tracking and projects</string>
-    <string name="settings_tracking_summary">Default project, daily goal and system controls</string>
+    <string name="settings_tracking_summary">Default project, daily goal and privacy</string>
     <string name="settings_data_title">Backups and restore</string>
     <string name="settings_data_summary">Password-protected or plain copies of your records</string>
     <string name="settings_about_title">About the app</string>
@@ -43,7 +42,7 @@
     <string name="help_projects_title">Projects and the default project</string>
     <string name="help_projects_body">Choose a project on Timer. Switching projects during a running or paused session finishes the previous entry and starts a new one; two timers cannot run together.\n\nIn Settings → Tracking and projects, choose a default. It is preselected on a fresh idle screen and used for quick Start from the widget or tile. An explicit selection in the app and the project of an active session take priority.\n\nAutomatic selection has no preferred project; system quick Start requires exactly one eligible project. Archiving a project keeps existing history but makes it unavailable for new sessions. A missing or archived default falls back safely. The default preference is local and is not transferred in a backup.</string>
     <string name="help_controls_title">Notifications, widget and Quick Settings</string>
-    <string name="help_controls_body">Allow notifications to use Pause, Resume and Stop without opening the app. If Android blocks them, Timer still works inside the app. Open the notification settings from Timer or Settings → Tracking and projects.\n\nAdd the OTM widget using your launcher’s widget picker. Add the tile using Android’s Quick Settings editor. While idle, quick Start uses your default project; without one, it starts only when a single project is eligible. Otherwise the app opens so you can choose.\n\n“Hide project names on system surfaces” protects names in these controls, but not the contents of your database or backup files.</string>
+    <string name="help_controls_body">Allow notifications to use Pause, Resume and Stop without opening the app. If Android blocks them, Timer still works inside the app. Open the notification settings from Timer or Settings → Android and device.\n\nAdd the OTM widget using your launcher’s widget picker. Add the tile using Android’s Quick Settings editor. While idle, quick Start uses your default project; without one, it starts only when a single project is eligible. Otherwise the app opens so you can choose.\n\n“Hide project names on system surfaces” protects names in these controls, but not the contents of your database or backup files.</string>
     <string name="help_history_title">History and manual entries</string>
     <string name="help_history_body">History lists completed sessions. Search by project or note. Use Add entry to record work you did not time. Enter the local date, start time, duration and a project; the project picker has its own search and pagination.\n\nEdit changes a completed entry. If you edit only its note or project, its original precise timing is retained. Changing its timing replaces the segmented entry with the duration you provide. An archived project remains available for an existing entry.\n\nDelete is permanent after confirmation. Load more to reach older entries; history loads in bounded pages.</string>
     <string name="help_reports_title">Reports, daily totals and CSV</string>

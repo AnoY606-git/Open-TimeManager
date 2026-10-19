@@ -5,12 +5,15 @@
 ## Русский
 
 Все 20 снимков сделаны **19 октября 2026 года** на выделенном эмуляторе
-Android 16 из текущей **dev/debug-сборки `main`**. Они показывают OTM после
-обновлений интерфейса, уведомления и месячного баланса, а не опубликованную
+AOSP Android 16 / API 36 из **dev/debug-сборки `main`**, указанной ниже. Они показывают
+OTM после обновлений интерфейса, уведомления и месячного баланса, а не опубликованную
 стабильную 1.1.0. Номер версии APK пока остаётся `1.1.0` (`versionCode = 3`);
 новый стабильный релиз для этой галереи не создавался.
 
 Использованы только вымышленные проекты и записи, не личный телефон или рабочие данные.
+Съёмка предшествует добавлению экспериментального клиента HyperIsland. В галерее
+нет кадров HyperOS, острова Xiaomi или его настроек; изображения не подтверждают
+совместимость с Now Bar, Live Alerts и другими OEM-поверхностями.
 
 ### Что есть в галерее
 
@@ -46,8 +49,10 @@ Android 16 из текущей **dev/debug-сборки `main`**. Они пок�
 - Стандартный demo mode фиксирует часы и батарею только в строке состояния.
   Для кадров уведомления служебные уведомления эмулятора временно отложены
   штатной функцией Android. Текст, прогресс и действия OTM не менялись.
-- Показан обычный нативный `ProgressStyle` Android 16, Live Updates выключены.
-  Кадры не доказывают продвижение уведомления, OEM-анимацию или расход батареи.
+- Показан обычный нативный `ProgressStyle` AOSP Android 16 / API 36, Live Updates
+  выключены. Это настоящие снимки эмулятора, не макеты HyperIsland. Кадры не
+  доказывают продвижение уведомления, OEM-анимацию, работу нативного таймера
+  HyperOS, приватность OEM lockscreen/AOD или расход батареи.
 - Исходники приложения: [`6eba066d47e5e0acc364cf707c3c0bd1b807deb4`](https://github.com/AnoY606-git/Open-TimeManager/commit/6eba066d47e5e0acc364cf707c3c0bd1b807deb4).
 - Проверка сборки: `:app:assembleDebug`; release не собирался.
 - Файл: `OTM.apk`, пакет `dev.opentimemanager.app`.
@@ -60,15 +65,22 @@ APK, демонстрационная копия, служебные скрип�
 При следующем обновлении явно выберите отдельный эмулятор, пройдите настоящий
 интерфейс на обоих языках, проверьте все изображения и обе главные страницы.
 Запишите актуальные commit, параметры и SHA-256, не переносите сведения прежней сборки.
+Снимок настройки интеграций на AOSP можно добавить только как снимок настройки;
+для галереи острова нужны настоящая поддерживающая прошивка, допуск OTM и
+проверенный результат. Не выдавайте макет, сгенерированное или скопированное
+изображение за работу приложения на HyperOS.
 
 ## English
 
 All 20 screenshots were captured on **19 October 2026** using a dedicated
-Android 16 emulator and the current **`main` dev/debug build**, after the UI,
-notification and monthly-balance updates. They do not show the published stable
+AOSP Android 16 / API 36 emulator and the **`main` dev/debug build** identified
+above, after the UI, notification and monthly-balance updates. They do not show the published stable
 1.1.0. The APK still reports `1.1.0` (`versionCode = 3`); no new stable release
 was created for this gallery. Only made-up data was used, never a personal phone
 or work records. The table above links to every scene in both languages.
+Capture predates the experimental HyperIsland client. The gallery contains no
+HyperOS, Xiaomi island, or island-settings scenes; it does not establish
+compatibility with Now Bar, Live Alerts, or other OEM surfaces.
 
 The `Design Lab` and `Learning` projects contain 24 demonstration entries imported
 through the normal backup preview and Merge flow. September 2026 has **166 hours
@@ -86,11 +98,16 @@ in English while OTM used RU or EN, so notification-shade system labels stay Eng
 Demo mode stabilizes the status-bar clock and battery only. Emulator service
 notifications were temporarily snoozed through Android for notification captures;
 OTM's content, progress and actions were not altered. These show standard Android
-16 `ProgressStyle` with Live Updates off, not promotion, proprietary OEM animations
-or physical-device battery performance.
+16 / API 36 `ProgressStyle` with Live Updates off. They are genuine emulator
+captures, not HyperIsland mockups, and do not establish promotion, OEM animations,
+native HyperOS timing, OEM lockscreen/AOD privacy, or physical-device battery performance.
 
 The captured source commit, debug task, package, APK hash and AVD are listed above.
 The APK, demo backup, local helpers and SDK are not committed. To refresh the
 gallery, explicitly select a dedicated emulator, navigate the actual interface
 in both languages, inspect every image and both README galleries, and record
 the real source commit, settings and APK checksum. Do not reuse old provenance.
+An integration-settings scene captured on AOSP can illustrate that setting only.
+An island gallery needs an actual supporting firmware, OTM approval, and a
+verified result. Do not present a mockup, generated image, or copied screenshot
+as the application running on HyperOS.

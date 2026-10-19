@@ -85,9 +85,10 @@ abstract class TrackingDao {
         }
     }
 
-    private fun restored(): TrackingSession {
-        val slot = requireNotNull(slot())
-        val entry = slot.entryId?.let { requireNotNull(entry(it)) }
+    private fun restored(
+        slot: TrackingSlotEntity = requireNotNull(slot()),
+        entry: EntryEntity? = slot.entryId?.let { requireNotNull(entry(it)) },
+    ): TrackingSession {
         val openRows = entry?.let { openSegments(it.id) }.orEmpty()
         check(openRows.size <= 1) { "Multiple open segments" }
         val open = openRows.singleOrNull()?.let {
@@ -128,13 +129,15 @@ abstract class TrackingDao {
 
     private fun systemSnapshotWithoutRecovery(): SystemSnapshot {
         val currentSlot = requireNotNull(slot())
-        val session = restored()
+        val currentEntry = currentSlot.entryId?.let { requireNotNull(entry(it)) }
+        val session = restored(currentSlot, currentEntry)
         val eligible = eligibleProjects()
         return SystemSnapshot(
             session = session,
             generation = currentSlot.generation,
             activeProject = session.projectId?.let { project(it.value) },
             quickStartProject = eligible.singleOrNull(),
+            entryStartedAtUtcMillis = currentEntry?.startedAtUtcMillis,
         )
     }
 

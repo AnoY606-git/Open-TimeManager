@@ -50,8 +50,8 @@ PBKDF2-HMAC-SHA256 с 310 000 итераций. Для каждого файла
 а не текущий открытый отрезок. Импорт не запускает таймер автоматически.
 
 В копии входят тема, цвета устройства, скрытие названий проектов и дневная
-цель. Язык, проект по умолчанию, планы месяцев и выбор Live Updates хранятся
-только на устройстве и в копии не переносятся. Восстановление записей времени
+цель. Язык, проект по умолчанию, планы месяцев и выбор «Live Updates и HyperIsland»
+хранятся только на устройстве и в копии не переносятся. Восстановление записей времени
 не заменяет планы месяцев.
 
 **«Объединить»** сохраняет текущие данные и отклоняет неоднозначные конфликты.
@@ -86,11 +86,48 @@ Android публичную версию только со статусом та�
 требует отключать оптимизацию. Подсказки для разных прошивок не означают,
 что каждая модель была протестирована.
 
-Live Updates на Android 16 выключены по умолчанию. Для них используется обычное,
+«Live Updates и HyperIsland» — один локальный выбор, выключенный по умолчанию
+и исключённый из копий. На Android 16 продвижение запрашивается только во время
+работы; новый API зависит от обновления 36.1. Используется уже объявленное обычное,
 не запрашиваемое отдельным диалогом разрешение `POST_PROMOTED_NOTIFICATIONS`.
-Полный API зависит от обновления 36.1; Android и производитель решают, выделять
-ли уведомление. Закрытых интеграций Super Island/HyperIsland нет.
-Экономия батареи не измерялась, независимый криптографический аудит не проводился.
+Android и производитель определяют допуск и отображение.
+[Контракт Android](https://developer.android.com/develop/ui/views/notifications/live-update)
+
+Экспериментальный клиент HyperOS 3 использует опубликованный локальный протокол
+Xiaomi и описывает работающий таймер и паузу. Он не добавляет SDK, доступ к сети,
+новые разрешения или изменения схемы базы. Доступность переключателя по протоколу,
+в том числе на Android 15, не доказывает допуск приложения. Регистрация сервиса
+Xiaomi, app ID, привязка сертификатов и согласование сценария ещё не получены;
+физического тестирования HyperOS не было.
+[Клиентский протокол](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2131) ·
+[Условия допуска Xiaomi](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2132)
+
+JSON острова содержит только статус, время сессии, текст дневного итога и описание
+кнопок; названия проектов, заметки и идентификаторы сессии или записи туда не
+передаются независимо от настройки скрытия названий. Для AOD подготовлен только
+статус, без времени и дневного итога. На заблокированном или выключенном экране
+клиент не добавляет OEM-данные, а процессный наблюдатель пересобирает уведомление при событиях
+экрана, чтобы снять уже добавленные данные. Если наблюдение за экраном недоступно,
+построитель не публикует их. Наблюдатель живёт в процессе независимо от службы,
+не опрашивает устройство и не читает Room. Снятие уже переданных данных выполняется
+по возможности, пока работает процесс OTM: после его остановки или при задержке
+системного события мгновенное удаление гарантировать нельзя.
+[Ограничения доставки событий Android](https://developer.android.com/develop/background-work/background-tasks/broadcasts)
+
+Это граница OTM, а не сертификация
+поведения SystemUI: неизвестно, как все версии HyperOS очищают свои поверхности
+и применяют `publicVersion` к OEM-данным. Обычная публичная версия Android
+не считается доказательством скрытия JSON Xiaomi.
+
+Скрытие уведомления подавляет оба запроса для той же записи, включая паузу и
+продолжение; явное выключение и включение опции сбрасывает скрытие. Срок острова
+оценивается по сохранённому UTC-началу записи, включая паузы, без продления при
+перепубликации; в последнюю неполную минуту до 12 часов остаётся обычный вид.
+Неизвестное или будущее начало закрывает OEM-путь. Системные часы влияют на оценку;
+фактический timeout прошивки не подтверждён. Обычное уведомление и учёт продолжаются.
+Нативный отсчёт HyperOS, его возобновление,
+lockscreen и AOD пока не проверены на устройстве. Экономия батареи не измерялась,
+независимый криптографический аудит не проводился.
 
 ### Сообщения об ошибках и публичные файлы
 
@@ -139,9 +176,9 @@ of each kind. Copies contain closed intervals, not the current open interval;
 restore never starts a timer automatically.
 
 Backups include the theme, device colors, hidden project labels, and daily goal.
-Language, the default-project choice, monthly plans, and the Live Updates
-preference stay on the device and are excluded from backup files. Restoring
-time records does not replace monthly plans.
+Language, the default-project choice, monthly plans, and the Live Updates and
+HyperIsland preference stay on the device and are excluded from backup files.
+Restoring time records does not replace monthly plans.
 
 Merge keeps local data and rejects conflicting versions of the same record.
 **Replace removes current projects and history.** Save and check a separate
@@ -171,11 +208,47 @@ Widget and tile placement need your action and system support. Battery and
 background-restriction indicators are read-only; disabling all optimization is
 not required. Manufacturer tips are not evidence of testing every device.
 
-Android 16 Live Updates are off by default and use the normal, non-runtime
-`POST_PROMOTED_NOTIFICATIONS` permission. The full API needs system update 36.1;
-Android and the manufacturer decide presentation. No private Super Island or
-HyperIsland API is used. Battery savings are unmeasured; no independent
-cryptographic audit has been performed.
+Live Updates and HyperIsland share one local preference, off by default and
+excluded from backups. Android 16 promotion is requested only while running;
+the newer API depends on system update 36.1. It uses the already-declared normal,
+non-runtime `POST_PROMOTED_NOTIFICATIONS` permission. Android and the manufacturer
+decide eligibility and presentation.
+[Android contract](https://developer.android.com/develop/ui/views/notifications/live-update)
+
+The experimental HyperOS 3 client uses Xiaomi's published local protocol and
+describes running and paused timers. It adds no SDK, network access, permissions,
+or database schema changes. Enabling the switch after protocol detection, including
+on Android 15, does not establish app approval. Xiaomi service registration, an app
+ID, signing-certificate registration, and scenario approval have not been obtained;
+there has been no physical HyperOS testing.
+[Client protocol](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2131) ·
+[Xiaomi approval requirements](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2132)
+
+The island JSON contains only status, session time, daily-total text, and button
+definitions. Project names, notes, and session or record identifiers never enter it,
+regardless of the hidden-label setting. Prepared AOD content is status only,
+without elapsed time or daily totals. The client omits OEM data while locked or
+screen-off; a process-lifetime observer rebuilds the notification on screen events
+to remove data already supplied, independently of foreground-service restarts.
+It does not poll or read Room. If screen observation is unavailable, the builder
+omits OEM data. Removal of already supplied data is best-effort while the OTM
+process is running: process termination or delayed system events prevent a
+guarantee of immediate removal.
+[Android broadcast-delivery limits](https://developer.android.com/develop/background-work/background-tasks/broadcasts)
+
+This is an OTM boundary, not certification of SystemUI: how every HyperOS version
+clears its surfaces or applies `publicVersion` to OEM data is unknown. Android's
+ordinary public version is not evidence of redaction for Xiaomi JSON.
+
+Dismissing the notification suppresses both requests for that entry, including
+pause and resume; explicitly turning the option off and on resets dismissal.
+Island lifetime is estimated from the saved UTC entry start, including pauses,
+without extension on repost. The final incomplete minute before 12 hours, an
+unknown start or a future start keep only the ordinary notification. System-clock
+changes affect the estimate; actual OEM timeout behavior is unverified. Ordinary
+tracking continues. Native HyperOS timing, resume behavior,
+the lock screen, and AOD remain unverified on a physical device. Battery savings
+are unmeasured; no independent cryptographic audit has been performed.
 
 Use made-up records in public reports. Never attach personal backups, CSV,
 passwords, or keys. Report vulnerabilities through the

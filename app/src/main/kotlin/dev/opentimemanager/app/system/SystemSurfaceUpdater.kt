@@ -90,6 +90,7 @@ class SystemSurfaceUpdater(private val context: Context) {
             lastTile = tile
         }
         if (snapshot.session.state == TrackingState.IDLE) {
+            HyperIslandScreenObserver.update(context, snapshot, privacy, enabled = false)
             context.stopService(Intent(context, TrackingService::class.java))
             manager.cancel(TrackingNotification.ID)
         } else if (available) {

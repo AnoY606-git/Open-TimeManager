@@ -25,8 +25,9 @@ keeps your sessions, lets you fill in missing entries, and shows where your time
 went. Your records stay on your device; no internet connection is needed.
 
 The description and screenshots below cover the current `main` branch after
-1.1.0. The latest stable release is **1.1.0**; monthly plans and the updated
-notification progress are currently available in builds from current source.
+1.1.0. The latest stable release is **1.1.0**; monthly plans, settings-section
+search, updated notification progress, and the experimental HyperIsland client
+are currently available in builds from current source.
 
 ## What you can do
 
@@ -35,7 +36,22 @@ notification progress are currently available in builds from current source.
 - **See the bigger picture.** View weekly, monthly, or custom reports. Set a separate plan for each month and check its balance. Export CSV for spreadsheets.
 - **Keep a backup.** Save password-encrypted files, move your records, and choose whether to merge or replace data.
 - **Stay in control.** Use the notification, home-screen widget, or Quick Settings tile. The notification shows daily goal progress across all projects.
-- **Make it yours.** Choose a theme, language, daily goal, and default project. Built-in help works offline.
+- **Make it yours.** Choose a theme, language, daily goal, and default project. Find the right section by a setting name or keyword. Built-in help works offline.
+
+Settings → Android and device includes an optional **Live Updates and
+HyperIsland** switch, off by default. On supporting Android 16 builds, the
+standard request can serve Pixel, Samsung Now Bar, and OPPO/OnePlus Live Alerts;
+the system decides eligibility and appearance.
+[Android's shared mechanism and OEM surfaces](https://blog.google/products-and-platforms/platforms/android/android-16/)
+
+An experimental local timer template is prepared for HyperOS 3.
+**OTM's island has not been confirmed to work:** Xiaomi service registration,
+an app ID, signing-certificate registration, and scenario approval have not been
+obtained, and the client has not been tested on a physical HyperOS device.
+Detecting the protocol makes the switch available, including on Android 15;
+it does not establish app approval.
+[Xiaomi's onboarding requirements](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2132) ·
+[Behavior and limits](docs/USER_GUIDE.md#live-updates-and-hyperisland)
 
 ## Screenshots
 
@@ -50,7 +66,7 @@ notification progress are currently available in builds from current source.
 
 | Settings | Help |
 | :---: | :---: |
-| <img src="docs/screenshots/en-settings.png" width="280" alt="Settings for appearance, tracking, backups, help, and app information"> | <img src="docs/screenshots/en-help.png" width="280" alt="Offline guide with topic search"> |
+| <img src="docs/screenshots/en-settings.png" width="280" alt="OTM settings sections"> | <img src="docs/screenshots/en-help.png" width="280" alt="Offline guide with topic search"> |
 | **Default project** | **Unprotected backup** |
 | <img src="docs/screenshots/en-default-project.png" width="280" alt="Choosing a project for new sessions"> | <img src="docs/screenshots/en-backup-warning.png" width="280" alt="Warning that anyone with an unprotected backup can read its contents"> |
 
@@ -65,8 +81,10 @@ notification progress are currently available in builds from current source.
 
 </details>
 
-Current `main` development build, captured on an Android 16 emulator on
-19 October 2026 with made-up records.
+The gallery contains 20 genuine `main` development screenshots from an AOSP
+Android 16 / API 36 emulator with made-up records. They show OTM's interface and
+ordinary Android notification, not HyperOS or a working island. Capture provenance
+is documented separately.
 [About the screenshots](docs/screenshots/README.md#english).
 
 ## Install or update
@@ -112,9 +130,9 @@ Android's file picker, that provider will upload the file.
 Finish the timer before restoring a copy. **Replace removes your current
 projects and history**, so save a separate, checked backup first. Hiding project
 names in notifications does not encrypt the database or exported files.
-Monthly plans, language, the default-project choice, and the Live Updates
-preference stay on the device, outside backups. Changing the daily goal does
-not change saved monthly plans.
+Monthly plans, language, the default-project choice, and the Live Updates and
+HyperIsland preference stay on the device, outside backups. Changing the daily goal
+does not change saved monthly plans.
 
 [Backups and restore](docs/USER_GUIDE.md#backups-and-restore) ·
 [Security and privacy](docs/SECURITY.md#english)
@@ -130,8 +148,9 @@ not change saved monthly plans.
 | Report a vulnerability | [Private security reports](SECURITY.md#english) |
 
 There is no cloud sync, team workspace, or CSV import. System controls depend
-on Android and your device's software. Optional Android 16 Live Updates do not
-guarantee a special notification style; battery impact has not been measured.
+on Android and your device's software. Live Updates and HyperIsland do not
+guarantee a special notification style; realme and vivo are unverified.
+Battery impact has not been measured.
 
 ## License
 

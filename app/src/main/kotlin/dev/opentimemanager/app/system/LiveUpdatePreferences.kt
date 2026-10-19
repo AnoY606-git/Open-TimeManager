@@ -35,11 +35,18 @@ data class LiveUpdatePreferenceState(
 ) {
     /** Session eligibility only; the notification builder separately gates the platform API. */
     fun requestsPromotion(snapshot: SystemSnapshot): Boolean =
-        enabled && snapshot.session.state == TrackingState.RUNNING &&
+        snapshot.session.state == TrackingState.RUNNING && allowsOngoingSurface(snapshot)
+
+    internal fun allowsOngoingSurface(snapshot: SystemSnapshot): Boolean =
+        enabled && snapshot.session.state in listOf(TrackingState.RUNNING, TrackingState.PAUSED) &&
             LiveUpdateSessionKey.from(snapshot)?.let { it != dismissedSession } == true
 }
 
-internal data class LiveUpdateNotificationPolicy(val session: LiveUpdateSessionKey, val requestPromotion: Boolean)
+internal data class LiveUpdateNotificationPolicy(
+    val session: LiveUpdateSessionKey,
+    val requestPromotion: Boolean,
+    val requestHyperIsland: Boolean,
+)
 
 /** Local opt-in. Only an explicit UI action uses commit, always off the main thread. */
 class LiveUpdatePreferences internal constructor(
@@ -85,7 +92,7 @@ class LiveUpdatePreferences internal constructor(
                 writeSession(editor, POSTED, session)
                 editor.apply()
             }
-            LiveUpdateNotificationPolicy(session, state.requestsPromotion(snapshot))
+            LiveUpdateNotificationPolicy(session, state.requestsPromotion(snapshot), state.allowsOngoingSurface(snapshot))
         } catch (_: Exception) {
             null // Optional promotion must not break the normal controls.
         }
@@ -174,18 +181,20 @@ data class LiveUpdatePlatformStatus(
     val requestApiAvailable: Boolean = false,
     val canPost: Boolean? = null,
     val hasPromotableCharacteristics: Boolean? = null,
+    val hyperIslandProtocolAvailable: Boolean = false,
 )
 
 /** Advisory only: neither API promises a chip, promotion, or OEM support. No Room read. */
 fun liveUpdatePlatformStatus(context: Context): LiveUpdatePlatformStatus {
-    if (Build.VERSION.SDK_INT < 36) return LiveUpdatePlatformStatus(supported = false)
+    val hyperIsland = hyperIslandProtocolAvailable(context)
+    if (Build.VERSION.SDK_INT < 36) return LiveUpdatePlatformStatus(supported = false, hyperIslandProtocolAvailable = hyperIsland)
     val manager = context.getSystemService(NotificationManager::class.java)
     val canPost = try { manager.canPostPromotedNotifications() } catch (_: Exception) { null }
     val characteristics = try {
         manager.activeNotifications.firstOrNull { it.id == TrackingNotification.ID && it.tag == null }
             ?.notification?.hasPromotableCharacteristics()
     } catch (_: Exception) { null }
-    return LiveUpdatePlatformStatus(true, promotedOngoingSetter != null, canPost, characteristics)
+    return LiveUpdatePlatformStatus(true, promotedOngoingSetter != null, canPost, characteristics, hyperIsland)
 }
 
 fun liveUpdateSettingsIntent(context: Context): Intent = if (Build.VERSION.SDK_INT >= 36) {

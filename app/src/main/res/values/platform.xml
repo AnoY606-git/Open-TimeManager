@@ -1,6 +1,9 @@
 <resources>
     <string name="platform_controls_title">Android and your device</string>
-    <string name="platform_live_updates_guide">On Android 16, optionally enable Live Updates under Settings → Tracking and projects for a prominent running-timer status. It is off by default. Android, your notification settings and the manufacturer decide promotion. A session you dismiss is not promoted again. Earlier Android versions keep the standard timer notification. No private HyperOS island API is used.</string>
+    <string name="platform_controls_summary">Keep timer controls in Quick Settings and on your home screen.</string>
+    <string name="platform_compatibility">Compatibility and background activity</string>
+    <string name="platform_hide_details">Hide compatibility details</string>
+    <string name="platform_live_updates_guide">Under Settings → Android and device, optionally enable Live Updates and the experimental HyperIsland client. It is off by default. Android 16 supplies a system chronometer to supporting builds; HyperOS 3 gets a separate time-and-controls template without project names. Xiaomi requires app approval, which OTM has not obtained. A dismissed session is not promoted again. Unsupported systems retain the ordinary notification. OEM device rendering is unverified.</string>
     <string name="platform_add_tile">Add Quick Settings tile</string>
     <string name="platform_pin_widget">Add home-screen widget</string>
     <string name="platform_app_settings">Open app system settings</string>
@@ -13,7 +16,7 @@
     <string name="platform_battery_saver">Battery Saver is on. Android may limit background work.</string>
     <string name="platform_background_restricted">Android reports background restrictions for this app. If controls stop updating, review its battery settings.</string>
     <string name="platform_features_hint">Android 12+: device colors and responsive widgets. Android 13+: app language and a system tile-add dialog. Android 15–16: edge-to-edge layouts and adaptive screens. Availability also depends on the launcher and manufacturer.</string>
-    <string name="platform_oem_xiaomi">Xiaomi / Redmi / POCO: in HyperOS or MIUI, background and notification restrictions can differ by model and region. If controls stop updating, review the app’s Notifications and Battery sections; some versions also offer background autostart. Change only what is necessary. No proprietary Super Island or HyperIsland integration is claimed.</string>
+    <string name="platform_oem_xiaomi">Xiaomi / Redmi / POCO: HyperIsland uses the documented HyperOS 3 client template but depends on Xiaomi approval, model and region. Protocol support does not confirm app permission. MIUI and earlier HyperOS retain the ordinary notification. If controls stop updating, review this app’s Notifications and Battery settings; change only what is necessary.</string>
     <string name="platform_oem_samsung">Samsung / One UI: if controls stop updating, check the app’s battery settings and whether it was put in Sleeping or Deep sleeping apps. Keep normal battery protection unless there is a specific problem.</string>
     <string name="platform_oem_oppo">OPPO / OnePlus / realme: ColorOS, OxygenOS and realme UI can limit background activity or autolaunch. If controls stop updating, review the app’s battery and notification settings. Names and availability vary by version.</string>
     <string name="platform_oem_other">Your manufacturer may add background or notification restrictions. If controls stop updating, review this app’s system settings. Menu names vary; no blanket battery-optimization exemption is required.</string>

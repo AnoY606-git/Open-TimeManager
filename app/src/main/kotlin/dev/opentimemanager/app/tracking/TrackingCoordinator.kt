@@ -52,6 +52,8 @@ data class SystemSnapshot(
     /** Valid preferred project, or the sole non-archived project when no valid override exists. */
     val quickStartProject: ProjectEntity?,
     val dailyProgress: DailyTrackingProgress? = null,
+    /** Начало всей записи, включая паузы; не опора текущего рабочего отрезка. */
+    val entryStartedAtUtcMillis: Long? = null,
 )
 
 data class AppSnapshot(

@@ -67,20 +67,31 @@ class TrackingNotification(private val context: Context) {
         } else if (body != null) {
             builder.setStyle(Notification.BigTextStyle().bigText(body))
         }
+        val actions = mutableListOf<Notification.Action>()
         TrackingActions.primary(snapshot)?.let {
-            builder.addAction(Notification.Action.Builder(null, strings.getString(primaryString(state)), TrackingActions.pendingIntent(context, it)).build())
+            actions += Notification.Action.Builder(null, strings.getString(primaryString(state)), TrackingActions.pendingIntent(context, it)).build()
         }
         if (state == TrackingState.RUNNING || state == TrackingState.PAUSED) {
-            builder.addAction(Notification.Action.Builder(null, strings.getString(R.string.tracking_stop), TrackingActions.pendingIntent(context, TrackingActions.stop(snapshot))).build())
+            actions += Notification.Action.Builder(null, strings.getString(R.string.tracking_stop), TrackingActions.pendingIntent(context, TrackingActions.stop(snapshot))).build()
         }
-        if (Build.VERSION.SDK_INT >= 36) {
+        actions.forEach(builder::addAction)
+        val hyperIsland = hyperIslandProtocolAvailable(context)
+        if (Build.VERSION.SDK_INT >= 36 || hyperIsland) {
             try {
-                LiveUpdatePreferences(context).notificationPolicy(snapshot)?.let { policy ->
+                val policy = LiveUpdatePreferences(context).notificationPolicy(snapshot)
+                val observerReady = HyperIslandScreenObserver.update(context, snapshot, privacyMode, hyperIsland && policy?.requestHyperIsland == true)
+                policy?.let {
                     builder.setDeleteIntent(LiveUpdateDismissReceiver.pendingIntent(context, policy.session))
                     if (policy.requestPromotion) requestPromotedOngoing(builder)
+                    if (policy.requestHyperIsland && observerReady && hyperIslandContentVisible(context)) {
+                        hyperIslandExtras(context, state, title, detail, elapsed, snapshot.entryStartedAtUtcMillis, nowWallMillis, actions)?.let(builder::addExtras)
+                    }
                 }
-            } catch (_: Exception) { /* Optional presentation cannot break normal timer controls. */ }
-        }
+            } catch (_: Exception) {
+                HyperIslandScreenObserver.close()
+                // Необязательное оформление не должно ломать обычные кнопки таймера.
+            }
+        } else HyperIslandScreenObserver.close()
         return builder.build()
     }
 
